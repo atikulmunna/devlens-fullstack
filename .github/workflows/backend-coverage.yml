@@ -27,7 +27,7 @@ jobs:
         run: docker compose up -d --build postgres redis qdrant backend
 
       - name: Run migrations
-        run: ./scripts/db-migrate.sh
+        run: bash ./scripts/db-migrate.sh
 
       - name: Run backend tests with coverage report
         run: docker compose exec -e PYTHONPATH=/app backend pytest --cov=app --cov-report=term-missing --cov-report=xml -q
