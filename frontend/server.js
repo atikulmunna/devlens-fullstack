@@ -1,6 +1,8 @@
 const http = require('http');
+const { loadConfig } = require('./config');
 
-const port = Number(process.env.PORT || 3000);
+const config = loadConfig();
+const port = config.port;
 
 const server = http.createServer((req, res) => {
   if (req.url === '/health') {
@@ -14,5 +16,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(port, '0.0.0.0', () => {
-  console.log(`Frontend listening on ${port}`);
+  console.log(`Frontend listening on ${port} (${config.env}), API: ${config.apiUrl}`);
 });
