@@ -8,8 +8,11 @@ class Settings(BaseSettings):
     database_url: PostgresDsn
     redis_url: str
     qdrant_url: AnyHttpUrl
+    qdrant_collection: str = "devlens_code_chunks"
     github_client_id: str
     github_client_secret: str
+    github_oauth_redirect_uri: AnyHttpUrl
+    frontend_url: AnyHttpUrl
     openrouter_api_key: str
     groq_api_key: str
     jwt_secret: str
@@ -19,6 +22,9 @@ class Settings(BaseSettings):
     r2_bucket: str
     r2_access_key: str
     r2_secret_key: str
+    rate_limit_window_seconds: int = 3600
+    rate_limit_guest_per_window: int = 10
+    rate_limit_auth_per_window: int = 50
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
 

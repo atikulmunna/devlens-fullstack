@@ -27,6 +27,7 @@ coverage/
 htmlcov/
 dist/
 build/
+artifacts/
 
 # Docker
 docker-data/

@@ -1,3 +1,8 @@
 redis==5.2.1
 rq==2.1.0
 pydantic-settings==2.8.1
+SQLAlchemy==2.0.38
+psycopg[binary]==3.2.5
+pytest==8.3.4
+httpx==0.28.1
+prometheus-client==0.21.1

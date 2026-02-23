@@ -1,0 +1,72 @@
+{
+  "version": "1.0",
+  "created_at": "2026-02-23",
+  "repos": [
+    {
+      "repo_key": "fastapi",
+      "repo_url": "https://github.com/fastapi/fastapi",
+      "language_mix": ["python"],
+      "questions": [
+        {
+          "id": "FASTAPI-Q1",
+          "prompt": "Where is the ASGI app startup and route registration handled?",
+          "expected_signals": ["application entrypoint", "router inclusion", "startup lifecycle"]
+        },
+        {
+          "id": "FASTAPI-Q2",
+          "prompt": "How is dependency injection wired for request handlers?",
+          "expected_signals": ["dependency provider", "request-scoped injection", "Depends-like patterns"]
+        },
+        {
+          "id": "FASTAPI-Q3",
+          "prompt": "What modules appear most central to request validation?",
+          "expected_signals": ["validation layer", "schema models", "request parsing"]
+        }
+      ]
+    },
+    {
+      "repo_key": "react",
+      "repo_url": "https://github.com/facebook/react",
+      "language_mix": ["javascript", "typescript"],
+      "questions": [
+        {
+          "id": "REACT-Q1",
+          "prompt": "Where is component rendering reconciled with updates?",
+          "expected_signals": ["reconciliation", "render scheduling", "fiber/update path"]
+        },
+        {
+          "id": "REACT-Q2",
+          "prompt": "How is hook state tracked across renders?",
+          "expected_signals": ["hook dispatcher", "state slot order", "render context"]
+        },
+        {
+          "id": "REACT-Q3",
+          "prompt": "What files would you inspect first for error boundary behavior?",
+          "expected_signals": ["error boundary handling", "boundary lifecycle", "fallback rendering"]
+        }
+      ]
+    },
+    {
+      "repo_key": "go",
+      "repo_url": "https://github.com/golang/go",
+      "language_mix": ["go"],
+      "questions": [
+        {
+          "id": "GO-Q1",
+          "prompt": "Where does package/module loading happen in the toolchain code?",
+          "expected_signals": ["module loader", "package resolution", "toolchain path"]
+        },
+        {
+          "id": "GO-Q2",
+          "prompt": "How does the repository organize runtime versus compiler internals?",
+          "expected_signals": ["runtime directory", "compiler directory", "separation of concerns"]
+        },
+        {
+          "id": "GO-Q3",
+          "prompt": "What files are most relevant to garbage collection behavior?",
+          "expected_signals": ["GC implementation", "runtime memory management", "collector loop"]
+        }
+      ]
+    }
+  ]
+}

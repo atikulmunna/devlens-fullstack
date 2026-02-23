@@ -1,0 +1,46 @@
+name: Backend Coverage
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - "workers/**"
+      - "scripts/test-backend.*"
+      - "docker-compose.yml"
+      - ".github/workflows/backend-coverage.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - "workers/**"
+      - "scripts/test-backend.*"
+      - "docker-compose.yml"
+      - ".github/workflows/backend-coverage.yml"
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and start stack
+        run: docker compose up -d --build postgres redis qdrant backend
+
+      - name: Run migrations
+        run: ./scripts/db-migrate.sh
+
+      - name: Run backend tests with coverage report
+        run: docker compose exec -e PYTHONPATH=/app backend pytest --cov=app --cov-report=term-missing --cov-report=xml -q
+
+      - name: Copy coverage xml from container
+        run: docker compose cp backend:/app/coverage.xml ./coverage.xml
+
+      - name: Upload coverage xml
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage-xml
+          path: coverage.xml
+
+      - name: Shutdown stack
+        if: always()
+        run: docker compose down -v
