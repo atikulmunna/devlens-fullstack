@@ -1,0 +1,199 @@
+name: CI CD Pipeline
+
+on:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint And Static Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate Docker Compose
+        run: docker compose config -q
+
+      - name: Python compile checks
+        run: |
+          python -m compileall backend/app
+          python -m compileall workers
+
+      - name: Frontend syntax check
+        run: node --check frontend/server.js
+
+  backend_tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and start backend stack
+        run: docker compose up -d --build postgres redis qdrant backend
+
+      - name: Run migrations
+        run: ./scripts/db-migrate.sh
+
+      - name: Run backend test suite
+        run: ./scripts/test-backend.sh
+
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v
+
+  worker_tests:
+    name: Worker Tests
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and start worker stack
+        run: docker compose up -d --build postgres redis qdrant worker
+
+      - name: Run worker test suite
+        run: ./scripts/test-worker.sh
+
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v
+
+  build_images:
+    name: Build Service Images
+    runs-on: ubuntu-latest
+    needs: [backend_tests, worker_tests]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -t devlens-backend:ci ./backend
+
+      - name: Build worker image
+        run: docker build -t devlens-worker:ci ./workers
+
+      - name: Build frontend image
+        run: docker build -t devlens-frontend:ci ./frontend
+
+  deploy_main:
+    name: Deploy Main
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: [build_images]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set image vars
+        id: vars
+        run: |
+          echo "sha_tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "backend_image=ghcr.io/${GITHUB_REPOSITORY_OWNER}/devlens-backend:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "worker_image=ghcr.io/${GITHUB_REPOSITORY_OWNER}/devlens-worker:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "frontend_image=ghcr.io/${GITHUB_REPOSITORY_OWNER}/devlens-frontend:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend image
+        run: |
+          docker build -t "${{ steps.vars.outputs.backend_image }}" ./backend
+          docker push "${{ steps.vars.outputs.backend_image }}"
+
+      - name: Build and push worker image
+        run: |
+          docker build -t "${{ steps.vars.outputs.worker_image }}" ./workers
+          docker push "${{ steps.vars.outputs.worker_image }}"
+
+      - name: Build and push frontend image
+        run: |
+          docker build -t "${{ steps.vars.outputs.frontend_image }}" ./frontend
+          docker push "${{ steps.vars.outputs.frontend_image }}"
+
+      - name: Publish deployment manifest
+        run: |
+          cat <<EOF > deployment-manifest.json
+          {
+            "sha": "${GITHUB_SHA}",
+            "previous_sha": "${{ github.event.before }}",
+            "images": {
+              "backend": "${{ steps.vars.outputs.backend_image }}",
+              "worker": "${{ steps.vars.outputs.worker_image }}",
+              "frontend": "${{ steps.vars.outputs.frontend_image }}"
+            }
+          }
+          EOF
+
+      - name: Upload deployment manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-manifest
+          path: deployment-manifest.json
+
+      - name: Rollback notes
+        run: |
+          {
+            echo "## Deployment completed"
+            echo "- SHA: ${GITHUB_SHA}"
+            echo "- Previous SHA: ${{ github.event.before }}"
+            echo ""
+            echo "## Rollback"
+            echo "1. Redeploy images tagged with previous SHA: \`${{ github.event.before }}\`."
+            echo "2. If database schema changed, apply matching down-migration or restore snapshot."
+            echo "3. Validate /health and /health/deps, then re-run smoke tests."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  notify:
+    name: Deployment Notification
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: [deploy_main]
+    steps:
+      - name: Build notification payload
+        id: payload
+        run: |
+          status="${{ needs.deploy_main.result }}"
+          message="DevLens deploy ${status} for ${GITHUB_SHA}"
+          echo "message=${message}" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Deployment Notification"
+            echo "- Status: ${status}"
+            echo "- Commit: ${GITHUB_SHA}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Optional webhook notify
+        if: secrets.DEPLOY_WEBHOOK_URL != ''
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+        run: |
+          curl -sS -X POST "$DEPLOY_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"text\":\"${{ steps.payload.outputs.message }}\"}"
