@@ -8,6 +8,7 @@ AI-powered GitHub repository analyzer with RAG chat and code insights dashboard.
 - Execution checklist: `docs/planning/Implementation_Checklist.md`
 - Golden relevance eval (DEV-071): `docs/evaluation/DEV-071_Golden_Relevance.md`
 - Load/SLA validation (DEV-072): `docs/testing/DEV-072_Load_SLA_Validation.md`
+- CI/CD runbook (DEV-073): `docs/release/CI_CD_Runbook.md`
 
 ## Current Status
 
