@@ -1,5 +1,6 @@
 param(
     [string]$BatchFile = "docs/planning/GitHub_Issues_Batch.md",
+    [string]$ChecklistFile = "docs/planning/Implementation_Checklist.md",
     [switch]$DryRun,
     [switch]$AutoCreateLabels
 )
@@ -23,8 +24,8 @@ function Ensure-Label {
     }
 }
 
-if (-not (Test-Path -LiteralPath $BatchFile)) {
-    throw "Batch file not found: $BatchFile"
+if (-not (Test-Path -LiteralPath $BatchFile) -and -not (Test-Path -LiteralPath $ChecklistFile)) {
+    throw "Neither batch file nor checklist file found. Looked for: $BatchFile and $ChecklistFile"
 }
 
 if (-not (Test-CommandExists "gh")) {
@@ -36,26 +37,125 @@ if ($LASTEXITCODE -ne 0) {
     throw "GitHub CLI is not authenticated. Run: gh auth login"
 }
 
-$content = Get-Content -LiteralPath $BatchFile -Raw
-
-# Parse each issue block.
-$pattern = [regex]'(?ms)^## Issue:\s+\[(?<id>DEV-\d+)\]\s+(?<issueName>.+?)\r?\n\r?\n\*\*Title\*\*\r?\n(?<title>.+?)\r?\n\r?\n\*\*Body Template\*\*\r?\n```markdown\r?\n(?<body>.*?)\r?\n```\r?\n'
-$issueBlocks = $pattern.Matches($content)
-
-if ($issueBlocks.Count -eq 0) {
-    throw "No issue blocks found in $BatchFile"
+function Parse-BatchContent {
+    param([string]$Content)
+    $pattern = [regex]'(?ms)^## Issue:\s+\[(?<id>DEV-\d+)\]\s+(?<issueName>.+?)\r?\n\r?\n\*\*Title\*\*\r?\n(?<title>.+?)\r?\n\r?\n\*\*Body Template\*\*\r?\n```markdown\r?\n(?<body>.*?)\r?\n```\r?\n'
+    return $pattern.Matches($Content)
 }
 
-Write-Host "Found $($issueBlocks.Count) issues in $BatchFile"
+function Build-IssueBlocksFromChecklist {
+    param([string]$Path)
+    $lines = Get-Content -LiteralPath $Path
+    $items = New-Object System.Collections.Generic.List[object]
+
+    for ($i = 0; $i -lt $lines.Length; $i++) {
+        if ($lines[$i] -match '^### (DEV-\d+) \(`(P\d)`\) (.+)$') {
+            $id = $Matches[1]
+            $priority = $Matches[2]
+            $name = $Matches[3]
+            $scope = ''
+            $tasks = New-Object System.Collections.Generic.List[string]
+            $acceptance = New-Object System.Collections.Generic.List[string]
+            $entryCriteria = New-Object System.Collections.Generic.List[string]
+            $deps = 'None'
+
+            for ($j = $i + 1; $j -lt $lines.Length; $j++) {
+                $line = $lines[$j]
+                if ($line -match '^### DEV-') { break }
+                if ($line -match '^- Scope: (.+)$') { $scope = $Matches[1] }
+                if ($line -match '^- Dependencies: (.+)$') { $deps = $Matches[1] }
+
+                if ($line -eq '- Tasks:') {
+                    for ($k = $j + 1; $k -lt $lines.Length; $k++) {
+                        $t = $lines[$k]
+                        if ($t -match '^- Acceptance criteria:' -or $t -match '^- Dependencies:' -or $t -match '^- Entry criteria:' -or $t -match '^### DEV-') { break }
+                        if ($t -match '^- \[ \] (.+)$') { $tasks.Add($Matches[1]) }
+                    }
+                }
+                if ($line -eq '- Acceptance criteria:') {
+                    for ($k = $j + 1; $k -lt $lines.Length; $k++) {
+                        $t = $lines[$k]
+                        if ($t -match '^- Dependencies:' -or $t -match '^### DEV-' -or $t -match '^## ') { break }
+                        if ($t -match '^- \[ \] (.+)$') { $acceptance.Add($Matches[1]) }
+                    }
+                }
+                if ($line -eq '- Entry criteria:') {
+                    for ($k = $j + 1; $k -lt $lines.Length; $k++) {
+                        $t = $lines[$k]
+                        if ($t -match '^### DEV-' -or $t -match '^## ') { break }
+                        if ($t -match '^- \[ \] (.+)$') { $entryCriteria.Add($Matches[1]) }
+                    }
+                }
+            }
+
+            $bodyLines = New-Object System.Collections.Generic.List[string]
+            $bodyLines.Add('## Summary')
+            $bodyLines.Add($scope)
+            $bodyLines.Add('')
+            $bodyLines.Add('## Priority')
+            $bodyLines.Add($priority)
+            $bodyLines.Add('')
+            $bodyLines.Add('## Tasks')
+            if ($tasks.Count -eq 0) { $bodyLines.Add('- [ ] Define implementation tasks') }
+            foreach ($task in $tasks) { $bodyLines.Add('- [ ] ' + $task) }
+            if ($entryCriteria.Count -gt 0) {
+                $bodyLines.Add('')
+                $bodyLines.Add('## Entry Criteria')
+                foreach ($entry in $entryCriteria) { $bodyLines.Add('- [ ] ' + $entry) }
+            }
+            $bodyLines.Add('')
+            $bodyLines.Add('## Acceptance Criteria')
+            if ($acceptance.Count -eq 0) { $bodyLines.Add('- [ ] Meets agreed requirements') }
+            foreach ($criterion in $acceptance) { $bodyLines.Add('- [ ] ' + $criterion) }
+            $bodyLines.Add('')
+            $bodyLines.Add('## Dependencies')
+            $bodyLines.Add('- ' + $deps)
+            $bodyLines.Add('')
+            $bodyLines.Add('## Labels')
+            $bodyLines.Add('- ' + $priority)
+            $bodyLines.Add('- ' + $id)
+
+            $items.Add([PSCustomObject]@{
+                id    = $id
+                title = "[$id][$priority] $name"
+                body  = ($bodyLines -join "`n")
+            })
+        }
+    }
+
+    return $items
+}
+
+$issueBlocks = @()
+if (Test-Path -LiteralPath $BatchFile) {
+    $content = Get-Content -LiteralPath $BatchFile -Raw
+    $issueBlocks = Parse-BatchContent -Content $content
+}
+else {
+    $issueBlocks = Build-IssueBlocksFromChecklist -Path $ChecklistFile
+}
+
+if ($issueBlocks.Count -eq 0) {
+    throw "No issue blocks found."
+}
+
+Write-Host "Found $($issueBlocks.Count) issues."
 
 $created = 0
 $skipped = 0
 $failed = 0
 
 foreach ($m in $issueBlocks) {
-    $id = $m.Groups["id"].Value.Trim()
-    $title = $m.Groups["title"].Value.Trim()
-    $body = $m.Groups["body"].Value.Trim()
+    if ($m -is [System.Text.RegularExpressions.Match]) {
+        $id = $m.Groups["id"].Value.Trim()
+        $title = $m.Groups["title"].Value.Trim()
+        $body = $m.Groups["body"].Value.Trim()
+    }
+    else {
+        $id = $m.id.Trim()
+        $title = $m.title.Trim()
+        $body = $m.body.Trim()
+    }
 
     # Parse labels from "## Labels" section in body template.
     $labels = @()
