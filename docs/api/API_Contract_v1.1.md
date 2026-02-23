@@ -318,6 +318,27 @@ data: {"message_id":"uuid","citations":[...],"no_citation":false}
 }
 ```
 
+### `GET /repos/{repo_id}/dependency-graph`
+- Purpose: Return module dependency graph inferred from analyzed code chunks.
+- Success `200`:
+```json
+{
+  "repo_id": "uuid",
+  "nodes": [
+    { "id": "app/main.py", "label": "main.py", "file_path": "app/main.py" }
+  ],
+  "edges": [
+    { "id": "app/main.py->app/utils.py", "source": "app/main.py", "target": "app/utils.py", "kind": "python" }
+  ],
+  "stats": {
+    "files_considered": 12,
+    "edges_detected": 21
+  }
+}
+```
+- Errors:
+  - `404`: repository not found.
+
 `event: done`
 ```json
 {
