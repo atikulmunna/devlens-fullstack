@@ -10,10 +10,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import AnalysisJob, AnalysisResult, Repository
+from app.db.models import AnalysisJob, AnalysisResult, CodeChunk, Repository
 from app.api.error_schema import ERROR_RESPONSE_SCHEMA
 from app.deps import get_db_session
 from app.db.session import SessionLocal
+from app.services.dependency_graph import build_dependency_graph
 from app.services.github_repos import resolve_public_repo_snapshot
 from app.services.retrieval_hybrid import hybrid_search_chunks
 from app.services.retrieval_lexical import lexical_search_chunks
@@ -108,6 +109,31 @@ class DashboardResponse(BaseModel):
     repository: DashboardRepositoryResponse
     analysis: dict | None = None
     has_analysis: bool
+
+
+class DependencyNode(BaseModel):
+    id: str
+    label: str
+    file_path: str
+
+
+class DependencyEdge(BaseModel):
+    id: str
+    source: str
+    target: str
+    kind: str
+
+
+class DependencyGraphStats(BaseModel):
+    files_considered: int
+    edges_detected: int
+
+
+class DependencyGraphResponse(BaseModel):
+    repo_id: str
+    nodes: list[DependencyNode]
+    edges: list[DependencyEdge]
+    stats: DependencyGraphStats
 
 
 def _fetch_latest_job(db: Session, repo_id: UUID) -> AnalysisJob | None:
@@ -405,6 +431,41 @@ def get_repo_dashboard(repo_id: UUID, db: Session = Depends(get_db_session)) -> 
         ),
         analysis=analysis_payload,
         has_analysis=result is not None,
+    )
+
+
+@router.get(
+    "/{repo_id}/dependency-graph",
+    response_model=DependencyGraphResponse,
+    summary="Repository dependency graph",
+    description=(
+        "Builds a module dependency graph from analyzed code chunks. "
+        "Edges represent import/require relationships resolved to files within the same repository snapshot."
+    ),
+    responses={
+        404: {
+            "description": "Repository not found",
+            "content": {"application/json": {"schema": ERROR_RESPONSE_SCHEMA}},
+        },
+    },
+)
+def get_dependency_graph(repo_id: UUID, db: Session = Depends(get_db_session)) -> DependencyGraphResponse:
+    repo = db.execute(select(Repository).where(Repository.id == repo_id)).scalar_one_or_none()
+    if repo is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+
+    rows = db.execute(
+        select(CodeChunk.file_path, CodeChunk.content)
+        .where(CodeChunk.repo_id == repo_id)
+        .order_by(CodeChunk.created_at.asc())
+    ).all()
+    graph = build_dependency_graph([{"file_path": row[0], "content": row[1]} for row in rows])
+
+    return DependencyGraphResponse(
+        repo_id=str(repo_id),
+        nodes=[DependencyNode(**node) for node in graph["nodes"]],
+        edges=[DependencyEdge(**edge) for edge in graph["edges"]],
+        stats=DependencyGraphStats(**graph["stats"]),
     )
 
 

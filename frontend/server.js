@@ -1075,12 +1075,108 @@ function renderRoute(pathname) {
 
   const filesMatch = pathname.match(/^\/dashboard\/([^/]+)\/files$/);
   if (filesMatch) {
+    const repoId = filesMatch[1];
+    const filesBody = `
+<h2>Dependency Graph</h2>
+<p>Module import relationships discovered from analyzed chunks.</p>
+<div id="graph-loading" class="loading">Loading dependency graph...</div>
+<div id="graph-error" class="error hidden"></div>
+<div id="graph-stats" class="ok hidden"></div>
+<div id="graph-wrap" class="hidden">
+  <svg id="dep-graph" viewBox="0 0 960 640" style="width:100%;border:1px solid #d9e1ec;border-radius:10px;background:#f8fbff;"></svg>
+</div>`;
+
+    const filesScripts = `<script>
+(function () {
+  const repoId = ${JSON.stringify(repoId)};
+  const loading = document.getElementById('graph-loading');
+  const errorBox = document.getElementById('graph-error');
+  const statsBox = document.getElementById('graph-stats');
+  const wrap = document.getElementById('graph-wrap');
+  const svg = document.getElementById('dep-graph');
+
+  function show(el) { el.classList.remove('hidden'); }
+  function hide(el) { el.classList.add('hidden'); }
+  function esc(text) {
+    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function renderGraph(payload) {
+    const nodes = payload.nodes || [];
+    const edges = payload.edges || [];
+    if (!nodes.length) {
+      throw new Error('No graph data found for this repository yet.');
+    }
+
+    const cx = 480;
+    const cy = 320;
+    const radius = 250;
+    const pos = {};
+    nodes.forEach(function (node, idx) {
+      const angle = (Math.PI * 2 * idx) / Math.max(nodes.length, 1);
+      pos[node.id] = {
+        x: cx + Math.cos(angle) * radius,
+        y: cy + Math.sin(angle) * radius
+      };
+    });
+
+    const lines = edges.map(function (edge) {
+      const s = pos[edge.source];
+      const t = pos[edge.target];
+      if (!s || !t) { return ''; }
+      return '<line x1="' + s.x.toFixed(1) + '" y1="' + s.y.toFixed(1) + '" x2="' + t.x.toFixed(1) + '" y2="' + t.y.toFixed(1) + '" stroke="#7aa5cf" stroke-width="1.5" opacity="0.8"></line>';
+    }).join('');
+
+    const circles = nodes.map(function (node) {
+      const p = pos[node.id];
+      return '<g>' +
+        '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="9" fill="#0f6dbb"></circle>' +
+        '<title>' + esc(node.file_path || node.label || node.id) + '</title>' +
+      '</g>';
+    }).join('');
+
+    const labels = nodes.map(function (node) {
+      const p = pos[node.id];
+      return '<text x="' + (p.x + 12).toFixed(1) + '" y="' + (p.y + 4).toFixed(1) + '" font-size="11" fill="#1c3550">' +
+        esc(node.label || node.id) +
+      '</text>';
+    }).join('');
+
+    svg.innerHTML = lines + circles + labels;
+    statsBox.textContent = 'Files: ' + (payload.stats && payload.stats.files_considered ? payload.stats.files_considered : nodes.length) +
+      ' | Edges: ' + (payload.stats && payload.stats.edges_detected ? payload.stats.edges_detected : edges.length);
+    show(statsBox);
+    show(wrap);
+  }
+
+  async function loadGraph() {
+    try {
+      const response = await fetch('/api/v1/repos/' + encodeURIComponent(repoId) + '/dependency-graph');
+      const payload = await response.json();
+      if (!response.ok) {
+        const msg = (payload && payload.error && payload.error.message) || payload.detail || 'Failed to load dependency graph';
+        throw new Error(msg);
+      }
+      renderGraph(payload);
+    } catch (error) {
+      errorBox.textContent = error && error.message ? error.message : 'Dependency graph loading failed';
+      show(errorBox);
+    } finally {
+      hide(loading);
+    }
+  }
+
+  loadGraph();
+})();
+</script>`;
+
     return layout({
       title: 'DevLens | Files',
-      heading: 'File Explorer',
-      subtitle: 'Source browser and code navigation shell.',
+      heading: 'Dependency Graph',
+      subtitle: 'Module-level import relationships for the analyzed snapshot.',
       route: pathname,
-      body: `<h2>Files</h2><p>File explorer shell for repo <code>${filesMatch[1]}</code>.</p>`,
+      body: filesBody,
+      scripts: filesScripts,
     });
   }
 
