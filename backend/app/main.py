@@ -30,12 +30,13 @@ def health() -> dict:
 @app.get("/health/deps")
 def health_deps() -> dict:
     redis_ok = _tcp_check(settings.redis_url, 6379)
-    postgres_ok = _tcp_check(settings.database_url, 5432)
+    postgres_ok = _tcp_check(str(settings.database_url), 5432)
 
     qdrant_ok = False
     try:
+        qdrant_health_url = f"{str(settings.qdrant_url).rstrip('/')}/healthz"
         with httpx.Client(timeout=3.0) as client:
-            response = client.get(f"{settings.qdrant_url}/healthz")
+            response = client.get(qdrant_health_url)
             qdrant_ok = response.status_code == 200
     except Exception:
         qdrant_ok = False

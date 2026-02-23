@@ -1,8 +1,9 @@
-import os
 import time
 from urllib.parse import urlparse
 
 import redis
+
+from config import settings
 
 
 def wait_for_redis(redis_url: str, retries: int = 20, delay: int = 2) -> redis.Redis:
@@ -23,9 +24,8 @@ def wait_for_redis(redis_url: str, retries: int = 20, delay: int = 2) -> redis.R
 
 
 def main() -> None:
-    redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
-    client = wait_for_redis(redis_url)
-    print("Worker connected to Redis. Waiting for queue implementation...")
+    client = wait_for_redis(settings.redis_url)
+    print(f"Worker connected to Redis in {settings.env} mode. Waiting for queue implementation...")
 
     while True:
         client.set("devlens:worker:heartbeat", int(time.time()), ex=30)

@@ -25,6 +25,14 @@ Planning and architecture are finalized in SRD v1.1. Implementation is tracked v
 2. Stop stack: `./scripts/dev-down.ps1`
 3. Check services: `docker compose ps`
 
+Service env templates:
+
+- `backend/.env.example`
+- `workers/.env.example`
+- `frontend/.env.example`
+
+Config validation is fail-fast at startup for required environment variables.
+
 Default endpoints:
 
 - Backend health: `http://localhost:8000/health`
