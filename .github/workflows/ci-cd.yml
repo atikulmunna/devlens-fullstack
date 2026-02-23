@@ -55,10 +55,10 @@ jobs:
         run: docker compose up -d --build postgres redis qdrant backend
 
       - name: Run migrations
-        run: ./scripts/db-migrate.sh
+        run: bash ./scripts/db-migrate.sh
 
       - name: Run backend test suite
-        run: ./scripts/test-backend.sh
+        run: bash ./scripts/test-backend.sh
 
       - name: Stop stack
         if: always()
@@ -76,7 +76,7 @@ jobs:
         run: docker compose up -d --build postgres redis qdrant worker
 
       - name: Run worker test suite
-        run: ./scripts/test-worker.sh
+        run: bash ./scripts/test-worker.sh
 
       - name: Stop stack
         if: always()
