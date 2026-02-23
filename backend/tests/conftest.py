@@ -32,6 +32,7 @@ for key, value in ENV_DEFAULTS.items():
     os.environ.setdefault(key, value)
 
 from app.db.models import (
+    ApiKey,
     AnalysisJob,
     AnalysisResult,
     ChatMessage,
@@ -73,12 +74,18 @@ def cleanup_test_users(db_session: Session):
     db_session.execute(delete(DeadLetterJob).where(DeadLetterJob.repo_id.in_(test_repo_ids)))
     db_session.execute(delete(AnalysisJob).where(AnalysisJob.repo_id.in_(test_repo_ids)))
     db_session.execute(delete(ShareToken).where(ShareToken.repo_id.in_(test_repo_ids)))
+    db_session.execute(delete(ApiKey).where(ApiKey.user_id.in_(
+        db_session.query(User.id).filter(User.github_id >= 900000000)
+    )))
     db_session.execute(delete(Repository).where(Repository.github_url.like("https://github.com/test-owner/%")))
 
     db_session.execute(delete(RefreshToken).where(RefreshToken.user_id.in_(
         db_session.query(User.id).filter(User.github_id >= 900000000)
     )))
     db_session.execute(delete(ShareToken).where(ShareToken.user_id.in_(
+        db_session.query(User.id).filter(User.github_id >= 900000000)
+    )))
+    db_session.execute(delete(ApiKey).where(ApiKey.user_id.in_(
         db_session.query(User.id).filter(User.github_id >= 900000000)
     )))
     db_session.execute(delete(User).where(User.github_id >= 900000000))
@@ -96,12 +103,18 @@ def cleanup_test_users(db_session: Session):
     db_session.execute(delete(DeadLetterJob).where(DeadLetterJob.repo_id.in_(test_repo_ids)))
     db_session.execute(delete(AnalysisJob).where(AnalysisJob.repo_id.in_(test_repo_ids)))
     db_session.execute(delete(ShareToken).where(ShareToken.repo_id.in_(test_repo_ids)))
+    db_session.execute(delete(ApiKey).where(ApiKey.user_id.in_(
+        db_session.query(User.id).filter(User.github_id >= 900000000)
+    )))
     db_session.execute(delete(Repository).where(Repository.github_url.like("https://github.com/test-owner/%")))
 
     db_session.execute(delete(RefreshToken).where(RefreshToken.user_id.in_(
         db_session.query(User.id).filter(User.github_id >= 900000000)
     )))
     db_session.execute(delete(ShareToken).where(ShareToken.user_id.in_(
+        db_session.query(User.id).filter(User.github_id >= 900000000)
+    )))
+    db_session.execute(delete(ApiKey).where(ApiKey.user_id.in_(
         db_session.query(User.id).filter(User.github_id >= 900000000)
     )))
     db_session.execute(delete(User).where(User.github_id >= 900000000))

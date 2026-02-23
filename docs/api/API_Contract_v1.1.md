@@ -96,6 +96,57 @@ Common `error.code` values:
 - Errors:
   - `401`: missing/invalid token.
 
+### `POST /auth/api-keys`
+- Purpose: Issue a new programmatic API key for the authenticated user.
+- Auth: `Authorization: Bearer <access_token>`
+- Body:
+```json
+{
+  "name": "ci-bot",
+  "expires_in_days": 30
+}
+```
+- Success `200`:
+```json
+{
+  "id": "uuid",
+  "name": "ci-bot",
+  "api_key": "dlk_...",
+  "key_prefix": "dlk_abcd1234",
+  "key_last4": "WXYZ",
+  "created_at": "2026-02-24T04:20:00Z",
+  "expires_at": "2026-03-26T04:20:00Z"
+}
+```
+
+### `GET /auth/api-keys`
+- Purpose: List API keys owned by current user.
+- Auth: `Authorization: Bearer <access_token>`
+- Success `200`:
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "name": "ci-bot",
+      "key_prefix": "dlk_abcd1234",
+      "key_last4": "WXYZ",
+      "created_at": "2026-02-24T04:20:00Z",
+      "revoked_at": null,
+      "last_used_at": null,
+      "expires_at": "2026-03-26T04:20:00Z"
+    }
+  ]
+}
+```
+
+### `DELETE /auth/api-keys/{api_key_id}`
+- Purpose: Revoke one API key owned by current user.
+- Auth: `Authorization: Bearer <access_token>`
+- Success: `204 No Content`
+- Errors:
+  - `404`: key not found for current user.
+
 ## Repository Analysis Endpoints
 
 ### `POST /repos/analyze`
