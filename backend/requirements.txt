@@ -3,3 +3,10 @@ uvicorn[standard]==0.34.0
 pydantic-settings==2.8.1
 redis==5.2.1
 httpx==0.28.1
+SQLAlchemy==2.0.38
+alembic==1.14.1
+psycopg[binary]==3.2.5
+PyJWT==2.10.1
+prometheus-client==0.21.1
+pytest==8.3.4
+pytest-cov==6.0.0

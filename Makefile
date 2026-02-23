@@ -1,4 +1,4 @@
-.PHONY: up down logs backend worker
+.PHONY: up down logs backend worker migrate test
 
 up:
 	docker compose up -d --build
@@ -14,3 +14,9 @@ backend:
 
 worker:
 	docker compose up worker -d
+
+migrate:
+	docker compose exec backend alembic -c alembic.ini upgrade head
+
+test:
+	docker compose exec -e PYTHONPATH=/app backend pytest -q

@@ -4,6 +4,11 @@ from urllib.parse import urlparse
 import redis
 
 from config import settings
+from analyze_worker import process_next_analyze_job
+from db import SessionLocal
+from embed_worker import process_next_embed_job
+from parse_worker import process_next_parse_job
+from telemetry import start_metrics_server
 
 
 def wait_for_redis(redis_url: str, retries: int = 20, delay: int = 2) -> redis.Redis:
@@ -25,10 +30,23 @@ def wait_for_redis(redis_url: str, retries: int = 20, delay: int = 2) -> redis.R
 
 def main() -> None:
     client = wait_for_redis(settings.redis_url)
-    print(f"Worker connected to Redis in {settings.env} mode. Waiting for queue implementation...")
+    start_metrics_server(settings.worker_metrics_port)
+    print(f"Worker connected to Redis in {settings.env} mode. Parse+embed+analyze worker started.")
 
     while True:
         client.set("devlens:worker:heartbeat", int(time.time()), ex=30)
+        db = SessionLocal()
+        try:
+            processed_parse = process_next_parse_job(db)
+            processed_embed = False if processed_parse else process_next_embed_job(db)
+            processed_analyze = False if (processed_parse or processed_embed) else process_next_analyze_job(db)
+        finally:
+            db.close()
+
+        if not processed_parse and not processed_embed and not processed_analyze:
+            time.sleep(2)
+            continue
+
         time.sleep(10)
 
 

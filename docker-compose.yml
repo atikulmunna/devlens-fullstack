@@ -69,6 +69,8 @@ services:
       context: ./frontend
     env_file:
       - ./frontend/.env.example
+    environment:
+      NEXT_PUBLIC_API_URL: http://backend:8000
     depends_on:
       backend:
         condition: service_healthy
