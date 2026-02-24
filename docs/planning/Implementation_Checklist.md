@@ -202,7 +202,7 @@ Source of truth: `DevLens_SRD.md` (Version 1.1, February 23, 2026)
 ## Epic E: Frontend Delivery (Core v1)
 
 ### DEV-040 (`P1`) Frontend app shell and route scaffolding
-- Scope: Next.js app router pages from SRD.
+- Scope: Frontend route shell pages from SRD (framework-agnostic runtime).
 - Tasks:
 - [ ] Implement `/`, `/analyze`, `/dashboard/[repoId]`, `/dashboard/[repoId]/chat`, `/dashboard/[repoId]/files`, `/profile`, `/share/[token]`.
 - [ ] Add global error/loading states.

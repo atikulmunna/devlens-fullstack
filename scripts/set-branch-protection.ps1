@@ -23,7 +23,7 @@ $requiredChecks = @(
     "Backend Tests",
     "Worker Tests",
     "Build Service Images",
-    "Backend Coverage"
+    "backend-tests"
 )
 
 $payload = @{
