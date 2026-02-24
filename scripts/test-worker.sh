@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-docker compose exec -e PYTHONPATH=/app worker sh -lc "cd /app && pytest -q"
+docker compose run --rm -e PYTHONPATH=/app worker sh -lc "cd /app && pytest -q"
