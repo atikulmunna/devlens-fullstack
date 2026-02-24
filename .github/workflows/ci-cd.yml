@@ -72,8 +72,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build and start worker stack
-        run: docker compose up -d --build postgres redis qdrant worker
+      - name: Build and start worker dependencies
+        run: docker compose up -d --build postgres redis qdrant
 
       - name: Run worker test suite
         run: bash ./scripts/test-worker.sh
@@ -190,9 +190,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Optional webhook notify
-        if: secrets.DEPLOY_WEBHOOK_URL != ''
         env:
           DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+        if: env.DEPLOY_WEBHOOK_URL != ''
         run: |
           curl -sS -X POST "$DEPLOY_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
