@@ -65,57 +65,31 @@ def db_session() -> Session:
 @pytest.fixture(autouse=True)
 def cleanup_test_users(db_session: Session):
     # Cleanup before and after each test for deterministic auth/repo tests.
-    test_repo_ids = db_session.query(Repository.id).filter(Repository.github_url.like("https://github.com/test-owner/%"))
+    def purge_test_rows() -> None:
+        test_repo_ids = db_session.query(Repository.id).filter(Repository.github_url.like("https://github.com/test-owner/%"))
+        test_user_ids = db_session.query(User.id).filter(User.github_id >= 900000000)
+        test_session_ids = db_session.query(ChatSession.id).filter(
+            (ChatSession.repo_id.in_(test_repo_ids)) | (ChatSession.user_id.in_(test_user_ids))
+        )
 
-    db_session.execute(delete(ChatMessage).where(ChatMessage.session_id.in_(db_session.query(ChatSession.id).filter(ChatSession.repo_id.in_(test_repo_ids)))))
-    db_session.execute(delete(ChatSession).where(ChatSession.repo_id.in_(test_repo_ids)))
-    db_session.execute(delete(CodeChunk).where(CodeChunk.repo_id.in_(test_repo_ids)))
-    db_session.execute(delete(AnalysisResult).where(AnalysisResult.repo_id.in_(test_repo_ids)))
-    db_session.execute(delete(DeadLetterJob).where(DeadLetterJob.repo_id.in_(test_repo_ids)))
-    db_session.execute(delete(AnalysisJob).where(AnalysisJob.repo_id.in_(test_repo_ids)))
-    db_session.execute(delete(ShareToken).where(ShareToken.repo_id.in_(test_repo_ids)))
-    db_session.execute(delete(ApiKey).where(ApiKey.user_id.in_(
-        db_session.query(User.id).filter(User.github_id >= 900000000)
-    )))
-    db_session.execute(delete(Repository).where(Repository.github_url.like("https://github.com/test-owner/%")))
+        db_session.execute(delete(ChatMessage).where(ChatMessage.session_id.in_(test_session_ids)))
+        db_session.execute(delete(ChatSession).where(ChatSession.id.in_(test_session_ids)))
+        db_session.execute(delete(CodeChunk).where(CodeChunk.repo_id.in_(test_repo_ids)))
+        db_session.execute(delete(AnalysisResult).where(AnalysisResult.repo_id.in_(test_repo_ids)))
+        db_session.execute(delete(DeadLetterJob).where(DeadLetterJob.repo_id.in_(test_repo_ids)))
+        db_session.execute(delete(AnalysisJob).where(AnalysisJob.repo_id.in_(test_repo_ids)))
+        db_session.execute(delete(ShareToken).where(ShareToken.repo_id.in_(test_repo_ids)))
+        db_session.execute(delete(Repository).where(Repository.github_url.like("https://github.com/test-owner/%")))
 
-    db_session.execute(delete(RefreshToken).where(RefreshToken.user_id.in_(
-        db_session.query(User.id).filter(User.github_id >= 900000000)
-    )))
-    db_session.execute(delete(ShareToken).where(ShareToken.user_id.in_(
-        db_session.query(User.id).filter(User.github_id >= 900000000)
-    )))
-    db_session.execute(delete(ApiKey).where(ApiKey.user_id.in_(
-        db_session.query(User.id).filter(User.github_id >= 900000000)
-    )))
-    db_session.execute(delete(User).where(User.github_id >= 900000000))
-    db_session.commit()
+        db_session.execute(delete(RefreshToken).where(RefreshToken.user_id.in_(test_user_ids)))
+        db_session.execute(delete(ShareToken).where(ShareToken.user_id.in_(test_user_ids)))
+        db_session.execute(delete(ApiKey).where(ApiKey.user_id.in_(test_user_ids)))
+        db_session.execute(delete(User).where(User.github_id >= 900000000))
+        db_session.commit()
+
+    purge_test_rows()
 
     yield
 
     db_session.rollback()
-    test_repo_ids = db_session.query(Repository.id).filter(Repository.github_url.like("https://github.com/test-owner/%"))
-
-    db_session.execute(delete(ChatMessage).where(ChatMessage.session_id.in_(db_session.query(ChatSession.id).filter(ChatSession.repo_id.in_(test_repo_ids)))))
-    db_session.execute(delete(ChatSession).where(ChatSession.repo_id.in_(test_repo_ids)))
-    db_session.execute(delete(CodeChunk).where(CodeChunk.repo_id.in_(test_repo_ids)))
-    db_session.execute(delete(AnalysisResult).where(AnalysisResult.repo_id.in_(test_repo_ids)))
-    db_session.execute(delete(DeadLetterJob).where(DeadLetterJob.repo_id.in_(test_repo_ids)))
-    db_session.execute(delete(AnalysisJob).where(AnalysisJob.repo_id.in_(test_repo_ids)))
-    db_session.execute(delete(ShareToken).where(ShareToken.repo_id.in_(test_repo_ids)))
-    db_session.execute(delete(ApiKey).where(ApiKey.user_id.in_(
-        db_session.query(User.id).filter(User.github_id >= 900000000)
-    )))
-    db_session.execute(delete(Repository).where(Repository.github_url.like("https://github.com/test-owner/%")))
-
-    db_session.execute(delete(RefreshToken).where(RefreshToken.user_id.in_(
-        db_session.query(User.id).filter(User.github_id >= 900000000)
-    )))
-    db_session.execute(delete(ShareToken).where(ShareToken.user_id.in_(
-        db_session.query(User.id).filter(User.github_id >= 900000000)
-    )))
-    db_session.execute(delete(ApiKey).where(ApiKey.user_id.in_(
-        db_session.query(User.id).filter(User.github_id >= 900000000)
-    )))
-    db_session.execute(delete(User).where(User.github_id >= 900000000))
-    db_session.commit()
+    purge_test_rows()
