@@ -31,17 +31,46 @@ DevLens is an AI-powered GitHub repository analyzer. It ingests a public reposit
 
 ## Architecture
 
-```text
-Frontend (Node service, route shell + API proxy)
-        |
-        | REST + SSE
-        v
-Backend (FastAPI)
-        |
-        +-- PostgreSQL (repos, jobs, chunks, results, users, sessions)
-        +-- Redis (queue + cache + rate limiting)
-        +-- Qdrant (code chunk vectors)
-        +-- Workers (parse_worker, embed_worker, analyze_worker)
+```mermaid
+flowchart LR
+  U[Developer]
+
+  subgraph Frontend_Layer
+    FE[Frontend Service<br/>Route Shell and API Proxy]
+  end
+
+  subgraph Backend_Layer
+    API[FastAPI API Gateway]
+    AUTH[Auth and Session<br/>GitHub OAuth and JWT]
+  end
+
+  subgraph Async_Pipeline
+    RQ[Redis Queue RQ]
+    P[parse_worker]
+    E[embed_worker]
+    A[analyze_worker]
+  end
+
+  subgraph Data_Layer
+    PG[PostgreSQL<br/>repos jobs chunks results users sessions]
+    REDIS[Redis<br/>queue cache rate limiting]
+    QD[Qdrant<br/>code chunk vectors]
+  end
+
+  U -->|Analyze Chat Dashboard| FE
+  FE -->|REST SSE| API
+  API --> AUTH
+  API -->|enqueue jobs| RQ
+  RQ --> P
+  P --> E
+  E --> A
+  API -->|metadata| PG
+  API -->|cache and limits| REDIS
+  P -->|chunks and job updates| PG
+  E -->|vector upsert| QD
+  A -->|analysis results| PG
+  API -->|hybrid retrieval| QD
+  API -->|lexical retrieval| PG
 ```
 
 ## Tech Stack
