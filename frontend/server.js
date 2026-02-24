@@ -16,12 +16,14 @@ function escapeHtml(input) {
 }
 
 function layout({ title, heading, subtitle, route, body, scripts = '' }) {
+  const faviconSvg = encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#0f6dbb"/><text x="32" y="42" font-size="34" text-anchor="middle" fill="white" font-family="Segoe UI,Arial,sans-serif">D</text></svg>');
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${title}</title>
+    <link rel="icon" href="data:image/svg+xml,${faviconSvg}" />
     <style>
       :root {
         --bg: #f4f7fb;
@@ -84,6 +86,7 @@ function layout({ title, heading, subtitle, route, body, scripts = '' }) {
       a { color: var(--accent); text-decoration: none; }
       a:hover { text-decoration: underline; }
       .grid { display: grid; gap: 12px; }
+      .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
       label { display: grid; gap: 6px; font-weight: 600; }
       input[type=text] {
         width: 100%;
@@ -105,6 +108,7 @@ function layout({ title, heading, subtitle, route, body, scripts = '' }) {
       }
       button:disabled { opacity: 0.65; cursor: not-allowed; }
       .hidden { display: none; }
+      .small { font-size: 12px; color: var(--muted); }
       .ok {
         border: 1px solid #c3e4d7;
         background: #f2fcf8;
@@ -164,7 +168,7 @@ function renderRoute(pathname) {
     GitHub URL
     <input id="github-url" type="text" placeholder="https://github.com/owner/repo" required />
   </label>
-  <button id="submit-btn" type="submit">Analyze</button>
+  <button id="submit-btn" type="button" onclick="if (window.__devlensRunAnalyze) { window.__devlensRunAnalyze(); }">Analyze</button>
 </form>
 <div id="cache-hit" class="ok hidden"></div>
 <div id="error-msg" class="error hidden"></div>
@@ -173,6 +177,11 @@ function renderRoute(pathname) {
   <div><strong>Repo:</strong> <span class="mono" id="repo-id"></span></div>
   <div><strong>Status:</strong> <span id="status-line">Queued</span></div>
   <div><strong>Progress:</strong> <span id="progress-line">0%</span></div>
+  <div><strong>Dashboard:</strong> <a id="dashboard-link" class="hidden" href="#"></a></div>
+</div>
+<div id="result-actions" class="row hidden">
+  <button id="copy-repo-id" type="button">Copy Repo ID</button>
+  <button id="copy-dashboard-url" type="button">Copy Dashboard URL</button>
 </div>
 <div id="done-msg" class="ok hidden"></div>`;
 
@@ -189,6 +198,10 @@ function renderRoute(pathname) {
   const repoId = document.getElementById('repo-id');
   const statusLine = document.getElementById('status-line');
   const progressLine = document.getElementById('progress-line');
+  const dashboardLink = document.getElementById('dashboard-link');
+  const resultActions = document.getElementById('result-actions');
+  const copyRepoBtn = document.getElementById('copy-repo-id');
+  const copyDashboardBtn = document.getElementById('copy-dashboard-url');
 
   let stream = null;
   let reconnectAttempts = 0;
@@ -199,7 +212,7 @@ function renderRoute(pathname) {
   function show(el) { el.classList.remove('hidden'); }
 
   function setError(message) {
-    errorBox.textContent = message;
+    errorBox.textContent = 'Analyze failed: ' + message;
     show(errorBox);
   }
 
@@ -207,15 +220,73 @@ function renderRoute(pathname) {
     hide(errorBox);
     hide(cacheHitBox);
     hide(doneBox);
+    hide(resultActions);
+    hide(dashboardLink);
+    dashboardLink.textContent = '';
+    dashboardLink.href = '#';
     cacheHitBox.textContent = '';
     doneBox.textContent = '';
     errorBox.textContent = '';
+  }
+
+  function dashboardPath(repo) {
+    return '/dashboard/' + encodeURIComponent(repo);
+  }
+
+  function dashboardFullUrl(repo) {
+    return window.location.origin + dashboardPath(repo);
+  }
+
+  function renderDashboardLink(repo) {
+    dashboardLink.href = dashboardPath(repo);
+    dashboardLink.textContent = dashboardPath(repo);
+    show(dashboardLink);
+    show(resultActions);
+  }
+
+  async function copyText(value) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+    const input = document.createElement('input');
+    input.value = value;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    input.remove();
   }
 
   function closeStream() {
     if (stream) {
       stream.close();
       stream = null;
+    }
+  }
+
+  async function fetchStatusOnce(repo) {
+    try {
+      const response = await fetch('/api/v1/repos/' + encodeURIComponent(repo) + '/status?once=true', {
+        headers: { Accept: 'text/event-stream' }
+      });
+      const text = await response.text();
+      const lines = text.split('\\n');
+      let eventName = 'progress';
+      let dataRaw = '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('event:')) {
+          eventName = trimmed.slice(6).trim();
+        } else if (trimmed.startsWith('data:')) {
+          dataRaw += trimmed.slice(5).trim();
+        }
+      }
+      if (!dataRaw) {
+        return null;
+      }
+      return { eventName: eventName, payload: JSON.parse(dataRaw) };
+    } catch (_error) {
+      return null;
     }
   }
 
@@ -227,6 +298,7 @@ function renderRoute(pathname) {
     stream.addEventListener('progress', function (event) {
       reconnectAttempts = 0;
       const payload = JSON.parse(event.data);
+      hide(errorBox);
       statusLine.textContent = payload.stage + ' in progress';
       progressLine.textContent = String(payload.progress) + '%';
       show(jobCard);
@@ -235,14 +307,17 @@ function renderRoute(pathname) {
     stream.addEventListener('done', function (event) {
       const payload = JSON.parse(event.data);
       terminal = true;
+      hide(errorBox);
       statusLine.textContent = payload.stage;
       progressLine.textContent = String(payload.progress) + '%';
-      doneBox.textContent = 'Analysis complete. Open dashboard: /dashboard/' + repo;
+      const path = dashboardPath(repo);
+      doneBox.innerHTML = 'Analysis complete. <a href="' + path + '">Open dashboard</a>.';
+      renderDashboardLink(repo);
       show(doneBox);
       closeStream();
     });
 
-    stream.addEventListener('error', function (event) {
+    stream.addEventListener('error', async function (event) {
       let message = 'Status stream error';
       if (event && event.data) {
         try {
@@ -258,6 +333,37 @@ function renderRoute(pathname) {
         return;
       }
       closeStream();
+
+      const snapshot = await fetchStatusOnce(repo);
+      if (snapshot && snapshot.payload) {
+        const payload = snapshot.payload;
+        if (snapshot.eventName === 'done') {
+          terminal = true;
+          hide(errorBox);
+          statusLine.textContent = payload.stage || 'done';
+          progressLine.textContent = String(payload.progress == null ? 100 : payload.progress) + '%';
+          const path = dashboardPath(repo);
+          doneBox.innerHTML = 'Analysis complete. <a href="' + path + '">Open dashboard</a>.';
+          renderDashboardLink(repo);
+          show(doneBox);
+          return;
+        }
+        if (snapshot.eventName === 'error' || payload.stage === 'failed') {
+          terminal = true;
+          statusLine.textContent = payload.stage || 'failed';
+          progressLine.textContent = String(payload.progress == null ? 100 : payload.progress) + '%';
+          const reason = payload.code ? payload.message + ' (' + payload.code + ')' : payload.message;
+          setError(reason || 'Analysis failed.');
+          return;
+        }
+        if (typeof payload.progress === 'number') {
+          statusLine.textContent = (payload.stage || 'processing') + ' in progress';
+          progressLine.textContent = String(payload.progress) + '%';
+          show(jobCard);
+          reconnectAttempts = 0;
+        }
+      }
+
       reconnectAttempts += 1;
       if (reconnectAttempts > maxReconnect) {
         setError('Status stream disconnected after retries.');
@@ -267,8 +373,7 @@ function renderRoute(pathname) {
     });
   }
 
-  form.addEventListener('submit', async function (event) {
-    event.preventDefault();
+  async function runAnalyze() {
     clearFeedback();
     closeStream();
     submitBtn.disabled = true;
@@ -297,10 +402,11 @@ function renderRoute(pathname) {
       repoId.textContent = payload.repo_id;
       statusLine.textContent = payload.status;
       progressLine.textContent = payload.status === 'done' ? '100%' : '0%';
+      renderDashboardLink(payload.repo_id);
       show(jobCard);
 
       if (payload.cache_hit) {
-        cacheHitBox.textContent = 'Cache hit: latest commit already analyzed.';
+        cacheHitBox.textContent = 'Cache hit: latest commit already analyzed. Dashboard is ready.';
         show(cacheHitBox);
       }
 
@@ -310,7 +416,46 @@ function renderRoute(pathname) {
     } finally {
       submitBtn.disabled = false;
     }
+  }
+
+  submitBtn.addEventListener('click', function () {
+    runAnalyze();
   });
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    runAnalyze();
+  });
+
+  copyRepoBtn.addEventListener('click', async function () {
+    const value = (repoId.textContent || '').trim();
+    if (!value) {
+      return;
+    }
+    try {
+      await copyText(value);
+      doneBox.textContent = 'Repo ID copied.';
+      show(doneBox);
+    } catch (_error) {
+      setError('Unable to copy repo ID');
+    }
+  });
+
+  copyDashboardBtn.addEventListener('click', async function () {
+    const value = (repoId.textContent || '').trim();
+    if (!value) {
+      return;
+    }
+    try {
+      await copyText(dashboardFullUrl(value));
+      doneBox.textContent = 'Dashboard URL copied.';
+      show(doneBox);
+    } catch (_error) {
+      setError('Unable to copy dashboard URL');
+    }
+  });
+
+  window.__devlensRunAnalyze = runAnalyze;
 })();
 </script>`;
 
@@ -1318,32 +1463,45 @@ function proxyToApi(req, res, parsed) {
   req.pipe(proxyReq);
 }
 
-const server = http.createServer((req, res) => {
-  const parsed = new URL(req.url, 'http://localhost');
-  const pathname = parsed.pathname;
+function createServer() {
+  return http.createServer((req, res) => {
+    const parsed = new URL(req.url, 'http://localhost');
+    const pathname = parsed.pathname;
 
-  if (pathname.startsWith('/api/')) {
-    proxyToApi(req, res, parsed);
-    return;
-  }
+    if (pathname.startsWith('/api/')) {
+      proxyToApi(req, res, parsed);
+      return;
+    }
 
-  if (pathname === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', service: 'frontend' }));
-    return;
-  }
+    if (pathname === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok', service: 'frontend' }));
+      return;
+    }
 
-  const html = renderRoute(pathname);
-  if (!html) {
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: { code: 'NOT_FOUND', message: 'Route not found', details: { pathname } } }));
-    return;
-  }
+    if (pathname === '/favicon.ico') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
 
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-  res.end(html);
-});
+    const html = renderRoute(pathname);
+    if (!html) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: { code: 'NOT_FOUND', message: 'Route not found', details: { pathname } } }));
+      return;
+    }
 
-server.listen(port, '0.0.0.0', () => {
-  console.log(`Frontend listening on ${port} (${config.env}), API: ${config.apiUrl}`);
-});
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+  });
+}
+
+if (require.main === module) {
+  const server = createServer();
+  server.listen(port, '0.0.0.0', () => {
+    console.log(`Frontend listening on ${port} (${config.env}), API: ${config.apiUrl}`);
+  });
+}
+
+module.exports = { renderRoute, createServer };
