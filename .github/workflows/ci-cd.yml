@@ -190,9 +190,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Optional webhook notify
-        if: secrets.DEPLOY_WEBHOOK_URL != ''
         env:
           DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+        if: env.DEPLOY_WEBHOOK_URL != ''
         run: |
           curl -sS -X POST "$DEPLOY_WEBHOOK_URL" \
             -H "Content-Type: application/json" \

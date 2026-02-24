@@ -2,19 +2,9 @@ name: Backend Coverage
 
 on:
   push:
-    paths:
-      - "backend/**"
-      - "workers/**"
-      - "scripts/test-backend.*"
-      - "docker-compose.yml"
-      - ".github/workflows/backend-coverage.yml"
+    branches: ["main"]
   pull_request:
-    paths:
-      - "backend/**"
-      - "workers/**"
-      - "scripts/test-backend.*"
-      - "docker-compose.yml"
-      - ".github/workflows/backend-coverage.yml"
+    branches: ["main"]
 
 jobs:
   backend-tests:
