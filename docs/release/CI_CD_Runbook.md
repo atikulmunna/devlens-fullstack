@@ -32,6 +32,18 @@ Recommended:
 - Require linear history.
 - Dismiss stale approvals on new commits.
 
+Automated setup:
+
+```powershell
+./scripts/set-branch-protection.ps1 -Repo "atikulmunna/devlens-fullstack" -Branch "main"
+```
+
+Dry run:
+
+```powershell
+./scripts/set-branch-protection.ps1 -Repo "atikulmunna/devlens-fullstack" -Branch "main" -DryRun
+```
+
 ## Deployment Output
 
 On successful `main` deploy:
