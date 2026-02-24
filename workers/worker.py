@@ -1,5 +1,4 @@
 import time
-from urllib.parse import urlparse
 
 import redis
 
@@ -12,13 +11,7 @@ from telemetry import start_metrics_server
 
 
 def wait_for_redis(redis_url: str, retries: int = 20, delay: int = 2) -> redis.Redis:
-    parsed = urlparse(redis_url)
-    client = redis.Redis(
-        host=parsed.hostname,
-        port=parsed.port or 6379,
-        db=int((parsed.path or "/0").strip("/") or 0),
-        decode_responses=True,
-    )
+    client = redis.Redis.from_url(redis_url, decode_responses=True)
     for _ in range(retries):
         try:
             client.ping()
@@ -38,8 +31,8 @@ def main() -> None:
         db = SessionLocal()
         try:
             processed_parse = process_next_parse_job(db)
-            processed_embed = False if processed_parse else process_next_embed_job(db)
-            processed_analyze = False if (processed_parse or processed_embed) else process_next_analyze_job(db)
+            processed_embed = process_next_embed_job(db)
+            processed_analyze = process_next_analyze_job(db)
         finally:
             db.close()
 
