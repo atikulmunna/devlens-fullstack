@@ -25,7 +25,7 @@ Enable branch protection for `main` and require these checks:
 2. `Backend Tests`
 3. `Worker Tests`
 4. `Build Service Images`
-5. `Backend Coverage` (from `.github/workflows/backend-coverage.yml`)
+5. `backend-tests` (check emitted by `.github/workflows/backend-coverage.yml`)
 
 Recommended:
 - Require pull request before merge.

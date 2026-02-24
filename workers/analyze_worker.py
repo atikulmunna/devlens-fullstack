@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from parse_worker import update_job_status
 from reliability import schedule_retry_or_dead_letter
 from telemetry import record_stage_duration, trace_span
+from config import settings
 
 
 class AnalyzeError(RuntimeError):
@@ -195,6 +196,58 @@ def build_architecture_summary(snapshot: AnalyzeSnapshot, lang_breakdown: dict, 
     )
 
 
+def generate_architecture_summary(snapshot: AnalyzeSnapshot, lang_breakdown: dict, chunks: list[ChunkRecord]) -> str:
+    fallback = build_architecture_summary(snapshot, lang_breakdown, chunks)
+    if not settings.openrouter_api_key:
+        return fallback
+
+    top_paths = sorted({chunk.file_path for chunk in chunks})[:25]
+    prompt = (
+        f"Repository: {snapshot.full_name}\n"
+        f"Branch: {snapshot.default_branch}\n"
+        f"Files discovered: {len(top_paths)} sampled from {len(chunks)} chunks\n"
+        f"Language breakdown: {json.dumps(lang_breakdown)}\n"
+        f"Representative files: {', '.join(top_paths) if top_paths else 'none'}\n\n"
+        "Write a concise architecture summary (3-5 sentences) for an engineering dashboard. "
+        "Mention major layers/modules and likely responsibilities. "
+        "Do not invent files or technologies not reflected in the provided metadata."
+    )
+
+    try:
+        base = str(settings.openrouter_base_url).rstrip("/")
+        url = f"{base}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {settings.openrouter_api_key}",
+            "Content-Type": "application/json",
+        }
+        body = {
+            "model": settings.llm_summary_model,
+            "messages": [
+                {"role": "system", "content": "You summarize repository architecture for developers."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.2,
+            "max_tokens": 220,
+        }
+
+        with httpx.Client(timeout=float(settings.llm_summary_timeout_seconds)) as client:
+            response = client.post(url, headers=headers, json=body)
+
+        if response.status_code != 200:
+            return fallback
+
+        data = response.json()
+        text = (
+            data.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+            .strip()
+        )
+        return text if text else fallback
+    except Exception:
+        return fallback
+
+
 def compute_quality_score(tech_debt: dict, file_tree: dict) -> int:
     score = 100
 
@@ -320,7 +373,7 @@ def analyze_job(db: Session, snapshot: AnalyzeSnapshot) -> None:
             tech_debt = detect_tech_debt(chunks)
             file_tree = build_file_tree(chunks)
             contributors = get_contributor_stats(snapshot.full_name)
-            summary = build_architecture_summary(snapshot, lang, chunks)
+            summary = generate_architecture_summary(snapshot, lang, chunks)
             quality = compute_quality_score(tech_debt, file_tree)
 
             update_job_status(db, snapshot.job_id, 'analyzing', 80)

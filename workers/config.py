@@ -21,6 +21,11 @@ class WorkerSettings(BaseSettings):
     worker_retry_max_attempts: int = 3
     worker_retry_base_delay_seconds: int = 30
     worker_metrics_port: int = 9101
+    llm_summary_provider: str = "openrouter"
+    llm_summary_model: str = "openai/gpt-4o-mini"
+    llm_summary_timeout_seconds: int = 15
+    openrouter_api_key: str | None = None
+    openrouter_base_url: AnyHttpUrl = "https://openrouter.ai/api/v1"
 
     model_config = SettingsConfigDict(env_file='.env', case_sensitive=False)
 

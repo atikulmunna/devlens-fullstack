@@ -102,6 +102,62 @@ def test_process_next_analyze_job_returns_false_when_none(monkeypatch) -> None:
     assert analyze_worker.process_next_analyze_job(fake_db) is False
 
 
+def test_generate_architecture_summary_falls_back_without_api_key(monkeypatch) -> None:
+    snapshot = AnalyzeSnapshot(
+        repo_id='00000000-0000-0000-0000-000000000071',
+        job_id='00000000-0000-0000-0000-000000000072',
+        full_name='test-owner/repo',
+        default_branch='main',
+    )
+    chunks = [
+        ChunkRecord(file_path='src/a.py', start_line=1, end_line=10, content='print(1)', language='py'),
+    ]
+    monkeypatch.setattr(analyze_worker.settings, 'openrouter_api_key', None)
+    summary = analyze_worker.generate_architecture_summary(snapshot, {'py': 100.0}, chunks)
+    assert 'Repository test-owner/repo' in summary
+
+
+def test_generate_architecture_summary_uses_llm_response(monkeypatch) -> None:
+    snapshot = AnalyzeSnapshot(
+        repo_id='00000000-0000-0000-0000-000000000073',
+        job_id='00000000-0000-0000-0000-000000000074',
+        full_name='test-owner/repo',
+        default_branch='main',
+    )
+    chunks = [
+        ChunkRecord(file_path='src/a.py', start_line=1, end_line=10, content='print(1)', language='py'),
+    ]
+
+    monkeypatch.setattr(analyze_worker.settings, 'openrouter_api_key', 'test-key')
+    monkeypatch.setattr(analyze_worker.settings, 'openrouter_base_url', 'https://example.test/api/v1')
+    monkeypatch.setattr(analyze_worker.settings, 'llm_summary_model', 'test-model')
+    monkeypatch.setattr(analyze_worker.settings, 'llm_summary_timeout_seconds', 5)
+
+    class DummyResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {'choices': [{'message': {'content': 'LLM architecture summary'}}]}
+
+    class DummyClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def post(self, *args, **kwargs):
+            return DummyResponse()
+
+    monkeypatch.setattr(analyze_worker.httpx, 'Client', DummyClient)
+    summary = analyze_worker.generate_architecture_summary(snapshot, {'py': 100.0}, chunks)
+    assert summary == 'LLM architecture summary'
+
+
 def test_analyze_job_unexpected_failure_schedules_retry(monkeypatch) -> None:
     fake_db = FakeSession()
     snapshot = AnalyzeSnapshot(
