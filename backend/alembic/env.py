@@ -26,6 +26,11 @@ database_url = os.getenv("DATABASE_URL")
 if not database_url:
     raise RuntimeError("DATABASE_URL is required for Alembic migrations")
 
+if database_url.startswith("postgres://"):
+    database_url = "postgresql+psycopg://" + database_url[len("postgres://") :]
+elif database_url.startswith("postgresql://") and "+psycopg" not in database_url.split("://", 1)[0]:
+    database_url = "postgresql+psycopg://" + database_url[len("postgresql://") :]
+
 config.set_main_option("sqlalchemy.url", database_url)
 
 
