@@ -91,10 +91,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build and start smoke stack
-        run: docker compose up -d --build postgres redis qdrant backend worker
+        run: docker compose up -d --build postgres redis qdrant backend
 
       - name: Run migrations
         run: bash ./scripts/db-migrate.sh
+
+      - name: Start worker after migrations
+        run: docker compose up -d worker
 
       - name: Run e2e smoke script
         env:
