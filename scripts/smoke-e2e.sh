@@ -2,7 +2,7 @@
 set -euo pipefail
 
 BACKEND_URL="${BACKEND_URL:-http://localhost:8000}"
-REPO_URL="${SMOKE_REPO_URL:-https://github.com/octocat/Hello-World}"
+REPO_URL="${SMOKE_REPO_URL:-https://github.com/pallets/itsdangerous}"
 MAX_POLLS="${SMOKE_MAX_POLLS:-300}"
 POLL_DELAY_SECONDS="${SMOKE_POLL_DELAY_SECONDS:-2}"
 

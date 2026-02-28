@@ -101,7 +101,7 @@ jobs:
 
       - name: Run e2e smoke script
         env:
-          SMOKE_REPO_URL: https://github.com/octocat/Hello-World
+          SMOKE_REPO_URL: https://github.com/pallets/itsdangerous
           SMOKE_MAX_POLLS: "360"
         run: bash ./scripts/smoke-e2e.sh
 
