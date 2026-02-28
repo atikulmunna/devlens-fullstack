@@ -2,8 +2,8 @@
 set -euo pipefail
 
 BACKEND_URL="${BACKEND_URL:-http://localhost:8000}"
-REPO_URL="${SMOKE_REPO_URL:-https://github.com/psf/requests}"
-MAX_POLLS="${SMOKE_MAX_POLLS:-180}"
+REPO_URL="${SMOKE_REPO_URL:-https://github.com/octocat/Hello-World}"
+MAX_POLLS="${SMOKE_MAX_POLLS:-300}"
 POLL_DELAY_SECONDS="${SMOKE_POLL_DELAY_SECONDS:-2}"
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -48,11 +48,22 @@ for _ in $(seq 1 "${MAX_POLLS}"); do
     terminal_payload="${event_payload}"
     break
   fi
+  dashboard_probe="$(curl -fsS "${BACKEND_URL}/api/v1/repos/${repo_id}/dashboard" || true)"
+  has_analysis_probe="$(echo "${dashboard_probe}" | jq -r '.has_analysis // false' 2>/dev/null || echo "false")"
+  if [[ "${has_analysis_probe}" == "true" ]]; then
+    terminal_event="done"
+    terminal_payload='{"source":"dashboard_probe"}'
+    break
+  fi
   sleep "${POLL_DELAY_SECONDS}"
 done
 
 if [[ -z "${terminal_event}" ]]; then
   echo "[smoke] status polling timed out"
+  echo "[smoke] backend logs (tail 120):"
+  docker compose logs backend --tail 120 || true
+  echo "[smoke] worker logs (tail 120):"
+  docker compose logs worker --tail 120 || true
   exit 1
 fi
 

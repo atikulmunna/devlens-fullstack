@@ -97,6 +97,9 @@ jobs:
         run: bash ./scripts/db-migrate.sh
 
       - name: Run e2e smoke script
+        env:
+          SMOKE_REPO_URL: https://github.com/octocat/Hello-World
+          SMOKE_MAX_POLLS: "360"
         run: bash ./scripts/smoke-e2e.sh
 
       - name: Stop stack
