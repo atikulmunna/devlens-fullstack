@@ -82,10 +82,31 @@ jobs:
         if: always()
         run: docker compose down -v
 
+  e2e_smoke:
+    name: E2E Smoke (Analyze Dashboard Chat)
+    runs-on: ubuntu-latest
+    needs: [backend_tests, worker_tests]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and start smoke stack
+        run: docker compose up -d --build postgres redis qdrant backend worker
+
+      - name: Run migrations
+        run: bash ./scripts/db-migrate.sh
+
+      - name: Run e2e smoke script
+        run: bash ./scripts/smoke-e2e.sh
+
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v
+
   build_images:
     name: Build Service Images
     runs-on: ubuntu-latest
-    needs: [backend_tests, worker_tests]
+    needs: [backend_tests, worker_tests, e2e_smoke]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
