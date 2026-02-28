@@ -15,6 +15,10 @@ This folder provides dashboard evidence for the DEV-063 acceptance criterion:
   - `SSE startup p95 latency (seconds)` from `devlens_sse_startup_latency_seconds`
   - `Worker stage p95 durations (seconds)` from `devlens_analysis_stage_duration_seconds`
   - `Stage throughput by status` from worker stage histograms
+- `Baseline_2026-02-25.md`
+  - metric thresholds for M1 execution
+  - canonical 24h capture procedure
+  - smoke-gate linkage for analyze -> dashboard -> chat
 
 ## PromQL snippets
 
