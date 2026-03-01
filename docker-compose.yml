@@ -37,7 +37,10 @@ services:
     build:
       context: ./backend
     env_file:
-      - ./backend/.env.example
+      - path: ./backend/.env.example
+        required: true
+      - path: ./backend/.env
+        required: false
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,7 +60,10 @@ services:
     build:
       context: ./workers
     env_file:
-      - ./workers/.env.example
+      - path: ./workers/.env.example
+        required: true
+      - path: ./workers/.env
+        required: false
     depends_on:
       redis:
         condition: service_healthy
@@ -68,7 +74,10 @@ services:
     build:
       context: ./frontend
     env_file:
-      - ./frontend/.env.example
+      - path: ./frontend/.env.example
+        required: true
+      - path: ./frontend/.env
+        required: false
     environment:
       NEXT_PUBLIC_API_URL: http://backend:8000
     depends_on:
