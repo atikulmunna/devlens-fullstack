@@ -132,6 +132,8 @@ def test_generate_architecture_summary_uses_llm_response(monkeypatch) -> None:
     monkeypatch.setattr(analyze_worker.settings, 'openrouter_base_url', 'https://example.test/api/v1')
     monkeypatch.setattr(analyze_worker.settings, 'llm_summary_model', 'test-model')
     monkeypatch.setattr(analyze_worker.settings, 'llm_summary_timeout_seconds', 5)
+    monkeypatch.setattr(analyze_worker.settings, 'llm_primary_provider', 'openrouter')
+    monkeypatch.setattr(analyze_worker.settings, 'llm_fallback_provider', None)
 
     class DummyResponse:
         status_code = 200
@@ -156,6 +158,72 @@ def test_generate_architecture_summary_uses_llm_response(monkeypatch) -> None:
     monkeypatch.setattr(analyze_worker.httpx, 'Client', DummyClient)
     summary = analyze_worker.generate_architecture_summary(snapshot, {'py': 100.0}, chunks)
     assert summary == 'LLM architecture summary'
+
+
+def test_generate_architecture_summary_falls_back_to_groq(monkeypatch) -> None:
+    snapshot = AnalyzeSnapshot(
+        repo_id='00000000-0000-0000-0000-000000000091',
+        job_id='00000000-0000-0000-0000-000000000092',
+        full_name='test-owner/repo',
+        default_branch='main',
+    )
+    chunks = [
+        ChunkRecord(file_path='src/a.py', start_line=1, end_line=10, content='print(1)', language='py'),
+    ]
+
+    monkeypatch.setattr(analyze_worker.settings, 'llm_primary_provider', 'openrouter')
+    monkeypatch.setattr(analyze_worker.settings, 'llm_fallback_provider', 'groq')
+    monkeypatch.setattr(analyze_worker.settings, 'openrouter_api_key', 'openrouter-key')
+    monkeypatch.setattr(analyze_worker.settings, 'groq_api_key', 'groq-key')
+    monkeypatch.setattr(analyze_worker.settings, 'openrouter_base_url', 'https://example.test/openrouter')
+    monkeypatch.setattr(analyze_worker.settings, 'groq_base_url', 'https://example.test/groq')
+    monkeypatch.setattr(analyze_worker.settings, 'llm_summary_model', 'openrouter-model')
+    monkeypatch.setattr(analyze_worker.settings, 'llm_fallback_model', 'groq-model')
+
+    provider_attempts = []
+    fallback_events = []
+
+    monkeypatch.setattr(
+        analyze_worker,
+        'record_llm_provider_attempt',
+        lambda provider, status, error_code='none': provider_attempts.append((provider, status, error_code)),
+    )
+    monkeypatch.setattr(
+        analyze_worker,
+        'record_llm_fallback',
+        lambda primary, fallback, reason: fallback_events.append((primary, fallback, reason)),
+    )
+
+    class DummyResponse:
+        def __init__(self, status_code: int, payload: dict):
+            self.status_code = status_code
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    class DummyClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def post(self, url, *args, **kwargs):
+            if 'openrouter' in url:
+                return DummyResponse(500, {'error': 'upstream failed'})
+            return DummyResponse(200, {'choices': [{'message': {'content': 'Groq fallback summary'}}]})
+
+    monkeypatch.setattr(analyze_worker.httpx, 'Client', DummyClient)
+    summary = analyze_worker.generate_architecture_summary(snapshot, {'py': 100.0}, chunks)
+
+    assert summary == 'Groq fallback summary'
+    assert ('openrouter', 'error', 'LLM_PROVIDER_HTTP_ERROR') in provider_attempts
+    assert ('groq', 'success', 'none') in provider_attempts
+    assert ('openrouter', 'groq', 'primary_failed') in fallback_events
 
 
 def test_analyze_job_unexpected_failure_schedules_retry(monkeypatch) -> None:

@@ -90,6 +90,7 @@ flowchart LR
   - dense search in Qdrant
   - lexical search in PostgreSQL FTS (`tsvector` + `ts_rank_cd`)
 - LLM synthesis via OpenRouter (model configurable by env)
+- LLM summary provider routing with OpenRouter primary and optional Groq fallback
 
 ## Repository Structure
 
