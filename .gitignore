@@ -21,6 +21,8 @@ node_modules/
 # OS
 .DS_Store
 Thumbs.db
+Desktop.ini
+desktop.ini
 
 # Build
 coverage/
