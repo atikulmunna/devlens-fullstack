@@ -251,10 +251,16 @@ def _provider_request(provider: str, prompt: str, timeout_seconds: float) -> str
     try:
         with httpx.Client(timeout=timeout_seconds) as client:
             response = client.post(url, headers=headers, json=body)
+    except httpx.TimeoutException as exc:
+        raise AnalyzeError("LLM_PROVIDER_TIMEOUT", str(exc)) from exc
+    except httpx.TransportError as exc:
+        raise AnalyzeError("LLM_PROVIDER_TRANSPORT_ERROR", str(exc)) from exc
     except Exception as exc:
         raise AnalyzeError("LLM_PROVIDER_REQUEST_FAILED", str(exc)) from exc
 
     if response.status_code != 200:
+        if response.status_code == 429:
+            raise AnalyzeError("LLM_PROVIDER_RATE_LIMITED", f"{provider_name} returned status 429")
         raise AnalyzeError("LLM_PROVIDER_HTTP_ERROR", f"{provider_name} returned status {response.status_code}")
 
     data = response.json()
