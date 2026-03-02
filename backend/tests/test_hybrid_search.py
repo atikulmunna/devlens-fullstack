@@ -2,6 +2,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 import app.api.v1.repos as repos_module
@@ -106,3 +107,100 @@ def test_hybrid_endpoint_returns_results(client, db_session: Session, monkeypatc
 def test_hybrid_endpoint_404(client) -> None:
     response = client.get(f"/api/v1/repos/{uuid4()}/search/hybrid", params={"q": "jwt"})
     assert response.status_code == 404
+
+
+def _seed_chunk(db_session: Session, repo_id: str, chunk_id: str, file_path: str, content: str) -> None:
+    db_session.execute(
+        text(
+            """
+            INSERT INTO code_chunks (id, repo_id, file_path, start_line, end_line, content, language, qdrant_point_id)
+            VALUES (CAST(:id AS uuid), CAST(:repo_id AS uuid), :file_path, 1, 5, :content, 'py', NULL)
+            """
+        ),
+        {"id": chunk_id, "repo_id": repo_id, "file_path": file_path, "content": content},
+    )
+    db_session.commit()
+
+
+def test_hybrid_search_flag_off_keeps_deterministic_ranking(db_session: Session, monkeypatch) -> None:
+    repo = _seed_repo(db_session)
+    c1 = str(uuid4())
+    c2 = str(uuid4())
+    monkeypatch.setattr(retrieval_hybrid.settings, "reranker_enabled", False)
+    monkeypatch.setattr(
+        retrieval_hybrid,
+        "lexical_search_chunks",
+        lambda *_args, **_kwargs: [
+            {"chunk_id": c1, "file_path": "src/a.py", "start_line": 1, "end_line": 10, "language": "py", "score": 0.9},
+            {"chunk_id": c2, "file_path": "src/b.py", "start_line": 1, "end_line": 10, "language": "py", "score": 0.2},
+        ],
+    )
+    monkeypatch.setattr(retrieval_hybrid, "dense_search_qdrant", lambda *_args, **_kwargs: [])
+    called = {"value": False}
+
+    def fake_apply(*_args, **_kwargs):
+        called["value"] = True
+        return []
+
+    monkeypatch.setattr(retrieval_hybrid, "_apply_cross_encoder_rerank", fake_apply)
+    results = retrieval_hybrid.hybrid_search_chunks(db_session, repo.id, "auth token", limit=2)
+    assert called["value"] is False
+    assert [row["chunk_id"] for row in results] == [c1, c2]
+
+
+def test_hybrid_search_flag_on_applies_cross_encoder_order(db_session: Session, monkeypatch) -> None:
+    repo = _seed_repo(db_session)
+    c1 = str(uuid4())
+    c2 = str(uuid4())
+    _seed_chunk(db_session, str(repo.id), c1, "src/a.py", "auth token create")
+    _seed_chunk(db_session, str(repo.id), c2, "src/b.py", "refresh token validate")
+
+    monkeypatch.setattr(retrieval_hybrid.settings, "reranker_enabled", True)
+    monkeypatch.setattr(retrieval_hybrid.settings, "reranker_model", "test-model")
+    monkeypatch.setattr(retrieval_hybrid.settings, "reranker_candidate_limit", 10)
+    monkeypatch.setattr(
+        retrieval_hybrid,
+        "lexical_search_chunks",
+        lambda *_args, **_kwargs: [
+            {"chunk_id": c1, "file_path": "src/a.py", "start_line": 1, "end_line": 10, "language": "py", "score": 0.9},
+            {"chunk_id": c2, "file_path": "src/b.py", "start_line": 1, "end_line": 10, "language": "py", "score": 0.3},
+        ],
+    )
+    monkeypatch.setattr(retrieval_hybrid, "dense_search_qdrant", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        retrieval_hybrid,
+        "rerank_candidates",
+        lambda *_args, **_kwargs: {c1: 0.1, c2: 0.99},
+    )
+
+    results = retrieval_hybrid.hybrid_search_chunks(db_session, repo.id, "refresh token", limit=2)
+    assert [row["chunk_id"] for row in results] == [c2, c1]
+    assert results[0]["rerank_score"] == 0.99
+
+
+def test_hybrid_search_reranker_failure_falls_back_to_deterministic(db_session: Session, monkeypatch) -> None:
+    repo = _seed_repo(db_session)
+    c1 = str(uuid4())
+    c2 = str(uuid4())
+    _seed_chunk(db_session, str(repo.id), c1, "src/a.py", "auth token create")
+    _seed_chunk(db_session, str(repo.id), c2, "src/b.py", "refresh token validate")
+
+    monkeypatch.setattr(retrieval_hybrid.settings, "reranker_enabled", True)
+    monkeypatch.setattr(retrieval_hybrid.settings, "reranker_model", "test-model")
+    monkeypatch.setattr(
+        retrieval_hybrid,
+        "lexical_search_chunks",
+        lambda *_args, **_kwargs: [
+            {"chunk_id": c1, "file_path": "src/a.py", "start_line": 1, "end_line": 10, "language": "py", "score": 0.9},
+            {"chunk_id": c2, "file_path": "src/b.py", "start_line": 1, "end_line": 10, "language": "py", "score": 0.1},
+        ],
+    )
+    monkeypatch.setattr(retrieval_hybrid, "dense_search_qdrant", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        retrieval_hybrid,
+        "rerank_candidates",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("reranker down")),
+    )
+
+    results = retrieval_hybrid.hybrid_search_chunks(db_session, repo.id, "auth token", limit=2)
+    assert [row["chunk_id"] for row in results] == [c1, c2]
