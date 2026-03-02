@@ -1,14 +1,19 @@
 import hashlib
+import logging
 import math
 import re
 from uuid import UUID
 
 import httpx
 from fastapi import HTTPException, status
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.services.reranker import RerankerUnavailable, rerank_candidates
 from app.services.retrieval_lexical import lexical_search_chunks
+
+logger = logging.getLogger(__name__)
 
 
 def _embed_query(query: str, size: int = 384) -> list[float]:
@@ -77,6 +82,55 @@ def _tokenize(text: str) -> set[str]:
     return {token for token in re.findall(r"[a-zA-Z0-9_]+", text.lower()) if token}
 
 
+def _load_chunk_content(db: Session, repo_id: UUID, chunk_ids: list[str]) -> dict[str, str]:
+    if not chunk_ids:
+        return {}
+    rows = db.execute(
+        text(
+            """
+            SELECT id::text AS chunk_id, content
+            FROM code_chunks
+            WHERE repo_id = CAST(:repo_id AS uuid)
+              AND id = ANY(CAST(:chunk_ids AS uuid[]))
+            """
+        ),
+        {"repo_id": str(repo_id), "chunk_ids": chunk_ids},
+    ).mappings().all()
+    return {row["chunk_id"]: row.get("content") or "" for row in rows}
+
+
+def _apply_cross_encoder_rerank(db: Session, repo_id: UUID, query: str, rows: list[dict]) -> list[dict]:
+    if not rows:
+        return rows
+    candidate_limit = max(1, min(settings.reranker_candidate_limit, len(rows)))
+    candidates = rows[:candidate_limit]
+    chunk_ids = [row["chunk_id"] for row in candidates]
+    contents = _load_chunk_content(db, repo_id=repo_id, chunk_ids=chunk_ids)
+    rerank_input = [
+        {
+            "chunk_id": row["chunk_id"],
+            "file_path": row.get("file_path"),
+            "language": row.get("language"),
+            "content": contents.get(row["chunk_id"], ""),
+        }
+        for row in candidates
+    ]
+    try:
+        score_map = rerank_candidates(query=query, candidates=rerank_input, model_name=settings.reranker_model)
+    except RerankerUnavailable as exc:
+        logger.warning("Cross-encoder reranker unavailable; using deterministic ranking: %s", exc)
+        return rows
+    except Exception as exc:
+        logger.warning("Cross-encoder reranker failed; using deterministic ranking: %s", exc)
+        return rows
+    if not score_map:
+        return rows
+    for row in rows:
+        if row["chunk_id"] in score_map:
+            row["rerank_score"] = round(score_map[row["chunk_id"]], 6)
+    return sorted(rows, key=lambda row: (-row["rerank_score"], row["chunk_id"]))
+
+
 def hybrid_search_chunks(db: Session, repo_id: UUID, query: str, limit: int = 20) -> list[dict]:
     q = query.strip()
     if not q:
@@ -123,4 +177,6 @@ def hybrid_search_chunks(db: Session, repo_id: UUID, query: str, limit: int = 20
         )
 
     ranked = sorted(merged.values(), key=lambda row: (-row["rerank_score"], row["chunk_id"]))
+    if settings.reranker_enabled:
+        ranked = _apply_cross_encoder_rerank(db, repo_id=repo_id, query=q, rows=ranked)
     return ranked[:safe_limit]

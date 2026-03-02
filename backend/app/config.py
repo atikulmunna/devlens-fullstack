@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = 3600
     rate_limit_guest_per_window: int = 10
     rate_limit_auth_per_window: int = 50
+    reranker_enabled: bool = False
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    reranker_candidate_limit: int = 50
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
 
