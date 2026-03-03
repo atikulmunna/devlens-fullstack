@@ -9,7 +9,9 @@ param(
 
     [string]$DatasetPath = "docs/evaluation/golden_eval_dataset.json",
     [string]$RepoMapPath = "docs/evaluation/repo_map.local.json",
-    [string]$OutputRoot = "artifacts/eval"
+    [string]$OutputRoot = "artifacts/eval",
+    [ValidateSet("baseline", "candidate")]
+    [string]$RunType = "baseline"
 )
 
 if (-not (Test-Path $DatasetPath)) {
@@ -62,6 +64,8 @@ foreach ($repo in $dataset.repos) {
 
         $row = [ordered]@{
             run_id = $runId
+            run_date = (Get-Date).ToString("yyyy-MM-dd")
+            run_type = $RunType
             repo_key = $repoKey
             repo_id = $repoId
             question_id = $questionId
@@ -69,11 +73,13 @@ foreach ($repo in $dataset.repos) {
             answer = $null
             citations = @()
             no_citation = $true
+            latency_ms = $null
             status = "ok"
             error = $null
         }
 
         try {
+            $startedAt = Get-Date
             $sessionResp = Invoke-RestMethod `
                 -Method Post `
                 -Uri "$base/chat/sessions" `
@@ -107,6 +113,7 @@ foreach ($repo in $dataset.repos) {
             if ($assistantMessages.Count -gt 0) {
                 $row.answer = [string]$assistantMessages[-1].content
             }
+            $row.latency_ms = [math]::Round(((Get-Date) - $startedAt).TotalMilliseconds, 2)
         }
         catch {
             $row.status = "error"
