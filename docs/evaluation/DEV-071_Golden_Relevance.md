@@ -46,6 +46,7 @@ Use the scripted runner to capture prompt/answer/citation artifacts:
 ./scripts/eval-relevance.ps1 `
   -BaseUrl "http://localhost:8000/api/v1" `
   -AccessToken "<ACCESS_TOKEN>" `
+  -RunType "baseline" `
   -DatasetPath "docs/evaluation/golden_eval_dataset.json" `
   -RepoMapPath "docs/evaluation/repo_map.local.json"
 ```
@@ -58,6 +59,7 @@ Each JSONL row contains:
 - `answer` (assistant final content)
 - `citations`, `no_citation`
 - `status` and `error` (if any)
+- `latency_ms` for request-to-final-message timing
 
 ## 6. Scoring Rubric
 
@@ -98,6 +100,17 @@ For every retrieval/chat change:
 - Average score delta
 - Fail count delta
 - Citation correctness delta
+
+Optional automated delta report:
+
+```powershell
+./scripts/eval-reranker-delta.ps1 `
+  -BaselineResultsPath "artifacts/eval/<baseline_run>/results.jsonl" `
+  -CandidateResultsPath "artifacts/eval/<candidate_run>/results.jsonl" `
+  -BaselineScorecardPath "docs/evaluation/scorecard_baseline.csv" `
+  -CandidateScorecardPath "docs/evaluation/scorecard_candidate.csv" `
+  -OutputPath "docs/evaluation/DEV-045_Reranker_Delta_Report.md"
+```
 4. Include comparison summary in PR description.
 
 Suggested summary block:

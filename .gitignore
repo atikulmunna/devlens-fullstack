@@ -30,6 +30,7 @@ htmlcov/
 dist/
 build/
 artifacts/
+docs/evaluation/repo_map.local.json
 
 # Docker
 docker-data/
