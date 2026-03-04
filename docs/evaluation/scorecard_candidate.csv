@@ -1,0 +1,10 @@
+run_id,run_date,run_type,repo_key,repo_id,question_id,question,answer_relevance_0_3,citation_correctness_0_3,citation_coverage_0_2,format_clarity_0_2,total_0_10,pass_fail,reviewer,notes
+20260305-012931,2026-03-05,candidate,fastapi,5320ec67-9dbf-4ea3-9b6b-7fc3bdacfe46,FASTAPI-Q1,"Where is the ASGI app startup and route registration handled?",1,1,1,1,4,fail,codex,"No material answer/citation improvement vs baseline."
+20260305-012931,2026-03-05,candidate,fastapi,5320ec67-9dbf-4ea3-9b6b-7fc3bdacfe46,FASTAPI-Q2,"How is dependency injection wired for request handlers?",2,1,1,1,5,fail,codex,"No material answer/citation improvement vs baseline."
+20260305-012931,2026-03-05,candidate,fastapi,5320ec67-9dbf-4ea3-9b6b-7fc3bdacfe46,FASTAPI-Q3,"What modules appear most central to request validation?",1,1,1,1,4,fail,codex,"No material answer/citation improvement vs baseline."
+20260305-012931,2026-03-05,candidate,react,5f4fb470-1988-4622-a93f-18dac7963805,REACT-Q1,"Where is component rendering reconciled with updates?",0,0,0,1,1,fail,codex,"No material answer/citation improvement vs baseline."
+20260305-012931,2026-03-05,candidate,react,5f4fb470-1988-4622-a93f-18dac7963805,REACT-Q2,"How is hook state tracked across renders?",0,0,0,1,1,fail,codex,"No material answer/citation improvement vs baseline."
+20260305-012931,2026-03-05,candidate,react,5f4fb470-1988-4622-a93f-18dac7963805,REACT-Q3,"What files would you inspect first for error boundary behavior?",1,1,1,1,4,fail,codex,"No material answer/citation improvement vs baseline."
+20260305-012931,2026-03-05,candidate,go,cf406959-8c49-409b-99f2-e38f06445930,GO-Q1,"Where does package/module loading happen in the toolchain code?",0,0,0,1,1,fail,codex,"No relevant context retrieved."
+20260305-012931,2026-03-05,candidate,go,cf406959-8c49-409b-99f2-e38f06445930,GO-Q2,"How does the repository organize runtime versus compiler internals?",0,0,0,1,1,fail,codex,"No relevant context retrieved."
+20260305-012931,2026-03-05,candidate,go,cf406959-8c49-409b-99f2-e38f06445930,GO-Q3,"What files are most relevant to garbage collection behavior?",0,0,0,1,1,fail,codex,"No relevant context retrieved."
