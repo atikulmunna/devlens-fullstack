@@ -1,5 +1,3 @@
-$ErrorActionPreference = "Stop"
-
 param(
     [Parameter(Mandatory = $true)]
     [string]$BaseUrl,
@@ -13,6 +11,8 @@ param(
     [ValidateSet("baseline", "candidate")]
     [string]$RunType = "baseline"
 )
+
+$ErrorActionPreference = "Stop"
 
 if (-not (Test-Path $DatasetPath)) {
     throw "Dataset file not found: $DatasetPath"
