@@ -97,6 +97,7 @@ flowchart LR
 - `backend/` API service
 - `workers/` async processing pipeline
 - `frontend/` web UI server and route views
+- `frontend-next/` parallel Next.js + TypeScript migration scaffold
 - `docs/` product, API, test, release, and observability docs
 - `scripts/` local automation scripts
 - `docker-compose.yml` local multi-service runtime
@@ -120,6 +121,7 @@ flowchart LR
 - Backend tests: `./scripts/test-backend.ps1`
 - Worker tests: `./scripts/test-worker.ps1`
 - Frontend tests: `npm --prefix frontend test`
+- Next scaffold checks: `./scripts/test-frontend-next.ps1`
 
 ## Environment Configuration
 
