@@ -4,3 +4,4 @@ out
 .env.local
 .env
 npm-debug.log*
+tsconfig.tsbuildinfo
