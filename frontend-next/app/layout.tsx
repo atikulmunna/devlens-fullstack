@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { FrontendTelemetry } from "@/components/frontend-telemetry";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -22,6 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Link href="/analyze">Analyze</Link>
             <Link href="/dashboard/demo-repo-id">Dashboard</Link>
           </nav>
+          <FrontendTelemetry />
           {children}
         </main>
       </body>
