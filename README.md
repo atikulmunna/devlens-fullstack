@@ -166,6 +166,7 @@ Current production deployment:
 - Implementation checklist: `docs/planning/Implementation_Checklist.md`
 - CI/CD runbook: `docs/release/CI_CD_Runbook.md`
 - Deployment checklist: `docs/release/Phase5_Deployment_Checklist.md`
+- Staging managed parity runbook: `docs/release/Staging_Managed_Parity_Runbook.md`
 - QA report: `docs/testing/Release_QA_v1.1.md`
 - Load/SLA validation: `docs/testing/DEV-072_Load_SLA_Validation.md`
 - Observability notes: `docs/observability/README.md`
