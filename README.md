@@ -122,6 +122,7 @@ flowchart LR
 - Worker tests: `./scripts/test-worker.ps1`
 - Frontend tests: `npm --prefix frontend test`
 - Next scaffold checks: `./scripts/test-frontend-next.ps1`
+- Frontend cutover parity check: `./scripts/validate_frontend_cutover.ps1`
 
 ## Environment Configuration
 
@@ -169,6 +170,7 @@ Current production deployment:
 - CI/CD runbook: `docs/release/CI_CD_Runbook.md`
 - Deployment checklist: `docs/release/Phase5_Deployment_Checklist.md`
 - Staging managed parity runbook: `docs/release/Staging_Managed_Parity_Runbook.md`
+- Frontend cutover and rollback runbook: `docs/release/Frontend_Cutover_Rollback_Runbook.md`
 - QA report: `docs/testing/Release_QA_v1.1.md`
 - Load/SLA validation: `docs/testing/DEV-072_Load_SLA_Validation.md`
 - Observability notes: `docs/observability/README.md`
