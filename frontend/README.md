@@ -12,6 +12,7 @@ DevLens frontend app shell (route scaffolding stage).
 ## Scaffolded Routes
 
 - `/`
+- `/workspace`
 - `/analyze`
 - `/dashboard/:repoId`
 - `/dashboard/:repoId/chat`
@@ -22,6 +23,7 @@ DevLens frontend app shell (route scaffolding stage).
 
 ## Current Behavior
 
+- `/` and `/workspace` provide a unified workflow: analyze, dashboard snapshot, token refresh/save, and chat in one page.
 - `/analyze` submits to `/api/v1/repos/analyze` and opens live SSE status tracking.
 - `/dashboard/:repoId` fetches `/api/v1/repos/:repoId/dashboard` and renders overview, quality, architecture, tech debt, contributors, and file tree panels.
 - `/dashboard/:repoId` includes export actions: markdown download, HTML download, and print-to-PDF flow.
