@@ -31,9 +31,10 @@ class FakeClient:
     def __exit__(self, *_args):
         return False
 
-    def post(self, url, json):
+    def post(self, url, json, headers=None):
         self.captured["url"] = url
         self.captured["json"] = json
+        self.captured["headers"] = headers
         return FakeResponse(self.status_code, self.payload)
 
 

@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     redis_url: str
     qdrant_url: AnyHttpUrl
     qdrant_collection: str = "devlens_code_chunks"
+    qdrant_api_key: str | None = None
     github_client_id: str
     github_client_secret: str
     github_oauth_redirect_uri: AnyHttpUrl

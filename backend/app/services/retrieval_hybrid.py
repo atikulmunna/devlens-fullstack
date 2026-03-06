@@ -37,10 +37,11 @@ def dense_search_qdrant(repo_id: str, query: str, limit: int) -> list[dict]:
         "with_payload": True,
         "filter": {"must": [{"key": "repo_id", "match": {"value": repo_id}}]},
     }
+    headers = {"api-key": settings.qdrant_api_key} if settings.qdrant_api_key else None
 
     try:
         with httpx.Client(timeout=10.0) as client:
-            response = client.post(url, json=body)
+            response = client.post(url, json=body, headers=headers)
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Qdrant request failed: {exc}") from exc
 

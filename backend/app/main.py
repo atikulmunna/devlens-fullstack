@@ -60,8 +60,9 @@ def health_deps() -> dict:
     qdrant_ok = False
     try:
         qdrant_health_url = f"{str(settings.qdrant_url).rstrip('/')}/healthz"
+        headers = {"api-key": settings.qdrant_api_key} if settings.qdrant_api_key else None
         with httpx.Client(timeout=3.0) as client:
-            response = client.get(qdrant_health_url)
+            response = client.get(qdrant_health_url, headers=headers)
             qdrant_ok = response.status_code == 200
     except Exception:
         qdrant_ok = False

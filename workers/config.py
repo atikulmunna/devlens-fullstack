@@ -8,6 +8,7 @@ class WorkerSettings(BaseSettings):
     database_url: str
     qdrant_url: AnyHttpUrl
     qdrant_collection: str = 'devlens_code_chunks'
+    qdrant_api_key: str | None = None
 
     parse_clone_timeout_seconds: int = 60
     parse_max_files: int = 8000

@@ -93,11 +93,12 @@ def test_process_next_embed_job_returns_false_if_none(monkeypatch) -> None:
 def test_ensure_collection_allows_existing_collection(monkeypatch) -> None:
     captured = {}
 
-    def fake_request(method, url, *, json_body=None, allowed_statuses=None):
+    def fake_request(method, url, *, json_body=None, allowed_statuses=None, headers=None):
         captured['method'] = method
         captured['url'] = url
         captured['json_body'] = json_body
         captured['allowed_statuses'] = allowed_statuses
+        captured['headers'] = headers
         return None
 
     monkeypatch.setattr(embed_worker, '_request_with_retries', fake_request)

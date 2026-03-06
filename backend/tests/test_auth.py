@@ -7,9 +7,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import app.api.v1.auth as auth_module
+from app.config import settings
 from app.db.models import RefreshToken, User
 from app.services.github_oauth import generate_oauth_state, validate_oauth_state
 from app.services.tokens import hash_refresh_token, refresh_expiry
+
+
+def _origin_header() -> str:
+    return str(settings.frontend_url).rstrip("/")
 
 
 def test_auth_github_redirect_contains_valid_state(client: TestClient) -> None:
@@ -87,7 +92,7 @@ def test_refresh_me_logout_flow(client: TestClient, db_session: Session) -> None
     refresh_response = client.post(
         '/api/v1/auth/refresh',
         headers={
-            'origin': 'http://localhost:3000',
+            'origin': _origin_header(),
             'x-csrf-token': 'csrf-token-1',
         },
     )
@@ -105,7 +110,7 @@ def test_refresh_me_logout_flow(client: TestClient, db_session: Session) -> None
     logout_response = client.delete(
         '/api/v1/auth/logout',
         headers={
-            'origin': 'http://localhost:3000',
+            'origin': _origin_header(),
             'x-csrf-token': new_csrf,
         },
     )
@@ -115,7 +120,7 @@ def test_refresh_me_logout_flow(client: TestClient, db_session: Session) -> None
     retry_response = client.post(
         '/api/v1/auth/refresh',
         headers={
-            'origin': 'http://localhost:3000',
+            'origin': _origin_header(),
             'x-csrf-token': new_csrf,
         },
     )
@@ -150,7 +155,7 @@ def test_refresh_rejects_expired_token(client: TestClient, db_session: Session) 
     response = client.post(
         '/api/v1/auth/refresh',
         headers={
-            'origin': 'http://localhost:3000',
+            'origin': _origin_header(),
             'x-csrf-token': 'csrf-token-expired',
         },
     )
@@ -159,7 +164,7 @@ def test_refresh_rejects_expired_token(client: TestClient, db_session: Session) 
 
 def test_refresh_rejects_missing_csrf(client: TestClient) -> None:
     client.cookies.set('devlens_refresh_token', 'anything')
-    response = client.post('/api/v1/auth/refresh', headers={'origin': 'http://localhost:3000'})
+    response = client.post('/api/v1/auth/refresh', headers={'origin': _origin_header()})
     assert response.status_code == 403
 
 

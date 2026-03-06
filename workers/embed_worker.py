@@ -89,13 +89,14 @@ def _request_with_retries(
     *,
     json_body: dict | None = None,
     allowed_statuses: set[int] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> dict | None:
     last_error: Exception | None = None
 
     for attempt in range(1, settings.embed_retry_attempts + 1):
         try:
             with httpx.Client(timeout=20.0) as client:
-                response = client.request(method, url, json=json_body)
+                response = client.request(method, url, json=json_body, headers=headers)
 
             if response.status_code >= 500:
                 raise httpx.HTTPStatusError('Transient server error', request=response.request, response=response)
@@ -127,7 +128,8 @@ def ensure_collection() -> None:
     body = {
         'vectors': {'size': settings.embed_vector_size, 'distance': 'Cosine'}
     }
-    _request_with_retries('PUT', url, json_body=body, allowed_statuses={409})
+    headers = {'api-key': settings.qdrant_api_key} if settings.qdrant_api_key else None
+    _request_with_retries('PUT', url, json_body=body, allowed_statuses={409}, headers=headers)
 
 
 def upsert_chunk_vectors(repo_id: str, chunks: list[ChunkRecord], vectors: list[list[float]]) -> list[str]:
@@ -155,7 +157,8 @@ def upsert_chunk_vectors(repo_id: str, chunks: list[ChunkRecord], vectors: list[
         )
 
     url = f"{str(settings.qdrant_url).rstrip('/')}/collections/{settings.qdrant_collection}/points?wait=true"
-    _request_with_retries('PUT', url, json_body={'points': points})
+    headers = {'api-key': settings.qdrant_api_key} if settings.qdrant_api_key else None
+    _request_with_retries('PUT', url, json_body={'points': points}, headers=headers)
 
     return qdrant_ids
 
