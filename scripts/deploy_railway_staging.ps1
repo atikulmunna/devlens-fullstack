@@ -1,6 +1,5 @@
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$RailwayToken,
+    [string]$RailwayToken = "",
     [string]$ProjectName = "devlens-fullstack",
     [string]$BackendService = "backend",
     [string]$WorkerService = "worker",
