@@ -507,7 +507,69 @@ function renderRoute(pathname) {
     els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
   }
 
+  function parseChatSse(sseText) {
+    const result = {
+      answer: '',
+      citations: [],
+      noCitation: false,
+      errorMessage: '',
+    };
+    const chunks = sseText.split('\\n\\n');
+    for (const chunk of chunks) {
+      const lines = chunk.split('\\n');
+      let eventName = '';
+      let data = '';
+      for (const line of lines) {
+        if (line.startsWith('event:')) {
+          eventName = line.slice(6).trim();
+        } else if (line.startsWith('data:')) {
+          data += line.slice(5).trim();
+        }
+      }
+      if (!eventName || !data) {
+        continue;
+      }
+      let payload = null;
+      try {
+        payload = JSON.parse(data);
+      } catch (_error) {
+        continue;
+      }
+      if (eventName === 'delta' && payload && typeof payload.token === 'string') {
+        result.answer += payload.token;
+      } else if (eventName === 'done' && payload) {
+        if (Array.isArray(payload.citations)) {
+          result.citations = payload.citations;
+        }
+        if (payload.no_citation === true) {
+          result.noCitation = true;
+        }
+        if (!result.answer && typeof payload.answer === 'string') {
+          result.answer = payload.answer;
+        }
+      } else if (eventName === 'error' && payload) {
+        if (typeof payload.message === 'string' && payload.message) {
+          result.errorMessage = payload.message;
+        }
+      }
+    }
+    return result;
+  }
+
   function parseDoneEvent(sseText) {
+    const parsed = parseChatSse(sseText);
+    if (parsed.errorMessage) {
+      throw new Error(parsed.errorMessage);
+    }
+    const answer = parsed.answer.trim() || 'No answer returned by assistant.';
+    return {
+      answer: answer,
+      citations: parsed.citations,
+      no_citation: parsed.noCitation,
+    };
+  }
+
+  function parseDoneEventLegacy(sseText) {
     const chunks = sseText.split('\\n\\n');
     for (const chunk of chunks) {
       const lines = chunk.split('\\n');
@@ -563,8 +625,8 @@ function renderRoute(pathname) {
       if (!response.ok) {
         throw new Error(raw || 'Chat request failed');
       }
-      const done = parseDoneEvent(raw);
-      const answer = done && done.answer ? done.answer : 'Response stream finished.';
+      const done = parseDoneEvent(raw) || parseDoneEventLegacy(raw);
+      const answer = done && done.answer ? done.answer : 'No answer returned by assistant.';
       let citationHtml = '';
       if (done && done.citations && done.citations.length) {
         citationHtml = '<div class="workspace-subtle"><strong>Citations:</strong> ' + done.citations.map(function (c) {
