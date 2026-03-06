@@ -14,6 +14,7 @@ from app.db.models import ChatMessage, CodeChunk, ChatSession, Repository, User
 from app.api.error_schema import ERROR_RESPONSE_SCHEMA
 from app.deps import get_current_user, get_db_session
 from app.services.citations import format_citation, validate_citations_for_repo
+from app.services.chat_synthesizer import ChatSynthesisError, synthesize_grounded_answer
 from app.services.retrieval_hybrid import hybrid_search_chunks
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -194,6 +195,26 @@ def _render_assistant_response(db: Session, repo_id: UUID, query: str, results: 
             if refs:
                 content += " Evidence from: " + ", ".join(refs) + "."
             return content, citations
+
+    llm_contexts = []
+    for item in top:
+        chunk_id = str(item.get("chunk_id") or "")
+        llm_contexts.append(
+            {
+                "chunk_id": chunk_id,
+                "file_path": item.get("file_path"),
+                "line_start": item.get("start_line"),
+                "line_end": item.get("end_line"),
+                "language": item.get("language"),
+                "content": str(item.get("content") or ""),
+            }
+        )
+    try:
+        synthesized = synthesize_grounded_answer(query=query, contexts=llm_contexts)
+        if synthesized.strip():
+            return synthesized.strip(), citations
+    except ChatSynthesisError:
+        pass
 
     snippets: list[str] = []
     content_by_chunk = _load_chunk_content(

@@ -16,6 +16,14 @@ class Settings(BaseSettings):
     frontend_url: AnyHttpUrl
     openrouter_api_key: str
     groq_api_key: str
+    llm_chat_model: str = "openai/gpt-4o-mini"
+    llm_fallback_model: str = "llama-3.1-8b-instant"
+    llm_primary_provider: str = "openrouter"
+    llm_fallback_provider: str = "groq"
+    llm_primary_timeout_seconds: int = 15
+    llm_fallback_timeout_seconds: int = 15
+    openrouter_base_url: AnyHttpUrl = "https://openrouter.ai/api/v1"
+    groq_base_url: AnyHttpUrl = "https://api.groq.com/openai/v1"
     jwt_secret: str
     jwt_access_ttl_minutes: int
     jwt_refresh_ttl_days: int
