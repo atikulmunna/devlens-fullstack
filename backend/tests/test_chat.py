@@ -213,9 +213,15 @@ def test_chat_response_hydrates_content_when_missing_from_results(client, db_ses
         headers=headers,
     )
     assert stream.status_code == 200
-    assert "src/auth/jwt.py:10" in stream.text
-    assert "token verification steps" in stream.text
+    assert '"anchor": "src/auth/jwt.py#L10-L30"' in stream.text
     assert '"no_citation": false' in stream.text
+
+    assistant = db_session.execute(
+        select(ChatMessage)
+        .where(ChatMessage.session_id == UUID(session_id), ChatMessage.role == "assistant")
+        .order_by(ChatMessage.created_at.desc())
+    ).scalar_one()
+    assert "token verification steps" in assistant.content
 
 
 def test_chat_falls_back_when_synthesizer_fails(client, db_session: Session, monkeypatch) -> None:
@@ -253,8 +259,15 @@ def test_chat_falls_back_when_synthesizer_fails(client, db_session: Session, mon
         headers=headers,
     )
     assert stream.status_code == 200
-    assert "Based on indexed code context" in stream.text
+    assert '"anchor": "src/auth/jwt.py#L10-L30"' in stream.text
     assert '"no_citation": false' in stream.text
+
+    assistant = db_session.execute(
+        select(ChatMessage)
+        .where(ChatMessage.session_id == UUID(session_id), ChatMessage.role == "assistant")
+        .order_by(ChatMessage.created_at.desc())
+    ).scalar_one()
+    assert "Based on indexed code context" in assistant.content
 
 
 def test_chat_sessions_list_filtered_by_repo(client, db_session: Session) -> None:
