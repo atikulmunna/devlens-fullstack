@@ -95,6 +95,7 @@ def test_chat_message_stream_persists_assistant_with_citations(client, db_sessio
             }
         ],
     )
+    monkeypatch.setattr(chat_module, "synthesize_grounded_answer", lambda **_kwargs: "JWT refresh is handled in src/auth/jwt.py.")
 
     stream = client.post(
         f"/api/v1/chat/sessions/{session_id}/message",
@@ -200,6 +201,11 @@ def test_chat_response_hydrates_content_when_missing_from_results(client, db_ses
             }
         ],
     )
+    monkeypatch.setattr(
+        chat_module,
+        "synthesize_grounded_answer",
+        lambda **_kwargs: "Refresh logic appears in src/auth/jwt.py with token verification steps.",
+    )
 
     stream = client.post(
         f"/api/v1/chat/sessions/{session_id}/message",
@@ -207,9 +213,61 @@ def test_chat_response_hydrates_content_when_missing_from_results(client, db_ses
         headers=headers,
     )
     assert stream.status_code == 200
-    assert "src/auth/jwt.py:10" in stream.text
-    assert "Relevant code context was found in" not in stream.text
+    assert '"anchor": "src/auth/jwt.py#L10-L30"' in stream.text
     assert '"no_citation": false' in stream.text
+
+    assistant = db_session.execute(
+        select(ChatMessage)
+        .where(ChatMessage.session_id == UUID(session_id), ChatMessage.role == "assistant")
+        .order_by(ChatMessage.created_at.desc())
+    ).scalar_one()
+    assert "token verification steps" in assistant.content
+
+
+def test_chat_falls_back_when_synthesizer_fails(client, db_session: Session, monkeypatch) -> None:
+    user, repo, chunk_id = _seed_user_and_repo(db_session)
+    token = create_access_token(user.id)
+    headers = {"Authorization": f"Bearer {token}"}
+    created = client.post("/api/v1/chat/sessions", json={"repo_id": str(repo.id)}, headers=headers)
+    session_id = created.json()["session_id"]
+
+    monkeypatch.setattr(
+        chat_module,
+        "hybrid_search_chunks",
+        lambda *_args, **_kwargs: [
+            {
+                "chunk_id": chunk_id,
+                "file_path": "src/auth/jwt.py",
+                "start_line": 10,
+                "end_line": 30,
+                "language": "py",
+                "dense_score": 0.8,
+                "lexical_score": 0.4,
+                "rerank_score": 0.71,
+            }
+        ],
+    )
+
+    def _boom(**_kwargs):
+        raise chat_module.ChatSynthesisError("provider unavailable")
+
+    monkeypatch.setattr(chat_module, "synthesize_grounded_answer", _boom)
+
+    stream = client.post(
+        f"/api/v1/chat/sessions/{session_id}/message",
+        json={"content": "explain token flow"},
+        headers=headers,
+    )
+    assert stream.status_code == 200
+    assert '"anchor": "src/auth/jwt.py#L10-L30"' in stream.text
+    assert '"no_citation": false' in stream.text
+
+    assistant = db_session.execute(
+        select(ChatMessage)
+        .where(ChatMessage.session_id == UUID(session_id), ChatMessage.role == "assistant")
+        .order_by(ChatMessage.created_at.desc())
+    ).scalar_one()
+    assert "Based on indexed code context" in assistant.content
 
 
 def test_chat_sessions_list_filtered_by_repo(client, db_session: Session) -> None:
