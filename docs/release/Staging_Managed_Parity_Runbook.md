@@ -37,13 +37,14 @@ Fill these minimum keys with real staging values:
 
 ```powershell
 ./scripts/deploy_railway_staging.ps1 `
-  -RailwayToken "<RAILWAY_TOKEN>" `
   -ProjectName "devlens-fullstack" `
   -BackendService "backend" `
   -WorkerService "worker" `
   -BackendEnvFile "backend/.env.staging" `
   -WorkerEnvFile "workers/.env.staging"
 ```
+
+If `RAILWAY_TOKEN` is already exported in your shell or you are authenticated via `railway login`, `-RailwayToken` can be omitted.
 
 ## 4. Verify Connectivity and Health
 

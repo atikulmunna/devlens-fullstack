@@ -1,6 +1,5 @@
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$RailwayToken,
+    [string]$RailwayToken = "",
     [string]$ProjectName = "devlens-fullstack",
     [string]$BackendService = "backend",
     [string]$WorkerService = "worker",
@@ -49,7 +48,9 @@ function Set-ServiceVarsFromMap {
     }
 }
 
-$env:RAILWAY_TOKEN = $RailwayToken
+if ($RailwayToken) {
+    $env:RAILWAY_TOKEN = $RailwayToken
+}
 
 Require-File -Path $BackendEnvFile
 Require-File -Path $WorkerEnvFile
