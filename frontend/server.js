@@ -23,55 +23,65 @@ function layout({ title, heading, subtitle, route, body, scripts = '' }) {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700;900&display=swap" rel="stylesheet" />
     <link rel="icon" href="data:image/svg+xml,${faviconSvg}" />
     <style>
       :root {
-        --bg: #f4f7fb;
-        --ink: #182433;
-        --muted: #536278;
+        --bg: #eef2f7;
+        --bg-2: #f8fafc;
+        --ink: #152238;
+        --muted: #4f5e75;
         --panel: #ffffff;
-        --line: #d9e1ec;
-        --accent: #0f6dbb;
+        --line: #ccd6e6;
+        --accent: #144b8b;
+        --accent-2: #0e3e74;
         --warn: #8a2500;
-        --ok: #0f7d57;
+        --ok: #1f6f51;
+        --shadow: 0 10px 28px rgba(20, 36, 58, 0.09);
       }
       * { box-sizing: border-box; }
       body {
         margin: 0;
-        font-family: "Segoe UI", Tahoma, sans-serif;
-        background: radial-gradient(circle at 10% 10%, #ffffff, var(--bg));
+        font-family: "Merriweather", Georgia, serif;
+        background:
+          radial-gradient(circle at 0% 0%, #ffffff 0%, #f4f7fb 40%, transparent 60%),
+          linear-gradient(180deg, var(--bg-2), var(--bg));
         color: var(--ink);
       }
-      header, main, footer { max-width: 1024px; margin: 0 auto; padding: 16px; }
-      header { padding-top: 24px; }
-      .shell { display: grid; grid-template-columns: 1fr; gap: 16px; }
+      header, main, footer { width: 100%; max-width: none; margin: 0; padding: 18px 30px; }
+      header { padding-top: 28px; }
+      .shell { display: grid; grid-template-columns: 1fr; gap: 18px; }
       .card {
         background: var(--panel);
         border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: 16px;
+        border-radius: 14px;
+        padding: 18px;
+        box-shadow: var(--shadow);
       }
       h1 { margin: 0 0 8px; font-size: 28px; }
-      h2 { margin: 0 0 12px; font-size: 20px; }
+      h2 { margin: 0 0 12px; font-size: 21px; }
       p { margin: 0 0 10px; color: var(--muted); }
       code {
-        background: #eef4fb;
+        background: #eef3fb;
         border-radius: 6px;
         padding: 2px 6px;
         color: #0e4c80;
       }
       .chip {
         display: inline-block;
-        border: 1px solid #b5d3f0;
-        color: var(--accent);
+        border: 1px solid #b8cce8;
+        color: var(--accent-2);
         border-radius: 999px;
-        padding: 4px 10px;
+        padding: 5px 11px;
         font-size: 12px;
-        font-weight: 600;
+        font-weight: 700;
+        background: #f2f6fc;
       }
       .state { display: grid; gap: 10px; }
       .loading {
-        border: 1px dashed #b7c5d7;
+        border: 1px dashed #a9bbd4;
         border-radius: 8px;
         padding: 10px;
       }
@@ -97,8 +107,8 @@ function layout({ title, heading, subtitle, route, body, scripts = '' }) {
       }
       button {
         width: fit-content;
-        border: 1px solid #0b5ea1;
-        background: var(--accent);
+        border: 1px solid #0d3d72;
+        background: linear-gradient(180deg, #1a5a9d, var(--accent-2));
         color: #fff;
         border-radius: 8px;
         padding: 10px 14px;
@@ -117,6 +127,9 @@ function layout({ title, heading, subtitle, route, body, scripts = '' }) {
         padding: 10px;
       }
       .mono { font-family: "Cascadia Mono", Consolas, monospace; }
+      @media (max-width: 780px) {
+        header, main, footer { padding-left: 12px; padding-right: 12px; }
+      }
     </style>
   </head>
   <body>
@@ -154,36 +167,67 @@ function renderRoute(pathname) {
 <style>
   .workspace-shell {
     display: grid;
-    gap: 16px;
+    gap: 18px;
   }
   .workspace-nav {
     display: flex;
-    gap: 8px;
+    gap: 10px;
     flex-wrap: wrap;
   }
   .workspace-nav a {
-    border: 1px solid var(--line);
+    border: 1px solid #b8c8de;
     border-radius: 999px;
-    padding: 6px 10px;
-    background: #fff;
+    padding: 7px 12px;
+    background: #f7faff;
     color: var(--ink);
-    font-weight: 600;
+    font-weight: 700;
+  }
+  .workspace-guide {
+    border: 1px solid #c9d6e8;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #ffffff, #f4f8fd);
+    padding: 16px;
+    box-shadow: var(--shadow);
+  }
+  .workspace-guide h3 {
+    margin: 0 0 10px;
+    font-size: 19px;
+  }
+  .workspace-steps {
+    margin: 0;
+    padding-left: 22px;
+    display: grid;
+    gap: 6px;
+    color: var(--muted);
+  }
+  .workspace-badge {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--accent-2);
+    background: #eaf2fc;
+    border: 1px solid #c6d7ee;
+    border-radius: 999px;
+    padding: 3px 8px;
   }
   .workspace-grid {
     display: grid;
-    gap: 16px;
+    gap: 18px;
     grid-template-columns: repeat(12, 1fr);
   }
   .span-12 { grid-column: span 12; }
   .span-7 { grid-column: span 7; }
   .span-5 { grid-column: span 5; }
   .panel {
-    border: 1px solid var(--line);
-    border-radius: 12px;
+    border: 1px solid #cbd7e8;
+    border-radius: 14px;
     background: #fff;
-    padding: 14px;
+    padding: 16px;
+    box-shadow: var(--shadow);
   }
-  .panel h3 { margin: 0 0 10px; font-size: 17px; }
+  .panel h3 { margin: 0 0 10px; font-size: 18px; }
   .workspace-subtle { color: var(--muted); font-size: 13px; }
   .workspace-stack { display: grid; gap: 10px; }
   .workspace-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -191,7 +235,7 @@ function renderRoute(pathname) {
   .workspace-kv strong { color: var(--ink); }
   .workspace-textarea {
     width: 100%;
-    border: 1px solid var(--line);
+    border: 1px solid #c6d3e5;
     border-radius: 8px;
     padding: 10px 12px;
     min-height: 88px;
@@ -199,17 +243,17 @@ function renderRoute(pathname) {
     resize: vertical;
   }
   .workspace-messages {
-    border: 1px solid var(--line);
+    border: 1px solid #c6d3e5;
     border-radius: 8px;
     padding: 10px;
-    background: #f8fbff;
+    background: #f5f8fc;
     max-height: 300px;
     overflow: auto;
     display: grid;
     gap: 10px;
   }
   .workspace-msg {
-    border: 1px solid #d4deea;
+    border: 1px solid #cdd9ea;
     border-radius: 8px;
     background: #fff;
     padding: 10px;
@@ -228,6 +272,15 @@ function renderRoute(pathname) {
     <a href="/analyze">Analyze (Classic)</a>
     <a href="/profile">Profile</a>
   </div>
+  <aside class="workspace-guide">
+    <span class="workspace-badge">Quick Start</span>
+    <h3>Professional workflow in one place</h3>
+    <ol class="workspace-steps">
+      <li>Paste a GitHub URL and run Analyze.</li>
+      <li>Open Dashboard snapshot to review quality and architecture summary.</li>
+      <li>Sign in, refresh token, then start Chat for cited answers.</li>
+    </ol>
+  </aside>
   <div class="workspace-grid">
     <article class="panel span-7 workspace-stack">
       <h3>1) Analyze Repository</h3>
