@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.db.models import ChatMessage, CodeChunk, ChatSession, Repository, User
@@ -137,6 +137,23 @@ def _language_question(query: str) -> bool:
     return any(token in q for token in patterns)
 
 
+def _load_chunk_content(db: Session, repo_id: UUID, chunk_ids: list[str]) -> dict[str, str]:
+    if not chunk_ids:
+        return {}
+    rows = db.execute(
+        text(
+            """
+            SELECT id::text AS chunk_id, content
+            FROM code_chunks
+            WHERE repo_id = CAST(:repo_id AS uuid)
+              AND id = ANY(CAST(:chunk_ids AS uuid[]))
+            """
+        ),
+        {"repo_id": str(repo_id), "chunk_ids": chunk_ids},
+    ).mappings().all()
+    return {row["chunk_id"]: row.get("content") or "" for row in rows}
+
+
 def _render_assistant_response(db: Session, repo_id: UUID, query: str, results: list[dict]) -> tuple[str, dict]:
     if not results:
         citations = {"citations": [], "no_citation": True}
@@ -179,10 +196,16 @@ def _render_assistant_response(db: Session, repo_id: UUID, query: str, results: 
             return content, citations
 
     snippets: list[str] = []
+    content_by_chunk = _load_chunk_content(
+        db,
+        repo_id=repo_id,
+        chunk_ids=[str(item.get("chunk_id")) for item in top if item.get("chunk_id")],
+    )
     for item in top:
         path = str(item.get("file_path") or "")
         line = item.get("start_line") or 1
-        raw_content = str(item.get("content") or "").strip()
+        chunk_id = str(item.get("chunk_id") or "")
+        raw_content = str(item.get("content") or content_by_chunk.get(chunk_id) or "").strip()
         preview = re.sub(r"\s+", " ", raw_content)[:120]
         if preview:
             snippets.append(f"{path}:{line} -> {preview}")

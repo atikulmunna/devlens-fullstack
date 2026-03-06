@@ -177,6 +177,40 @@ def test_chat_language_question_returns_language_answer(client, db_session: Sess
     assert '"no_citation": false' in stream.text
 
 
+def test_chat_response_hydrates_content_when_missing_from_results(client, db_session: Session, monkeypatch) -> None:
+    user, repo, chunk_id = _seed_user_and_repo(db_session)
+    token = create_access_token(user.id)
+    headers = {"Authorization": f"Bearer {token}"}
+    created = client.post("/api/v1/chat/sessions", json={"repo_id": str(repo.id)}, headers=headers)
+    session_id = created.json()["session_id"]
+
+    monkeypatch.setattr(
+        chat_module,
+        "hybrid_search_chunks",
+        lambda *_args, **_kwargs: [
+            {
+                "chunk_id": chunk_id,
+                "file_path": "src/auth/jwt.py",
+                "start_line": 10,
+                "end_line": 30,
+                "language": "py",
+                "dense_score": 0.8,
+                "lexical_score": 0.4,
+                "rerank_score": 0.71,
+            }
+        ],
+    )
+
+    stream = client.post(
+        f"/api/v1/chat/sessions/{session_id}/message",
+        json={"content": "where is jwt refresh logic?"},
+        headers=headers,
+    )
+    assert stream.status_code == 200
+    assert "jwt refresh token logic" in stream.text
+    assert '"no_citation": false' in stream.text
+
+
 def test_chat_sessions_list_filtered_by_repo(client, db_session: Session) -> None:
     user, repo, _ = _seed_user_and_repo(db_session)
     other_repo = Repository(
