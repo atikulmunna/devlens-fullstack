@@ -149,13 +149,540 @@ function layout({ title, heading, subtitle, route, body, scripts = '' }) {
 }
 
 function renderRoute(pathname) {
-  if (pathname === '/') {
+  if (pathname === '/' || pathname === '/workspace') {
+    const workspaceBody = `
+<style>
+  .workspace-shell {
+    display: grid;
+    gap: 16px;
+  }
+  .workspace-nav {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .workspace-nav a {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 6px 10px;
+    background: #fff;
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .workspace-grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(12, 1fr);
+  }
+  .span-12 { grid-column: span 12; }
+  .span-7 { grid-column: span 7; }
+  .span-5 { grid-column: span 5; }
+  .panel {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+    padding: 14px;
+  }
+  .panel h3 { margin: 0 0 10px; font-size: 17px; }
+  .workspace-subtle { color: var(--muted); font-size: 13px; }
+  .workspace-stack { display: grid; gap: 10px; }
+  .workspace-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .workspace-kv { display: grid; gap: 4px; font-size: 14px; }
+  .workspace-kv strong { color: var(--ink); }
+  .workspace-textarea {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    min-height: 88px;
+    font: inherit;
+    resize: vertical;
+  }
+  .workspace-messages {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px;
+    background: #f8fbff;
+    max-height: 300px;
+    overflow: auto;
+    display: grid;
+    gap: 10px;
+  }
+  .workspace-msg {
+    border: 1px solid #d4deea;
+    border-radius: 8px;
+    background: #fff;
+    padding: 10px;
+  }
+  .workspace-msg-user {
+    border-color: #c4d9ee;
+    background: #f1f7ff;
+  }
+  @media (max-width: 920px) {
+    .span-7, .span-5 { grid-column: span 12; }
+  }
+</style>
+<section class="workspace-shell">
+  <div class="workspace-nav">
+    <a href="/workspace">Workspace</a>
+    <a href="/analyze">Analyze (Classic)</a>
+    <a href="/profile">Profile</a>
+  </div>
+  <div class="workspace-grid">
+    <article class="panel span-7 workspace-stack">
+      <h3>1) Analyze Repository</h3>
+      <p class="workspace-subtle">Submit a public GitHub URL and track the processing stream. A completed run auto-loads Dashboard and Chat context.</p>
+      <label>
+        GitHub URL
+        <input id="ws-github-url" type="text" placeholder="https://github.com/owner/repo" />
+      </label>
+      <div class="workspace-row">
+        <button id="ws-analyze-btn" type="button">Analyze</button>
+        <a class="workspace-subtle" href="/analyze">Use classic analyze page</a>
+      </div>
+      <div id="ws-analyze-error" class="error hidden"></div>
+      <div id="ws-analyze-cache" class="ok hidden"></div>
+      <div id="ws-job" class="loading hidden">
+        <div><strong>Job:</strong> <span class="mono" id="ws-job-id"></span></div>
+        <div><strong>Repo:</strong> <span class="mono" id="ws-repo-id"></span></div>
+        <div><strong>Status:</strong> <span id="ws-status">queued</span></div>
+        <div><strong>Progress:</strong> <span id="ws-progress">0%</span></div>
+        <div><strong>Open:</strong> <a id="ws-dashboard-link" href="#" class="hidden"></a></div>
+      </div>
+    </article>
+    <article class="panel span-5 workspace-stack">
+      <h3>Session Auth</h3>
+      <p class="workspace-subtle">Chat requires a bearer token. Use GitHub login, then Refresh Token, or paste manually.</p>
+      <div class="workspace-row">
+        <a href="/api/v1/auth/github?next=/workspace">Login with GitHub</a>
+        <button id="ws-refresh-token" type="button">Refresh Access Token</button>
+      </div>
+      <label>
+        Access Token
+        <input id="ws-token" type="text" placeholder="Bearer access token" />
+      </label>
+      <div class="workspace-row">
+        <button id="ws-save-token" type="button">Save Token</button>
+        <span class="workspace-subtle" id="ws-auth-note">No token saved.</span>
+      </div>
+      <div id="ws-auth-error" class="error hidden"></div>
+      <div id="ws-auth-ok" class="ok hidden"></div>
+    </article>
+    <article class="panel span-12 workspace-stack">
+      <h3>2) Dashboard Snapshot</h3>
+      <div class="workspace-row">
+        <label style="flex:1">
+          Repo ID
+          <input id="ws-dashboard-repo-id" type="text" placeholder="repo_uuid" />
+        </label>
+        <button id="ws-load-dashboard" type="button">Load Dashboard</button>
+      </div>
+      <div id="ws-dashboard-error" class="error hidden"></div>
+      <div id="ws-dashboard-empty" class="loading hidden">No analysis found for this repository yet.</div>
+      <div id="ws-dashboard" class="grid hidden">
+        <div class="workspace-kv"><strong>Repository</strong><span id="ws-d-name"></span></div>
+        <div class="workspace-kv"><strong>Quality Score</strong><span id="ws-d-quality"></span></div>
+        <div class="workspace-kv"><strong>Default Branch</strong><span id="ws-d-branch"></span></div>
+        <div class="workspace-kv"><strong>Stars / Forks</strong><span id="ws-d-stats"></span></div>
+        <div class="workspace-kv"><strong>Architecture Summary</strong><span id="ws-d-summary"></span></div>
+      </div>
+    </article>
+    <article class="panel span-12 workspace-stack">
+      <h3>3) Chat</h3>
+      <p class="workspace-subtle">Ask questions against the currently loaded repository. Responses include citation anchors when available.</p>
+      <div class="workspace-row">
+        <button id="ws-chat-new-session" type="button">New Chat Session</button>
+        <span class="workspace-subtle" id="ws-session-note">Session not started.</span>
+      </div>
+      <div id="ws-chat-error" class="error hidden"></div>
+      <div id="ws-chat-messages" class="workspace-messages"></div>
+      <label>
+        Prompt
+        <textarea id="ws-chat-input" class="workspace-textarea" placeholder="What are the main architecture components?"></textarea>
+      </label>
+      <div class="workspace-row">
+        <button id="ws-chat-send" type="button">Send</button>
+      </div>
+    </article>
+  </div>
+</section>`;
+
+    const workspaceScripts = `<script>
+(function () {
+  const tokenKey = 'devlens.access_token';
+  const state = {
+    repoId: '',
+    sessionId: '',
+    statusStream: null,
+  };
+
+  const els = {
+    githubUrl: document.getElementById('ws-github-url'),
+    analyzeBtn: document.getElementById('ws-analyze-btn'),
+    analyzeError: document.getElementById('ws-analyze-error'),
+    analyzeCache: document.getElementById('ws-analyze-cache'),
+    jobBox: document.getElementById('ws-job'),
+    jobId: document.getElementById('ws-job-id'),
+    repoId: document.getElementById('ws-repo-id'),
+    status: document.getElementById('ws-status'),
+    progress: document.getElementById('ws-progress'),
+    dashboardLink: document.getElementById('ws-dashboard-link'),
+    token: document.getElementById('ws-token'),
+    saveToken: document.getElementById('ws-save-token'),
+    refreshToken: document.getElementById('ws-refresh-token'),
+    authNote: document.getElementById('ws-auth-note'),
+    authErr: document.getElementById('ws-auth-error'),
+    authOk: document.getElementById('ws-auth-ok'),
+    dashboardRepoId: document.getElementById('ws-dashboard-repo-id'),
+    loadDashboard: document.getElementById('ws-load-dashboard'),
+    dashboardError: document.getElementById('ws-dashboard-error'),
+    dashboardEmpty: document.getElementById('ws-dashboard-empty'),
+    dashboard: document.getElementById('ws-dashboard'),
+    dName: document.getElementById('ws-d-name'),
+    dQuality: document.getElementById('ws-d-quality'),
+    dBranch: document.getElementById('ws-d-branch'),
+    dStats: document.getElementById('ws-d-stats'),
+    dSummary: document.getElementById('ws-d-summary'),
+    chatNew: document.getElementById('ws-chat-new-session'),
+    chatSessionNote: document.getElementById('ws-session-note'),
+    chatError: document.getElementById('ws-chat-error'),
+    chatMessages: document.getElementById('ws-chat-messages'),
+    chatInput: document.getElementById('ws-chat-input'),
+    chatSend: document.getElementById('ws-chat-send'),
+  };
+
+  function show(el) { el.classList.remove('hidden'); }
+  function hide(el) { el.classList.add('hidden'); }
+  function tokenValue() { return (localStorage.getItem(tokenKey) || '').trim(); }
+  function esc(v) {
+    return String(v)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+  function setAnalyzeError(msg) {
+    els.analyzeError.textContent = msg;
+    show(els.analyzeError);
+  }
+  function setAuthError(msg) {
+    els.authErr.textContent = msg;
+    show(els.authErr);
+  }
+  function setChatError(msg) {
+    els.chatError.textContent = msg;
+    show(els.chatError);
+  }
+  function clearAnalyzeFeedback() {
+    hide(els.analyzeError);
+    hide(els.analyzeCache);
+  }
+  function clearAuthFeedback() {
+    hide(els.authErr);
+    hide(els.authOk);
+  }
+  function clearDashboardFeedback() {
+    hide(els.dashboardError);
+    hide(els.dashboardEmpty);
+  }
+  function clearChatFeedback() {
+    hide(els.chatError);
+  }
+  function applyRepoContext(repoId) {
+    state.repoId = repoId || '';
+    els.repoId.textContent = state.repoId;
+    els.dashboardRepoId.value = state.repoId;
+    if (state.repoId) {
+      const path = '/dashboard/' + encodeURIComponent(state.repoId);
+      els.dashboardLink.href = path;
+      els.dashboardLink.textContent = path;
+      show(els.dashboardLink);
+    } else {
+      hide(els.dashboardLink);
+    }
+    state.sessionId = '';
+    els.chatSessionNote.textContent = 'Session not started.';
+  }
+
+  async function refreshAccessToken() {
+    clearAuthFeedback();
+    const csrf = document.cookie
+      .split('; ')
+      .find(function (x) { return x.startsWith('devlens_csrf_token='); });
+    const csrfValue = csrf ? csrf.split('=')[1] : '';
+    const response = await fetch('/api/v1/auth/refresh', {
+      method: 'POST',
+      credentials: 'include',
+      headers: csrfValue ? { 'X-CSRF-Token': csrfValue } : {},
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      const message = payload && payload.error && payload.error.message ? payload.error.message : 'Token refresh failed';
+      throw new Error(message);
+    }
+    if (!payload.access_token) {
+      throw new Error('No access token returned');
+    }
+    localStorage.setItem(tokenKey, payload.access_token);
+    els.token.value = payload.access_token;
+    els.authOk.textContent = 'Access token refreshed.';
+    show(els.authOk);
+    syncAuthNote();
+  }
+
+  function syncAuthNote() {
+    const hasToken = tokenValue().length > 0;
+    els.authNote.textContent = hasToken ? 'Token saved.' : 'No token saved.';
+  }
+
+  function closeStatusStream() {
+    if (state.statusStream) {
+      state.statusStream.close();
+      state.statusStream = null;
+    }
+  }
+
+  async function loadDashboard(repoId) {
+    clearDashboardFeedback();
+    hide(els.dashboard);
+    const target = (repoId || '').trim();
+    if (!target) {
+      return;
+    }
+    try {
+      const response = await fetch('/api/v1/repos/' + encodeURIComponent(target) + '/dashboard');
+      const payload = await response.json();
+      if (!response.ok) {
+        const message = payload && payload.error && payload.error.message ? payload.error.message : 'Dashboard request failed';
+        throw new Error(message);
+      }
+      if (!payload.has_analysis || !payload.analysis) {
+        show(els.dashboardEmpty);
+        return;
+      }
+      els.dName.textContent = payload.repository.full_name || 'N/A';
+      els.dQuality.textContent = String(payload.analysis.quality_score == null ? 'N/A' : payload.analysis.quality_score);
+      els.dBranch.textContent = payload.repository.default_branch || 'main';
+      els.dStats.textContent = String(payload.repository.stars || 0) + ' / ' + String(payload.repository.forks || 0);
+      els.dSummary.textContent = payload.analysis.architecture_summary || 'No summary';
+      show(els.dashboard);
+    } catch (error) {
+      els.dashboardError.textContent = error && error.message ? error.message : 'Unable to load dashboard';
+      show(els.dashboardError);
+    }
+  }
+
+  async function createChatSession() {
+    clearChatFeedback();
+    if (!state.repoId) {
+      throw new Error('Analyze or load a repo first.');
+    }
+    const token = tokenValue();
+    if (!token) {
+      throw new Error('No access token. Login then refresh/save token.');
+    }
+    const response = await fetch('/api/v1/chat/sessions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + token,
+      },
+      body: JSON.stringify({ repo_id: state.repoId }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      const message = payload && payload.error && payload.error.message ? payload.error.message : 'Failed to create session';
+      throw new Error(message);
+    }
+    state.sessionId = payload.session_id;
+    els.chatSessionNote.textContent = 'Session: ' + payload.session_id.slice(0, 8);
+  }
+
+  function appendMessage(role, htmlContent) {
+    const card = document.createElement('div');
+    card.className = role === 'user' ? 'workspace-msg workspace-msg-user' : 'workspace-msg';
+    card.innerHTML = '<strong>' + (role === 'user' ? 'You' : 'Assistant') + '</strong><div>' + htmlContent + '</div>';
+    els.chatMessages.appendChild(card);
+    els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
+  }
+
+  function parseDoneEvent(sseText) {
+    const chunks = sseText.split('\\n\\n');
+    for (const chunk of chunks) {
+      const lines = chunk.split('\\n');
+      let eventName = '';
+      let data = '';
+      for (const line of lines) {
+        if (line.startsWith('event:')) {
+          eventName = line.slice(6).trim();
+        } else if (line.startsWith('data:')) {
+          data += line.slice(5).trim();
+        }
+      }
+      if (eventName === 'done' && data) {
+        try {
+          return JSON.parse(data);
+        } catch (_error) {}
+      }
+    }
+    return null;
+  }
+
+  async function sendChat() {
+    clearChatFeedback();
+    const question = els.chatInput.value.trim();
+    if (!question) {
+      return;
+    }
+    if (!state.repoId) {
+      setChatError('Analyze or load a repository first.');
+      return;
+    }
+    if (!state.sessionId) {
+      await createChatSession();
+    }
+    const token = tokenValue();
+    if (!token) {
+      setChatError('No access token. Login then refresh/save token.');
+      return;
+    }
+    appendMessage('user', esc(question));
+    els.chatInput.value = '';
+    els.chatSend.disabled = true;
+    try {
+      const response = await fetch('/api/v1/chat/sessions/' + encodeURIComponent(state.sessionId) + '/message', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + token,
+        },
+        body: JSON.stringify({ content: question, top_k: 5 }),
+      });
+      const raw = await response.text();
+      if (!response.ok) {
+        throw new Error(raw || 'Chat request failed');
+      }
+      const done = parseDoneEvent(raw);
+      const answer = done && done.answer ? done.answer : 'Response stream finished.';
+      let citationHtml = '';
+      if (done && done.citations && done.citations.length) {
+        citationHtml = '<div class="workspace-subtle"><strong>Citations:</strong> ' + done.citations.map(function (c) {
+          return esc(c.anchor || (c.file_path + '#L' + String(c.line_start || 1)));
+        }).join(', ') + '</div>';
+      }
+      appendMessage('assistant', esc(answer) + citationHtml);
+    } catch (error) {
+      setChatError(error && error.message ? error.message : 'Chat failed');
+    } finally {
+      els.chatSend.disabled = false;
+    }
+  }
+
+  function connectAnalyzeStatus(repoId) {
+    closeStatusStream();
+    state.statusStream = new EventSource('/api/v1/repos/' + encodeURIComponent(repoId) + '/status');
+    state.statusStream.addEventListener('progress', function (event) {
+      const payload = JSON.parse(event.data);
+      els.status.textContent = payload.stage + ' in progress';
+      els.progress.textContent = String(payload.progress) + '%';
+    });
+    state.statusStream.addEventListener('done', function (event) {
+      const payload = JSON.parse(event.data);
+      els.status.textContent = payload.stage || 'done';
+      els.progress.textContent = String(payload.progress == null ? 100 : payload.progress) + '%';
+      closeStatusStream();
+      loadDashboard(repoId);
+    });
+    state.statusStream.addEventListener('error', function () {
+      closeStatusStream();
+      setAnalyzeError('Status stream interrupted. Open dashboard link and refresh.');
+    });
+  }
+
+  async function runAnalyze() {
+    clearAnalyzeFeedback();
+    const githubUrl = els.githubUrl.value.trim();
+    if (!/^https:\\/\\/github\\.com\\/[^\\s/]+\\/[^\\s/]+/.test(githubUrl)) {
+      setAnalyzeError('Enter a valid public GitHub repository URL.');
+      return;
+    }
+    els.analyzeBtn.disabled = true;
+    try {
+      const response = await fetch('/api/v1/repos/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ github_url: githubUrl }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        const message = payload && payload.error && payload.error.message ? payload.error.message : 'Analyze failed';
+        throw new Error(message);
+      }
+      applyRepoContext(payload.repo_id);
+      els.jobId.textContent = payload.job_id || '';
+      els.status.textContent = payload.status || 'queued';
+      els.progress.textContent = payload.status === 'done' ? '100%' : '0%';
+      show(els.jobBox);
+      if (payload.cache_hit) {
+        els.analyzeCache.textContent = 'Cache hit: using existing analysis.';
+        show(els.analyzeCache);
+      }
+      loadDashboard(payload.repo_id);
+      connectAnalyzeStatus(payload.repo_id);
+    } catch (error) {
+      setAnalyzeError(error && error.message ? error.message : 'Analyze request failed');
+    } finally {
+      els.analyzeBtn.disabled = false;
+    }
+  }
+
+  els.analyzeBtn.addEventListener('click', function () {
+    runAnalyze();
+  });
+  els.saveToken.addEventListener('click', function () {
+    clearAuthFeedback();
+    localStorage.setItem(tokenKey, (els.token.value || '').trim());
+    els.authOk.textContent = 'Token saved.';
+    show(els.authOk);
+    syncAuthNote();
+  });
+  els.refreshToken.addEventListener('click', async function () {
+    try {
+      await refreshAccessToken();
+    } catch (error) {
+      setAuthError(error && error.message ? error.message : 'Unable to refresh token');
+    }
+  });
+  els.loadDashboard.addEventListener('click', function () {
+    const repo = (els.dashboardRepoId.value || '').trim();
+    applyRepoContext(repo);
+    loadDashboard(repo);
+  });
+  els.chatNew.addEventListener('click', async function () {
+    try {
+      await createChatSession();
+    } catch (error) {
+      setChatError(error && error.message ? error.message : 'Unable to create session');
+    }
+  });
+  els.chatSend.addEventListener('click', async function () {
+    await sendChat();
+  });
+
+  els.token.value = tokenValue();
+  syncAuthNote();
+  els.chatMessages.innerHTML = '<div class="workspace-subtle">Chat transcript will appear here.</div>';
+})();
+</script>`;
+
     return layout({
-      title: 'DevLens | Home',
-      heading: 'DevLens',
-      subtitle: 'Repository intelligence, architecture context, and chat search.',
-      route: '/',
-      body: '<h2>Home</h2><p>Landing shell route is live.</p>',
+      title: 'DevLens | Workspace',
+      heading: 'DevLens Workspace',
+      subtitle: 'Analyze, inspect dashboard insights, and chat in one minimal flow.',
+      route: pathname === '/' ? '/workspace (default)' : '/workspace',
+      body: workspaceBody,
+      scripts: workspaceScripts,
     });
   }
 
