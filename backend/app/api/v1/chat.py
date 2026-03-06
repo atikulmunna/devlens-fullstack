@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from datetime import datetime
 from uuid import UUID, uuid4
 
@@ -87,7 +88,56 @@ def _ensure_owned_session(db: Session, session_id: UUID, user_id: UUID) -> ChatS
     return session_row
 
 
-def _render_assistant_response(db: Session, repo_id: UUID, results: list[dict]) -> tuple[str, dict]:
+def _normalize_language(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    key = raw.strip().lower()
+    aliases = {
+        "py": "Python",
+        "python": "Python",
+        "js": "JavaScript",
+        "javascript": "JavaScript",
+        "ts": "TypeScript",
+        "tsx": "TypeScript",
+        "jsx": "JavaScript (React JSX)",
+        "go": "Go",
+        "java": "Java",
+        "rb": "Ruby",
+        "rs": "Rust",
+        "c": "C",
+        "cpp": "C++",
+        "c++": "C++",
+        "cs": "C#",
+        "c#": "C#",
+        "php": "PHP",
+        "kt": "Kotlin",
+        "swift": "Swift",
+        "scala": "Scala",
+        "sh": "Shell",
+        "bash": "Shell",
+        "sql": "SQL",
+        "md": "Markdown",
+        "yml": "YAML",
+        "yaml": "YAML",
+        "json": "JSON",
+    }
+    return aliases.get(key, raw.strip())
+
+
+def _language_question(query: str) -> bool:
+    q = query.lower()
+    patterns = (
+        "language",
+        "languages",
+        "tech stack",
+        "stack",
+        "what is this built with",
+        "what is this written in",
+    )
+    return any(token in q for token in patterns)
+
+
+def _render_assistant_response(db: Session, repo_id: UUID, query: str, results: list[dict]) -> tuple[str, dict]:
     if not results:
         citations = {"citations": [], "no_citation": True}
         return "I could not find relevant indexed code context for that query.", citations
@@ -110,6 +160,39 @@ def _render_assistant_response(db: Session, repo_id: UUID, results: list[dict]) 
         "citations": valid_citations,
         "no_citation": len(valid_citations) == 0,
     }
+
+    if _language_question(query):
+        languages: list[str] = []
+        for item in results:
+            normalized = _normalize_language(item.get("language"))
+            if normalized and normalized not in languages:
+                languages.append(normalized)
+            if len(languages) >= 8:
+                break
+        if languages:
+            if len(languages) == 1:
+                content = f"The indexed code appears to be primarily {languages[0]}."
+            else:
+                content = "The indexed code appears to use: " + ", ".join(languages) + "."
+            if refs:
+                content += " Evidence from: " + ", ".join(refs) + "."
+            return content, citations
+
+    snippets: list[str] = []
+    for item in top:
+        path = str(item.get("file_path") or "")
+        line = item.get("start_line") or 1
+        raw_content = str(item.get("content") or "").strip()
+        preview = re.sub(r"\s+", " ", raw_content)[:120]
+        if preview:
+            snippets.append(f"{path}:{line} -> {preview}")
+        else:
+            snippets.append(f"{path}:{line}")
+
+    if snippets:
+        content = "Based on indexed code context: " + " | ".join(snippets) + "."
+    else:
+        content = "Relevant code context was found in: " + ", ".join(refs) + "."
     return content, citations
 
 
@@ -331,7 +414,7 @@ def send_chat_message(
     db.flush()
 
     results = hybrid_search_chunks(db, repo_id=session_row.repo_id, query=payload.content, limit=payload.top_k)
-    assistant_text, citations = _render_assistant_response(db, session_row.repo_id, results)
+    assistant_text, citations = _render_assistant_response(db, session_row.repo_id, payload.content, results)
 
     assistant_msg = ChatMessage(
         id=uuid4(),
