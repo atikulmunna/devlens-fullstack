@@ -207,7 +207,8 @@ def test_chat_response_hydrates_content_when_missing_from_results(client, db_ses
         headers=headers,
     )
     assert stream.status_code == 200
-    assert "jwt refresh token logic" in stream.text
+    assert "src/auth/jwt.py:10" in stream.text
+    assert "Relevant code context was found in" not in stream.text
     assert '"no_citation": false' in stream.text
 
 
