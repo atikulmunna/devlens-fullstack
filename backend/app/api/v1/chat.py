@@ -10,11 +10,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from app.db.models import ChatMessage, CodeChunk, ChatSession, Repository, User
+from app.db.models import AnalysisResult, ChatMessage, CodeChunk, ChatSession, Repository, User
 from app.api.error_schema import ERROR_RESPONSE_SCHEMA
 from app.deps import get_current_user, get_db_session
 from app.services.citations import format_citation, validate_citations_for_repo
-from app.services.chat_synthesizer import ChatSynthesisError, synthesize_grounded_answer
+from app.services.chat_synthesizer import ChatIntent, ChatSynthesisError, synthesize_grounded_answer
 from app.services.retrieval_hybrid import hybrid_search_chunks
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -138,6 +138,94 @@ def _language_question(query: str) -> bool:
     return any(token in q for token in patterns)
 
 
+def _summary_question(query: str) -> bool:
+    q = query.lower()
+    patterns = (
+        "summarize",
+        "summary",
+        "high-level",
+        "high level",
+        "overview",
+        "purpose",
+        "core modules",
+        "runtime flow",
+        "output format",
+    )
+    return any(token in q for token in patterns)
+
+
+def _detect_chat_intent(query: str) -> ChatIntent:
+    q = query.lower()
+    architecture_tokens = ("architecture", "design", "components", "module", "flow", "dependency")
+    setup_tokens = ("setup", "install", "run", "start", "configure", "env", "docker", "deploy")
+    debug_tokens = ("bug", "error", "failing", "exception", "debug", "issue", "fix", "broken")
+    security_tokens = ("auth", "token", "permission", "secret", "security", "csrf", "oauth")
+    if any(t in q for t in architecture_tokens):
+        return "architecture"
+    if any(t in q for t in setup_tokens):
+        return "setup"
+    if any(t in q for t in debug_tokens):
+        return "debug"
+    if any(t in q for t in security_tokens):
+        return "security"
+    return "general"
+
+
+def _select_diverse_results(results: list[dict], limit: int = 6) -> list[dict]:
+    if not results:
+        return []
+
+    def _path_weight(path: str) -> int:
+        p = path.lower()
+        if p.endswith("readme.md"):
+            return 0
+        if p.endswith(("package.json", "pyproject.toml", "requirements.txt", "go.mod", "cargo.toml")):
+            return 1
+        if p.endswith(("dockerfile", "docker-compose.yml", "docker-compose.yaml")):
+            return 2
+        if any(k in p for k in ("/main.", "/index.", "/app.", "/server.", "/cli.")):
+            return 3
+        if any(k in p for k in ("/src/", "/app/", "/lib/", "/core/", "/services/", "/components/")):
+            return 4
+        return 5
+
+    ranked = sorted(
+        enumerate(results),
+        key=lambda x: (_path_weight(str(x[1].get("file_path") or "")), x[0]),
+    )
+
+    selected: list[dict] = []
+    seen_paths: set[str] = set()
+    seen_roots: set[str] = set()
+    for _, item in ranked:
+        path = str(item.get("file_path") or "")
+        if not path or path in seen_paths:
+            continue
+        root = path.split("/", 1)[0]
+        # Prefer root diversity but allow at most two per root.
+        root_count = sum(
+            1
+            for s in selected
+            if str(s.get("file_path") or "").split("/", 1)[0] == root
+        )
+        if root in seen_roots and root_count >= 2:
+            continue
+        selected.append(item)
+        seen_paths.add(path)
+        seen_roots.add(root)
+        if len(selected) >= limit:
+            break
+
+    if len(selected) < min(limit, len(results)):
+        for item in results:
+            if item in selected:
+                continue
+            selected.append(item)
+            if len(selected) >= limit:
+                break
+    return selected
+
+
 def _load_chunk_content(db: Session, repo_id: UUID, chunk_ids: list[str]) -> dict[str, str]:
     if not chunk_ids:
         return {}
@@ -155,12 +243,154 @@ def _load_chunk_content(db: Session, repo_id: UUID, chunk_ids: list[str]) -> dic
     return {row["chunk_id"]: row.get("content") or "" for row in rows}
 
 
+def _fallback_repo_summary(
+    repo: Repository | None,
+    analysis: AnalysisResult | None,
+    languages: list[str],
+    top_paths: list[str],
+) -> str:
+    repo_name = repo.full_name if repo else "this repository"
+    purpose = analysis.architecture_summary.strip() if analysis and analysis.architecture_summary else ""
+    if purpose:
+        purpose = re.sub(r"\s+", " ", purpose)[:180]
+    else:
+        purpose = f"Codebase for {repo_name}."
+
+    modules = []
+    common_roots = {"src", "app", "lib", "packages"}
+    for path in top_paths:
+        parts = [p for p in path.split("/") if p]
+        if not parts:
+            continue
+        root = parts[0].strip()
+        candidate = root
+        if root in common_roots and len(parts) > 1:
+            candidate = f"{root}/{parts[1].strip()}"
+        if candidate and candidate not in modules:
+            modules.append(candidate)
+        if len(modules) >= 5:
+            break
+    module_text = ", ".join(modules) if modules else "main source and support modules"
+
+    language_text = ", ".join(languages[:6]) if languages else (repo.language or "not clearly identified")
+
+    output_hints = []
+    for path in top_paths:
+        lower = path.lower()
+        if "gif" in lower and "GIF" not in output_hints:
+            output_hints.append("GIF")
+        if "webp" in lower and "WebP" not in output_hints:
+            output_hints.append("WebP")
+        if "dataurl" in lower and "data URL" not in output_hints:
+            output_hints.append("data URL")
+    if any(path.lower().endswith((".html", ".tsx", ".jsx", ".vue", ".svelte")) for path in top_paths):
+        output_hints.append("web UI views")
+    if any(path.lower().endswith((".json", ".yaml", ".yml")) for path in top_paths):
+        output_hints.append("structured config/data")
+    output_text = ", ".join(dict.fromkeys(output_hints)) if output_hints else "runtime artifacts inferred from code paths"
+
+    flow_hints: list[str] = []
+    lower_paths = [p.lower() for p in top_paths]
+    if any("cli" in p or "argparse" in p or "typer" in p for p in lower_paths):
+        flow_hints.append("CLI entrypoint receives arguments")
+    if any("api" in p or "route" in p or "controller" in p for p in lower_paths):
+        flow_hints.append("request handlers call service modules")
+    if any("component" in p or "react" in p or p.endswith(".tsx") for p in lower_paths):
+        flow_hints.append("UI components render feature views")
+    if any("service" in p or "core" in p or "engine" in p for p in lower_paths):
+        flow_hints.append("core modules execute main business logic")
+    runtime_flow = (
+        "; ".join(flow_hints[:3]) + "."
+        if flow_hints
+        else "entrypoint initializes modules, then feature components/services process the main workflow."
+    )
+
+    bullets = [
+        f"- Purpose: {purpose}",
+        f"- Core modules: {module_text}.",
+        f"- Runtime flow: {runtime_flow}",
+        f"- Output formats: {output_text}.",
+        f"- Primary languages: {language_text}.",
+    ]
+    return "\n".join(bullets)
+
+
+def _normalize_summary_text(raw: str) -> str:
+    text = (raw or "").replace("\r", "\n").strip()
+    if not text:
+        return text
+
+    # Remove ingestion/pipeline noise globally before formatting.
+    text = re.sub(
+        r"\s*The parse/index stage identified[^.\n]*(?:[.\n]|$)",
+        " ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"\s*Representative paths include:[^.\n]*(?:[.\n]|$)",
+        " ",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    # Force known summary sections onto their own bullet lines.
+    text = re.sub(
+        r"\s-\s(?=(Purpose|Core modules|Runtime flow|Output formats|Primary languages):)",
+        "\n- ",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    # Convert remaining inline " - Section: ..." segments to line bullets.
+    text = re.sub(r"\s-\s(?=[A-Z][^:]{1,40}:)", "\n- ", text)
+
+    lines: list[str] = []
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("- "):
+            lines.append(stripped)
+            continue
+        if stripped.startswith("-"):
+            lines.append(f"- {stripped[1:].strip()}")
+            continue
+        if re.match(r"^[A-Z][^:]{1,40}:", stripped):
+            lines.append(f"- {stripped}")
+            continue
+        if lines:
+            lines[-1] = f"{lines[-1]} {stripped}"
+        else:
+            lines.append(f"- {stripped}")
+
+    def _clean_purpose_bullet(line: str) -> str:
+        if not line.lower().startswith("- purpose:"):
+            return line
+        text = line[len("- Purpose:"):].strip()
+        text = re.sub(r"\s*The parse/index stage identified[^.]*\.?", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*Representative paths include:[^.]*\.?", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s+", " ", text).strip(" .")
+        if not text:
+            text = "This repository appears to implement its main product features."
+        if len(text) > 170:
+            cut = text.rfind(" ", 0, 170)
+            text = text[:cut if cut > 0 else 170].rstrip()
+        return f"- Purpose: {text}."
+
+    lines = [_clean_purpose_bullet(line) for line in lines]
+
+    # Cap verbosity while preserving requested format.
+    return "\n".join(lines[:6])
+
+
 def _render_assistant_response(db: Session, repo_id: UUID, query: str, results: list[dict]) -> tuple[str, dict]:
     if not results:
         citations = {"citations": [], "no_citation": True}
         return "I could not find relevant indexed code context for that query.", citations
 
     top = results[: min(3, len(results))]
+    diverse = _select_diverse_results(results, limit=min(6, len(results)))
     formatted = [
         format_citation(
             chunk_id=str(item.get("chunk_id")),
@@ -196,8 +426,27 @@ def _render_assistant_response(db: Session, repo_id: UUID, query: str, results: 
                 content += " Evidence from: " + ", ".join(refs) + "."
             return content, citations
 
+    if _summary_question(query):
+        repo = db.execute(select(Repository).where(Repository.id == repo_id)).scalar_one_or_none()
+        analysis = (
+            db.execute(select(AnalysisResult).where(AnalysisResult.repo_id == repo_id).order_by(AnalysisResult.created_at.desc()))
+            .scalars()
+            .first()
+        )
+
+        langs: list[str] = []
+        for item in results:
+            normalized = _normalize_language(item.get("language"))
+            if normalized and normalized not in langs:
+                langs.append(normalized)
+
+        top_paths = [str(item.get("file_path") or "") for item in results[:8] if item.get("file_path")]
+        summary = _fallback_repo_summary(repo=repo, analysis=analysis, languages=langs, top_paths=top_paths)
+        return _normalize_summary_text(summary), citations
+
     llm_contexts = []
-    for item in top:
+    llm_candidates = diverse if diverse else top
+    for item in llm_candidates:
         chunk_id = str(item.get("chunk_id") or "")
         llm_contexts.append(
             {
@@ -210,7 +459,11 @@ def _render_assistant_response(db: Session, repo_id: UUID, query: str, results: 
             }
         )
     try:
-        synthesized = synthesize_grounded_answer(query=query, contexts=llm_contexts)
+        synthesized = synthesize_grounded_answer(
+            query=query,
+            contexts=llm_contexts,
+            intent=_detect_chat_intent(query),
+        )
         if synthesized.strip():
             return synthesized.strip(), citations
     except ChatSynthesisError:
