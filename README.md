@@ -1,179 +1,371 @@
 # DevLens
 
-DevLens is an AI-powered GitHub repository analyzer. It ingests a public repository, builds searchable code intelligence, and serves:
+DevLens is a full-stack repository intelligence platform that analyzes public GitHub repositories and gives you:
+- architecture and quality insights
+- searchable repository context
+- citation-grounded chat over indexed code
 
-- analysis dashboards (architecture, quality, tech debt, contributor context)
-- cited repository chat (RAG over indexed code)
-- export and share workflows
+It is built as a production-oriented pipeline (API + workers + vector store + UI), and can run both locally with Docker and in the cloud (Railway).
 
-## What DevLens Does
+## Live Deployment
 
-1. Accepts a public GitHub URL.
-2. Runs an async pipeline: `parse -> embed -> analyze`.
-3. Streams progress to the client via SSE.
-4. Stores metadata/results in PostgreSQL and vectors in Qdrant.
-5. Exposes dashboard/chat APIs and a web UI for exploration.
+- Frontend: https://frontend-production-57b0.up.railway.app/workspace
+- Backend health: https://backend-production-52c13.up.railway.app/health
 
-## Core Features
+## Demo Screenshot
 
-- Repository analysis with idempotent submission and cache hits by repo+commit.
-- Live progress tracking (`queued`, `parsing`, `embedding`, `analyzing`, `done/failed`).
-- Dashboard panels for:
-  - quality score
-  - architecture summary
-  - contributor stats
-  - tech-debt flags
-  - file tree metadata
-- RAG chat with streaming responses and source citations.
-- Export options (Markdown/HTML/PDF) and signed share links (TTL + revoke).
-- GitHub OAuth login with backend-issued JWT sessions.
-- Guest-mode rate limiting and authenticated limits.
+![DevLens Workspace](assets/devlens.png)
 
-## Architecture
+## Why DevLens
+
+When you open a new repository, understanding it quickly is hard. DevLens automates that first-pass intelligence:
+1. ingest repo
+2. parse and chunk code
+3. embed chunks for semantic search
+4. generate analysis summary and quality signals
+5. answer questions with source citations
+
+## What You Can Do
+
+- Analyze any public GitHub repository URL.
+- Track analysis progress in real time.
+- Open dashboard snapshots for architecture and quality context.
+- Start chat sessions tied to a repository.
+- Ask engineering questions and get citation-backed responses.
+- Share analysis output through signed share links.
+
+## System Architecture
 
 ```mermaid
 flowchart LR
-  U[Developer]
+  U[User] --> FE[Frontend UI]
+  FE -->|REST + SSE| API[FastAPI Backend]
 
-  subgraph Frontend_Layer
-    FE[Frontend Service<br/>Route Shell and API Proxy]
-  end
+  API --> PG[(PostgreSQL)]
+  API --> RD[(Redis)]
+  API --> QD[(Qdrant)]
 
-  subgraph Backend_Layer
-    API[FastAPI API Gateway]
-    AUTH[Auth and Session<br/>GitHub OAuth and JWT]
-  end
+  API -->|enqueue jobs| RQ[Redis Queue]
+  RQ --> P[parse_worker]
+  P --> E[embed_worker]
+  E --> A[analyze_worker]
 
-  subgraph Async_Pipeline
-    RQ[Redis Queue RQ]
-    P[parse_worker]
-    E[embed_worker]
-    A[analyze_worker]
-  end
+  P --> PG
+  E --> QD
+  A --> PG
 
-  subgraph Data_Layer
-    PG[PostgreSQL<br/>repos jobs chunks results users sessions]
-    REDIS[Redis<br/>queue cache rate limiting]
-    QD[Qdrant<br/>code chunk vectors]
-  end
-
-  U -->|Analyze Chat Dashboard| FE
-  FE -->|REST SSE| API
-  API --> AUTH
-  API -->|enqueue jobs| RQ
-  RQ --> P
-  P --> E
-  E --> A
-  API -->|metadata| PG
-  API -->|cache and limits| REDIS
-  P -->|chunks and job updates| PG
-  E -->|vector upsert| QD
-  A -->|analysis results| PG
-  API -->|hybrid retrieval| QD
-  API -->|lexical retrieval| PG
+  API -->|OAuth + JWT| AUTH[Auth Layer]
+  API -->|LLM synthesis| LLM[OpenRouter / Groq]
 ```
 
 ## Tech Stack
 
-### Backend and Workers
-- FastAPI
+### Backend
+- Python, FastAPI
 - SQLAlchemy + Alembic
 - PostgreSQL
-- Redis + RQ
-- Qdrant
-- PyJWT + GitHub OAuth
-- httpx / pytest
-- Docker / Docker Compose
+- Redis (queue + caching + limits)
+- Qdrant (vector search)
 
-### AI and Retrieval
-- Hybrid retrieval:
-  - dense search in Qdrant
-  - lexical search in PostgreSQL FTS (`tsvector` + `ts_rank_cd`)
-- LLM synthesis via OpenRouter (model configurable by env)
-- LLM summary provider routing with OpenRouter primary and optional Groq fallback
+### Workers
+- Python worker services (`parse_worker`, `embed_worker`, `analyze_worker`)
+- RQ-style async job processing
+
+### Frontend
+- Node.js server-rendered UI (`frontend/server.js`)
+- Workspace-centered flow (Analyze -> Dashboard -> Chat)
+
+### AI / Retrieval
+- Dense retrieval (Qdrant)
+- Lexical retrieval (PostgreSQL FTS)
+- Optional reranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`)
+- LLM provider routing (OpenRouter primary, Groq fallback)
+
+### Infra
+- Docker Compose for local stack
+- Railway for cloud deployment
+- GitHub OAuth for auth
 
 ## Repository Structure
 
-- `backend/` API service
-- `workers/` async processing pipeline
-- `frontend/` web UI server and route views
-- `frontend-next/` parallel Next.js + TypeScript migration scaffold
-- `docs/` product, API, test, release, and observability docs
-- `scripts/` local automation scripts
-- `docker-compose.yml` local multi-service runtime
+- `backend/` FastAPI API service
+- `workers/` async analysis pipeline
+- `frontend/` production UI server
+- `frontend-next/` next-phase migration scaffold
+- `docs/` contracts, planning, QA, runbooks
+- `scripts/` automation for setup, tests, deploy, eval
+- `assets/` static assets (screenshots)
 
-## Local Development
+## End-to-End Runtime Flow
 
-### Prerequisites
-- Docker + Docker Compose
-- PowerShell (scripts are `.ps1`)
-- Node.js (for frontend local test/runtime)
+1. User submits GitHub URL from `/workspace` or `/analyze`.
+2. Backend creates/updates repository record and enqueues a job.
+3. `parse_worker` clones and chunks source code.
+4. `embed_worker` generates vectors and upserts into Qdrant.
+5. `analyze_worker` computes architecture/quality summaries.
+6. UI streams status updates from SSE endpoint.
+7. Dashboard API exposes final analysis payload.
+8. Chat session retrieves relevant chunks and synthesizes response with citations.
 
-### Start and Stop
-1. Start local stack: `./scripts/dev-up.ps1`
-2. Verify: `docker compose ps`
-3. Stop stack: `./scripts/dev-down.ps1`
+## Prerequisites
 
-### Database
-- Apply migrations: `./scripts/db-migrate.ps1`
+- Docker Desktop (or Docker Engine + Compose)
+- PowerShell (Windows) or Bash
+- Node.js 20+ (for frontend scripts/tests)
+- Python 3.11+ (if running some checks outside containers)
 
-### Tests
-- Backend tests: `./scripts/test-backend.ps1`
-- Worker tests: `./scripts/test-worker.ps1`
-- Frontend tests: `npm --prefix frontend test`
-- Next scaffold checks: `./scripts/test-frontend-next.ps1`
-- Frontend cutover parity check: `./scripts/validate_frontend_cutover.ps1`
-- Multi-repo chat quality eval:
-  - Dataset template: `docs/evaluation/chat_quality_dataset.sample.json`
-  - Run: `./scripts/eval-chat-quality.ps1 -BaseUrl http://localhost:8000 -AccessToken <TOKEN>`
+## Local Setup (Beginner-Friendly)
 
-## Environment Configuration
+### 1. Clone and enter project
 
-Use these templates:
-- `backend/.env.example`
-- `workers/.env.example`
-- `frontend/.env.example`
+```powershell
+git clone https://github.com/atikulmunna/devlens-fullstack.git
+cd devlens-fullstack
+```
 
-Configuration is fail-fast for missing required variables.
+### 2. Create local env files
 
-## Security Notes
+Copy examples to real env files (do not commit secrets):
 
-- Auth authority is backend JWT session management.
-- Refresh/logout endpoints enforce trusted origin/referer checks.
-- CSRF protection uses double-submit cookie:
-  - cookie: `devlens_csrf_token`
-  - header: `X-CSRF-Token`
-- Analyze endpoint is rate limited (guest/auth buckets).
+```powershell
+Copy-Item backend/.env.example backend/.env
+Copy-Item workers/.env.example workers/.env
+Copy-Item frontend/.env.example frontend/.env
+```
 
-## Key Endpoints
+### 3. Fill required secrets
 
-### Health
-- Backend: `http://localhost:8000/health`
-- Frontend: `http://localhost:3000/health`
-- Qdrant: `http://localhost:6333/healthz`
+At minimum, set these in `backend/.env`:
+- `GITHUB_CLIENT_ID`
+- `GITHUB_CLIENT_SECRET`
+- `JWT_SECRET`
 
-### API (base `/api/v1`)
+Recommended for better chat quality/fallback:
+- `OPENROUTER_API_KEY`
+- `GROQ_API_KEY`
+
+Set in `workers/.env` as well:
+- `OPENROUTER_API_KEY`
+- `GROQ_API_KEY`
+
+### 4. Start services
+
+```powershell
+./scripts/dev-up.ps1
+```
+
+### 5. Run DB migrations
+
+```powershell
+./scripts/db-migrate.ps1
+```
+
+### 6. Open app
+
+- Workspace: http://localhost:3000/workspace
+- Classic analyze page: http://localhost:3000/analyze
+- Backend health: http://localhost:8000/health
+
+## Environment Variables Reference
+
+### Backend (`backend/.env`)
+
+Required core:
+- `DATABASE_URL`
+- `REDIS_URL`
+- `QDRANT_URL`
+- `QDRANT_COLLECTION`
+- `GITHUB_CLIENT_ID`
+- `GITHUB_CLIENT_SECRET`
+- `GITHUB_OAUTH_REDIRECT_URI`
+- `FRONTEND_URL`
+- `JWT_SECRET`
+
+Provider / model controls:
+- `OPENROUTER_API_KEY`
+- `GROQ_API_KEY`
+- `LLM_CHAT_MODEL`
+- `LLM_PRIMARY_PROVIDER`
+- `LLM_FALLBACK_PROVIDER`
+- `LLM_FALLBACK_MODEL`
+
+Retrieval controls:
+- `RERANKER_ENABLED`
+- `RERANKER_MODEL`
+- `RERANKER_CANDIDATE_LIMIT`
+
+### Workers (`workers/.env`)
+
+Required core:
+- `REDIS_URL`
+- `DATABASE_URL`
+- `QDRANT_URL`
+- `QDRANT_COLLECTION`
+
+LLM synthesis for analysis summary:
+- `LLM_SUMMARY_PROVIDER`
+- `LLM_SUMMARY_MODEL`
+- `OPENROUTER_API_KEY`
+- `GROQ_API_KEY`
+
+Pipeline tuning:
+- `PARSE_MAX_FILES`
+- `PARSE_MAX_CHUNKS`
+- `EMBED_BATCH_SIZE`
+
+### Frontend (`frontend/.env`)
+
+- `NEXT_PUBLIC_API_URL` (usually `http://localhost:8000` in local)
+- `PORT` (default `3000`)
+
+## Authentication Overview
+
+DevLens uses GitHub OAuth + backend JWT session flow:
+1. Start login from `/api/v1/auth/github?next=/workspace`
+2. Callback hits backend (`/api/v1/auth/callback`)
+3. Backend sets refresh/session cookies
+4. Frontend can call `/api/v1/auth/refresh` to get access token
+5. Access token is sent as `Authorization: Bearer ...` for chat APIs
+
+CSRF protection:
+- cookie: `devlens_csrf_token`
+- header: `X-CSRF-Token`
+
+## API Highlights
+
+Base path: `/api/v1`
+
+Repository:
 - `POST /repos/analyze`
-- `GET /repos/{repo_id}/status` (SSE; supports `once=true`)
+- `GET /repos/{repo_id}/status` (SSE)
 - `GET /repos/{repo_id}/dashboard`
+- `GET /repos/{repo_id}/dependency-graph`
+
+Chat:
 - `POST /chat/sessions`
-- `POST /chat/sessions/{id}/message` (SSE streaming)
-- `GET /auth/github`, `GET /auth/callback`, `POST /auth/refresh`
-- `POST /export/{repo_id}/share`, `DELETE /export/share/{share_id}`
+- `GET /chat/sessions?repo_id=...`
+- `GET /chat/sessions/{session_id}`
+- `POST /chat/sessions/{session_id}/message` (SSE stream)
 
-## Deployment
+Auth:
+- `GET /auth/github`
+- `GET /auth/callback`
+- `POST /auth/refresh`
 
-Current production deployment:
-- Railway: backend, worker, frontend, postgres, redis, qdrant
+Share/Export:
+- `POST /export/{repo_id}/share`
+- `DELETE /export/share/{share_id}`
+- `GET /share/{token}`
 
-## Project Documentation
+## Testing and Validation
 
-- API Contract: `docs/api/API_Contract_v1.1.md`
+### Core tests
+
+```powershell
+./scripts/test-backend.ps1
+./scripts/test-worker.ps1
+npm --prefix frontend test
+```
+
+### Smoke / E2E
+
+```powershell
+./scripts/smoke-e2e.ps1
+```
+
+### Chat quality eval
+
+```powershell
+./scripts/eval-chat-quality.ps1 -BaseUrl http://localhost:8000 -AccessToken <TOKEN>
+```
+
+Outputs are written under `artifacts/chat-quality/<run_id>/`.
+
+## Deployment (Railway)
+
+Production currently uses Railway services for:
+- frontend
+- backend
+- worker
+- postgres
+- redis
+- qdrant
+
+Important deployment note:
+- For frontend deploy from monorepo root, use path-as-root:
+
+```powershell
+railway up frontend --path-as-root --service frontend
+```
+
+If you deploy from root without path-as-root, Railpack may fail to detect frontend app.
+
+## New User Walkthrough
+
+1. Open `/workspace`.
+2. Paste GitHub URL -> click Analyze.
+3. Wait until status reaches done.
+4. Load Dashboard (auto context or repo ID).
+5. Login with GitHub.
+6. Refresh and save access token.
+7. Create chat session and ask questions.
+
+Recommended starter prompts:
+- "Summarize this repository in 6 bullets."
+- "What are the core modules and how do they interact?"
+- "Where is authentication implemented?"
+- "List likely technical debt areas with citations."
+
+## Troubleshooting
+
+### UI looks old after deploy
+- Hard refresh browser (`Ctrl+F5`).
+- Confirm latest frontend deployment is `SUCCESS`.
+- Ensure deploy used `frontend --path-as-root`.
+
+### Analyze starts but no progress
+- Check backend + worker logs.
+- Verify Redis/Postgres/Qdrant are healthy.
+- Ensure repo URL is public and reachable.
+
+### Chat says no token / 401
+- Run GitHub login flow.
+- Refresh token from auth endpoint.
+- Save access token in Workspace before chat calls.
+
+### GitHub OAuth redirect_uri mismatch
+- OAuth app callback URL must exactly match backend setting:
+  - local: `http://localhost:8000/api/v1/auth/callback`
+  - prod: `https://backend-production-52c13.up.railway.app/api/v1/auth/callback`
+
+## Security and Production Notes
+
+- Keep `.env` files out of git (`.gitignore` enforced).
+- Rotate compromised secrets immediately.
+- Use branch protection + CI checks for production safety.
+- Keep production and staging env values isolated.
+
+## Useful Scripts
+
+- `scripts/dev-up.ps1` / `scripts/dev-down.ps1`
+- `scripts/db-migrate.ps1`
+- `scripts/test-backend.ps1`
+- `scripts/test-worker.ps1`
+- `scripts/smoke-e2e.ps1`
+- `scripts/eval-chat-quality.ps1`
+- `scripts/deploy_railway_prod.ps1`
+- `scripts/deploy_railway_staging.ps1`
+
+## Documentation Index
+
+- API contract: `docs/api/API_Contract_v1.1.md`
 - Implementation checklist: `docs/planning/Implementation_Checklist.md`
 - CI/CD runbook: `docs/release/CI_CD_Runbook.md`
 - Deployment checklist: `docs/release/Phase5_Deployment_Checklist.md`
-- Staging managed parity runbook: `docs/release/Staging_Managed_Parity_Runbook.md`
-- Frontend cutover and rollback runbook: `docs/release/Frontend_Cutover_Rollback_Runbook.md`
+- Staging parity runbook: `docs/release/Staging_Managed_Parity_Runbook.md`
+- Frontend cutover runbook: `docs/release/Frontend_Cutover_Rollback_Runbook.md`
 - QA report: `docs/testing/Release_QA_v1.1.md`
-- Load/SLA validation: `docs/testing/DEV-072_Load_SLA_Validation.md`
-- Observability notes: `docs/observability/README.md`
+
+## License
+
+Add your preferred license in this repository (for example MIT) if you plan to distribute or accept contributions publicly.
