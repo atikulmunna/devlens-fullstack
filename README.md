@@ -123,6 +123,9 @@ flowchart LR
 - Frontend tests: `npm --prefix frontend test`
 - Next scaffold checks: `./scripts/test-frontend-next.ps1`
 - Frontend cutover parity check: `./scripts/validate_frontend_cutover.ps1`
+- Multi-repo chat quality eval:
+  - Dataset template: `docs/evaluation/chat_quality_dataset.sample.json`
+  - Run: `./scripts/eval-chat-quality.ps1 -BaseUrl http://localhost:8000 -AccessToken <TOKEN>`
 
 ## Environment Configuration
 

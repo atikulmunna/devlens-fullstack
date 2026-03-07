@@ -29,92 +29,141 @@ function layout({ title, heading, subtitle, route, body, scripts = '' }) {
     <link rel="icon" href="data:image/svg+xml,${faviconSvg}" />
     <style>
       :root {
-        --bg: #eef2f7;
-        --bg-2: #f8fafc;
-        --ink: #152238;
-        --muted: #4f5e75;
+        --bg: #f3f6fb;
+        --bg-2: #e8eef8;
+        --ink: #12253f;
+        --muted: #4a5f7b;
         --panel: #ffffff;
-        --line: #ccd6e6;
-        --accent: #144b8b;
-        --accent-2: #0e3e74;
-        --warn: #8a2500;
-        --ok: #1f6f51;
-        --shadow: 0 10px 28px rgba(20, 36, 58, 0.09);
+        --line: #d3ddea;
+        --accent: #0e5ea8;
+        --accent-2: #0b4a84;
+        --warn: #9b2f03;
+        --ok: #0f7b55;
+        --shadow: 0 14px 34px rgba(17, 37, 66, 0.09);
       }
       * { box-sizing: border-box; }
       body {
         margin: 0;
         font-family: "Merriweather", Georgia, serif;
         background:
-          radial-gradient(circle at 0% 0%, #ffffff 0%, #f4f7fb 40%, transparent 60%),
+          radial-gradient(1200px 480px at 100% -20%, #d7e7ff 0%, transparent 55%),
+          radial-gradient(800px 420px at -10% 0%, #fff 0%, transparent 58%),
           linear-gradient(180deg, var(--bg-2), var(--bg));
         color: var(--ink);
       }
-      header, main, footer { width: 100%; max-width: none; margin: 0; padding: 18px 30px; }
-      header { padding-top: 28px; }
-      .shell { display: grid; grid-template-columns: 1fr; gap: 18px; }
+      .app-shell {
+        min-height: 100vh;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+      }
+      .topbar, main, footer {
+        width: min(1660px, calc(100vw - 48px));
+        margin: 0 auto;
+      }
+      .topbar {
+        margin-top: 24px;
+        border: 1px solid var(--line);
+        background: linear-gradient(180deg, #ffffff, #f9fbff);
+        border-radius: 16px;
+        padding: 16px 22px;
+        box-shadow: var(--shadow);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .brand-wrap {
+        display: grid;
+        gap: 8px;
+      }
+      .brand-heading {
+        margin: 0;
+        font-size: 30px;
+        letter-spacing: -0.01em;
+      }
+      .brand-subtitle {
+        margin: 0;
+        color: var(--muted);
+        font-size: 17px;
+      }
+      .nav {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .shell { display: grid; gap: 20px; margin-top: 18px; margin-bottom: 18px; }
       .card {
         background: var(--panel);
         border: 1px solid var(--line);
-        border-radius: 14px;
-        padding: 18px;
+        border-radius: 16px;
+        padding: 20px;
         box-shadow: var(--shadow);
       }
-      h1 { margin: 0 0 8px; font-size: 28px; }
-      h2 { margin: 0 0 12px; font-size: 21px; }
-      p { margin: 0 0 10px; color: var(--muted); }
+      h1 { margin: 0 0 8px; font-size: 32px; }
+      h2 { margin: 0 0 12px; font-size: 24px; letter-spacing: -0.01em; }
+      p { margin: 0 0 10px; color: var(--muted); line-height: 1.56; }
       code {
-        background: #eef3fb;
+        background: #eef4fd;
         border-radius: 6px;
         padding: 2px 6px;
-        color: #0e4c80;
+        color: #114e8e;
       }
       .chip {
         display: inline-block;
-        border: 1px solid #b8cce8;
-        color: var(--accent-2);
+        border: 1px solid #c2d5ef;
+        color: var(--accent);
         border-radius: 999px;
-        padding: 5px 11px;
+        padding: 6px 12px;
         font-size: 12px;
         font-weight: 700;
-        background: #f2f6fc;
+        background: #f4f8ff;
       }
       .state { display: grid; gap: 10px; }
       .loading {
-        border: 1px dashed #a9bbd4;
+        border: 1px dashed #afc4e0;
         border-radius: 8px;
-        padding: 10px;
+        padding: 11px;
       }
       .error {
-        border: 1px solid #f3ccc0;
+        border: 1px solid #efcec3;
         background: #fff6f3;
         color: var(--warn);
         border-radius: 8px;
-        padding: 10px;
+        padding: 11px;
       }
-      footer { font-size: 12px; color: var(--muted); padding-bottom: 24px; }
-      a { color: var(--accent); text-decoration: none; }
-      a:hover { text-decoration: underline; }
+      footer {
+        font-size: 13px;
+        color: var(--muted);
+        padding-bottom: 24px;
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+        transition: color 0.15s ease;
+      }
+      a:hover { color: var(--accent-2); text-decoration: underline; }
       .grid { display: grid; gap: 12px; }
       .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
       label { display: grid; gap: 6px; font-weight: 600; }
       input[type=text] {
         width: 100%;
         border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 10px 12px;
+        border-radius: 10px;
+        padding: 11px 13px;
         font: inherit;
       }
       button {
         width: fit-content;
-        border: 1px solid #0d3d72;
-        background: linear-gradient(180deg, #1a5a9d, var(--accent-2));
+        border: 1px solid #0f3f71;
+        background: linear-gradient(180deg, #1f66ad, var(--accent-2));
         color: #fff;
-        border-radius: 8px;
+        border-radius: 10px;
         padding: 10px 14px;
         font: inherit;
         font-weight: 600;
         cursor: pointer;
+        box-shadow: 0 4px 14px rgba(18, 74, 128, 0.25);
       }
       button:disabled { opacity: 0.65; cursor: not-allowed; }
       .hidden { display: none; }
@@ -127,18 +176,41 @@ function layout({ title, heading, subtitle, route, body, scripts = '' }) {
         padding: 10px;
       }
       .mono { font-family: "Cascadia Mono", Consolas, monospace; }
+      .route-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 12px;
+        border: 1px solid #c8d8ee;
+        border-radius: 999px;
+        background: #f5f9ff;
+        color: #1d4f86;
+        font-size: 13px;
+        font-weight: 700;
+      }
       @media (max-width: 780px) {
-        header, main, footer { padding-left: 12px; padding-right: 12px; }
+        .topbar, main, footer { width: min(1660px, calc(100vw - 20px)); }
+        .brand-heading { font-size: 26px; }
+        h2 { font-size: 21px; }
       }
     </style>
   </head>
   <body>
-    <header>
-      <span class="chip">DevLens v1.1 shell</span>
-      <h1>${heading}</h1>
-      <p>${subtitle}</p>
-    </header>
-    <main class="shell">
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-wrap">
+          <span class="chip">DevLens v1.1 shell</span>
+          <h1 class="brand-heading">${heading}</h1>
+          <p class="brand-subtitle">${subtitle}</p>
+        </div>
+        <nav class="nav">
+          <a class="route-pill" href="/">Home</a>
+          <a class="route-pill" href="/workspace">Workspace</a>
+          <a class="route-pill" href="/analyze">Analyze</a>
+          <a class="route-pill" href="/profile">Profile</a>
+        </nav>
+      </header>
+      <main class="shell">
       <section class="card">
         <h2>Route</h2>
         <p>Rendered path: <code>${route}</code></p>
@@ -151,11 +223,12 @@ function layout({ title, heading, subtitle, route, body, scripts = '' }) {
         <div class="loading">Loading state placeholder (used during data fetch and route transitions).</div>
         <div class="error">Error state placeholder (used for recoverable rendering/API failures).</div>
       </section>
-    </main>
-    <footer>
-      API base: <code>${config.apiUrl}</code>.
-      <a href="/health">Health</a>
-    </footer>
+      </main>
+      <footer>
+        API base: <code>${config.apiUrl}</code>.
+        <a href="/health">Health</a>
+      </footer>
+    </div>
     ${scripts}
   </body>
 </html>`;
@@ -257,6 +330,10 @@ function renderRoute(pathname) {
     border-radius: 8px;
     background: #fff;
     padding: 10px;
+  }
+  .workspace-msg-body {
+    white-space: pre-wrap;
+    line-height: 1.45;
   }
   .workspace-msg-user {
     border-color: #c4d9ee;
@@ -555,7 +632,7 @@ function renderRoute(pathname) {
   function appendMessage(role, htmlContent) {
     const card = document.createElement('div');
     card.className = role === 'user' ? 'workspace-msg workspace-msg-user' : 'workspace-msg';
-    card.innerHTML = '<strong>' + (role === 'user' ? 'You' : 'Assistant') + '</strong><div>' + htmlContent + '</div>';
+    card.innerHTML = '<strong>' + (role === 'user' ? 'You' : 'Assistant') + '</strong><div class="workspace-msg-body">' + htmlContent + '</div>';
     els.chatMessages.appendChild(card);
     els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
   }

@@ -1,0 +1,46 @@
+{
+  "repos": [
+    {
+      "name": "fastapi",
+      "github_url": "https://github.com/fastapi/fastapi",
+      "questions": [
+        {
+          "id": "summary",
+          "intent": "summary",
+          "prompt": "summarize the repo"
+        },
+        {
+          "id": "architecture",
+          "intent": "architecture",
+          "prompt": "explain the architecture and core modules"
+        },
+        {
+          "id": "setup",
+          "intent": "setup",
+          "prompt": "how do I run this project locally?"
+        }
+      ]
+    },
+    {
+      "name": "react",
+      "github_url": "https://github.com/facebook/react",
+      "questions": [
+        {
+          "id": "summary",
+          "intent": "summary",
+          "prompt": "give me a high-level summary of this repository"
+        },
+        {
+          "id": "debug",
+          "intent": "debug",
+          "prompt": "where would you investigate first for a rendering bug?"
+        },
+        {
+          "id": "security",
+          "intent": "security",
+          "prompt": "where are auth or security-sensitive code paths likely located?"
+        }
+      ]
+    }
+  ]
+}
