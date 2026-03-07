@@ -1,4 +1,5 @@
 import json
+from typing import Literal
 
 import httpx
 
@@ -7,6 +8,9 @@ from app.config import settings
 
 class ChatSynthesisError(RuntimeError):
     pass
+
+
+ChatIntent = Literal["general", "architecture", "setup", "debug", "security"]
 
 
 def _provider_chain() -> list[str]:
@@ -36,20 +40,41 @@ def _provider_config(provider: str) -> tuple[str, str, str, float]:
     raise ChatSynthesisError(f"Unsupported LLM provider: {provider}")
 
 
-def _call_provider(provider: str, prompt: str) -> str:
+def _call_provider(
+    provider: str,
+    prompt: str,
+    mode: Literal["answer", "summary"],
+    intent: ChatIntent,
+) -> str:
     base_url, api_key, model, timeout = _provider_config(provider)
     if not api_key:
         raise ChatSynthesisError(f"Missing API key for provider: {provider}")
+
+    system_prompt = (
+        "You answer developer questions strictly from retrieved repository code context. "
+        "Do not invent facts. If evidence is weak, say so briefly."
+    )
+    if mode == "summary":
+        system_prompt = (
+            "You are a repository analyst. Use only retrieved context. "
+            "Return exactly 4-6 concise bullets that cover: purpose, core modules, runtime flow, output formats. "
+            "Do not include a 'Based on indexed code context' preface."
+        )
+    elif intent == "architecture":
+        system_prompt += " Focus on components, boundaries, and data/control flow between modules."
+    elif intent == "setup":
+        system_prompt += " Focus on practical setup/run steps, required files, and commands inferred from context."
+    elif intent == "debug":
+        system_prompt += " Focus on likely failure points, diagnostics, and concrete next checks from the cited files."
+    elif intent == "security":
+        system_prompt += " Focus on auth, token handling, secrets, permissions, and security-sensitive flows."
 
     body = {
         "model": model,
         "messages": [
             {
                 "role": "system",
-                "content": (
-                    "You answer developer questions strictly from retrieved repository code context. "
-                    "Do not invent facts. If evidence is weak, say so briefly."
-                ),
+                "content": system_prompt,
             },
             {"role": "user", "content": prompt},
         ],
@@ -81,7 +106,12 @@ def _call_provider(provider: str, prompt: str) -> str:
     return text
 
 
-def synthesize_grounded_answer(query: str, contexts: list[dict]) -> str:
+def synthesize_grounded_answer(
+    query: str,
+    contexts: list[dict],
+    mode: Literal["answer", "summary"] = "answer",
+    intent: ChatIntent = "general",
+) -> str:
     if not contexts:
         raise ChatSynthesisError("No contexts provided for synthesis")
 
@@ -103,14 +133,23 @@ def synthesize_grounded_answer(query: str, contexts: list[dict]) -> str:
         f"{query.strip()}\n\n"
         "Retrieved code contexts (JSON):\n"
         f"{json.dumps(trimmed_contexts)}\n\n"
-        "Write a concise answer in plain text grounded only in this evidence. "
-        "Mention uncertainty if evidence is partial. Keep under 6 sentences."
     )
+    if mode == "summary":
+        prompt += (
+            "Provide a high-level repository summary in 4-6 bullets covering: "
+            "purpose, core modules, runtime flow, and output formats. "
+            "Ground every bullet in the provided evidence."
+        )
+    else:
+        prompt += (
+            "Write a concise answer in plain text grounded only in this evidence. "
+            "Mention uncertainty if evidence is partial. Keep under 6 sentences."
+        )
 
     last_error: Exception | None = None
     for provider in _provider_chain():
         try:
-            return _call_provider(provider, prompt)
+            return _call_provider(provider, prompt, mode=mode, intent=intent)
         except Exception as exc:  # noqa: BLE001
             last_error = exc
             continue
