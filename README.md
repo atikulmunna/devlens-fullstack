@@ -38,24 +38,24 @@ When you open a new repository, understanding it quickly is hard. DevLens automa
 
 ```mermaid
 flowchart LR
-  U[User] --> FE[Frontend UI]
-  FE -->|REST + SSE| API[FastAPI Backend]
+  user["User"] --> frontend["Frontend UI"]
+  frontend -->|REST and SSE| backend["FastAPI Backend"]
 
-  API --> PG[(PostgreSQL)]
-  API --> RD[(Redis)]
-  API --> QD[(Qdrant)]
+  backend --> postgres["PostgreSQL"]
+  backend --> redis["Redis"]
+  backend --> qdrant["Qdrant"]
 
-  API -->|enqueue jobs| RQ[Redis Queue]
-  RQ --> P[parse_worker]
-  P --> E[embed_worker]
-  E --> A[analyze_worker]
+  backend -->|enqueue| queue["Redis Queue"]
+  queue --> parse["Parse Worker"]
+  parse --> embed["Embed Worker"]
+  embed --> analyze["Analyze Worker"]
 
-  P --> PG
-  E --> QD
-  A --> PG
+  parse --> postgres
+  embed --> qdrant
+  analyze --> postgres
 
-  API -->|OAuth + JWT| AUTH[Auth Layer]
-  API -->|LLM synthesis| LLM[OpenRouter / Groq]
+  backend -->|auth| auth["GitHub OAuth and JWT"]
+  backend -->|llm| llm["OpenRouter or Groq"]
 ```
 
 ## Tech Stack
