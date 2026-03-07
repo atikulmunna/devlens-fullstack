@@ -218,11 +218,6 @@ function layout({ title, heading, subtitle, route, body, scripts = '' }) {
       <section class="card">
         ${body}
       </section>
-      <section class="card state">
-        <h2>Global States</h2>
-        <div class="loading">Loading state placeholder (used during data fetch and route transitions).</div>
-        <div class="error">Error state placeholder (used for recoverable rendering/API failures).</div>
-      </section>
       </main>
       <footer>
         API base: <code>${config.apiUrl}</code>.
