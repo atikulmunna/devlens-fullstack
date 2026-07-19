@@ -373,8 +373,6 @@ Recommended starter prompts:
 - `scripts/test-worker.ps1`
 - `scripts/smoke-e2e.ps1`
 - `scripts/eval-chat-quality.ps1`
-- `scripts/deploy_railway_prod.ps1`
-- `scripts/deploy_railway_staging.ps1`
 
 ## Documentation Index
 

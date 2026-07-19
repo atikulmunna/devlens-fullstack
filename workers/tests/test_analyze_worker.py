@@ -1,5 +1,5 @@
 import analyze_worker
-from analyze_worker import AnalyzeError, AnalyzeSnapshot, ChunkRecord
+from analyze_worker import AnalyzeSnapshot, ChunkRecord
 
 
 class FakeSession:
