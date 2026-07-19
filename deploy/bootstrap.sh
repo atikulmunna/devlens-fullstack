@@ -24,7 +24,7 @@ fi
 
 # 3) Preconditions
 [ -f .env.prod ] || { echo "ERROR: .env.prod missing (copy deploy/env.prod.example and fill it)"; exit 1; }
-[ -s deploy/alpha_users ] || { echo "ERROR: no alpha users yet, run: bash deploy/adduser.sh <name>"; exit 1; }
+grep -q '^DEVLENS_GATE_SECRET=' .env.prod || { echo "ERROR: set DEVLENS_GATE_SECRET in .env.prod (the private-alpha access key)"; exit 1; }
 
 # 4) Build + start
 sudo $COMPOSE up -d --build

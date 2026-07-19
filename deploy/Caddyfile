@@ -1,15 +1,14 @@
 # DevLens private-alpha reverse proxy.
 #
-# DEVLENS_DOMAIN / DEVLENS_TLS_EMAIL are injected from .env.prod via docker-compose.
-# Caddy fetches a real Let's Encrypt certificate automatically for a public domain
-# (e.g. a free sslip.io hostname derived from the Elastic IP).
+# DEVLENS_DOMAIN / DEVLENS_TLS_EMAIL / DEVLENS_GATE_SECRET are injected from .env.prod
+# via docker-compose. Caddy fetches a real Let's Encrypt certificate automatically for a
+# public domain (a free sslip.io hostname derived from the Elastic IP).
 #
-# Gating model: every request needs a Basic Auth alpha credential (managed by
-# deploy/adduser.sh in /etc/caddy/alpha_users) EXCEPT the endpoints that carry their
-# own JWT bearer auth (chat + commit-diff). Those cannot also use Basic Auth, because
-# both live in the Authorization header, so the app protects them instead (they return
-# 401 without a valid token). All traffic goes to the Next.js frontend, which proxies
-# /api/v1 to the backend internally, so the backend is never exposed directly.
+# Gating: visitors without a valid access cookie see a branded login page (gate.html).
+# Submitting the correct access key sets an httpOnly cookie, after which all traffic is
+# proxied to the Next.js frontend (which proxies /api/v1 to the backend internally). The
+# cookie gate does not touch the Authorization header, so the app's own JWT bearer auth
+# (GitHub login for chat/diff) works unchanged.
 
 {
 	email {$DEVLENS_TLS_EMAIL}
@@ -17,21 +16,32 @@
 
 {$DEVLENS_DOMAIN} {
 	encode zstd gzip
+	root * /srv
 
-	# JWT-authenticated API paths: skip Basic Auth (Authorization carries the Bearer
-	# token). The app enforces auth on these, so they are not left open.
-	@appauth path_regexp ^/api/v1/(chat/|repos/[^/]+/diff)
-	handle @appauth {
-		reverse_proxy frontend:3000 {
-			flush_interval -1
+	# Login submission: correct key sets the access cookie, wrong key returns to the page.
+	@gate path /__gate
+	handle @gate {
+		@ok query key={$DEVLENS_GATE_SECRET}
+		handle @ok {
+			header Set-Cookie "devlens_access={$DEVLENS_GATE_SECRET}; Path=/; Max-Age=2592000; Secure; HttpOnly; SameSite=Lax"
+			header Location "/"
+			respond "" 302
+		}
+		handle {
+			header Location "/?denied=1"
+			respond "" 302
 		}
 	}
 
-	# Everything else (pages, analyze, dashboard, status, auth) is gated by Basic Auth.
+	# No valid access cookie: serve the branded gate page.
+	@ungated not header Cookie *devlens_access={$DEVLENS_GATE_SECRET}*
+	handle @ungated {
+		rewrite * /gate.html
+		file_server
+	}
+
+	# Gated in: proxy everything to the app (SSE-safe).
 	handle {
-		basic_auth {
-			import /etc/caddy/alpha_users
-		}
 		reverse_proxy frontend:3000 {
 			flush_interval -1
 		}

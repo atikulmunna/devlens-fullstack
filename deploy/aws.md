@@ -1,8 +1,8 @@
 # DevLens , AWS private-alpha deployment
 
-Single EC2 box (t3.medium), all services via `docker-compose.prod.yml`, gated by
-Caddy Basic Auth with free Let's Encrypt HTTPS. Only people you issue credentials
-to can reach the app.
+Single EC2 box (t3.medium), all services via `docker-compose.prod.yml`, fronted by
+Caddy with free Let's Encrypt HTTPS. Visitors hit a branded login page and must enter a
+shared access key (`DEVLENS_GATE_SECRET`) before reaching the app, so it stays invite-only.
 
 ## What you need
 - AWS CLI configured (`aws sts get-caller-identity` works)
@@ -34,17 +34,13 @@ and the Homepage URL to `https://<your-sslip-host>`.
 ssh -i devlens-key.pem ubuntu@<ELASTIC_IP>
 git clone https://github.com/atikulmunna/devlens-fullstack.git && cd devlens-fullstack
 cp deploy/env.prod.example .env.prod
-nano .env.prod   # fill DEVLENS_DOMAIN, TLS email, NIM/Groq keys, GitHub OAuth, JWT_SECRET, strong POSTGRES_PASSWORD
+nano .env.prod   # fill DEVLENS_DOMAIN, TLS email, DEVLENS_GATE_SECRET, NIM/Groq keys, GitHub OAuth, JWT_SECRET, strong POSTGRES_PASSWORD
 ```
 Keep `DATABASE_URL`'s password in sync with `POSTGRES_PASSWORD`.
 
-## 5. Create alpha credentials
-```bash
-bash deploy/adduser.sh alice          # prints a generated password
-bash deploy/adduser.sh bob s3cret     # or set one
-```
-Each tester gets their own username/password. Revoke by deleting their line in
-`deploy/alpha_users` and re-running any `adduser.sh` (it reloads Caddy).
+## 5. Set the access key
+`DEVLENS_GATE_SECRET` in `.env.prod` is the shared access key for the branded login page.
+Hand it to people you invite; rotate it (and recreate Caddy) to revoke access for everyone.
 
 ## 6. Bring it up
 ```bash
@@ -54,8 +50,8 @@ This installs Docker, adds swap, builds + starts the stack, and runs migrations.
 First build is slow (a few minutes) because of the backend image.
 
 ## 7. Verify
-- `https://<your-sslip-host>` prompts for Basic Auth (401 without it).
-- With a tester credential, the workspace loads; "Login with GitHub" enables chat.
+- `https://<your-sslip-host>` shows the branded login page; the access key lets you in.
+- After entering the key, the workspace loads; "Login with GitHub" enables chat.
 - Analyze a small repo (e.g. `https://github.com/pallets/markupsafe`), then chat and
   open the commit-diff view.
 
@@ -76,11 +72,11 @@ aws ec2 release-address --allocation-id <ALLOC_ID> --region us-east-1
 ```
 
 ## Notes
-- Auth model (two layers): Caddy Basic Auth gates pages, analyze, dashboard, and status
-  (your alpha credentials). The chat and commit-diff endpoints are exempt from Basic Auth
-  because they carry their own JWT in the `Authorization` header (which would collide with
-  Basic Auth) and are enforced by the app, testers reach those by logging in with GitHub
-  inside the app. So a tester needs both an alpha credential and a GitHub login for chat.
+- Auth model (two layers): Caddy gates all traffic behind a cookie set by the branded
+  login page (the shared `DEVLENS_GATE_SECRET`). The cookie does not touch the
+  Authorization header, so the app's own JWT bearer auth works unchanged, chat and
+  commit-diff require signing in with GitHub inside the app. So a tester needs the access
+  key (to pass the gate) plus a GitHub login for chat.
 - The reranker is forced off in prod (`RERANKER_ENABLED=false`) to keep the box light;
   dense + lexical retrieval still runs. Flip it on later if you size up.
 - The backend is never exposed directly; Caddy serves the Next.js frontend, which

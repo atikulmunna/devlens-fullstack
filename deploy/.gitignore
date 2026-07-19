@@ -1,4 +1,3 @@
 # Real secrets and credentials created on the host, never commit these.
-alpha_users
 .env.prod
 *.pem

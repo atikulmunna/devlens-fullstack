@@ -92,9 +92,10 @@ services:
     environment:
       DEVLENS_DOMAIN: ${DEVLENS_DOMAIN}
       DEVLENS_TLS_EMAIL: ${DEVLENS_TLS_EMAIL:-}
+      DEVLENS_GATE_SECRET: ${DEVLENS_GATE_SECRET}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./deploy/alpha_users:/etc/caddy/alpha_users:ro
+      - ./deploy/gate.html:/srv/gate.html:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
