@@ -71,7 +71,6 @@ def ts_language_for(key: str) -> str | None:
 
 def _window(start: int, end: int, max_lines: int, overlap_lines: int) -> list[tuple[int, int]]:
     """Line-window an inclusive 1-indexed [start, end] range into <= max_lines pieces."""
-    step = max(1, max_lines - overlap_lines)
     spans: list[tuple[int, int]] = []
     cursor = start
     while cursor <= end:
