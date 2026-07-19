@@ -63,6 +63,7 @@ def test_dense_search_qdrant_includes_repo_filter(monkeypatch) -> None:
             }
         ]
     }
+    monkeypatch.setattr(retrieval_hybrid, "embed_query", lambda *_a, **_k: [0.1] * 1024)
     monkeypatch.setattr(retrieval_hybrid.httpx, "Client", lambda **_kwargs: FakeClient(captured, payload))
 
     results = retrieval_hybrid.dense_search_qdrant("repo-1", "auth token", 5)

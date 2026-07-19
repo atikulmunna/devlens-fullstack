@@ -719,7 +719,10 @@ def send_chat_message(
         source_citations=None,
     )
     db.add(user_msg)
-    db.flush()
+    # Commit the user turn now: the assistant is persisted later inside the streaming
+    # generator, by which point this request's DB session may already be torn down, so a
+    # flush alone would be rolled back and the user message lost.
+    db.commit()
 
     results = hybrid_search_chunks(db, repo_id=session_row.repo_id, query=payload.content, limit=payload.top_k)
     plan = _plan_assistant_response(db, session_row.repo_id, payload.content, results)
