@@ -72,8 +72,9 @@ cat <<EOF
   Elastic IP: $EIP
   SSH:        ssh -i ${KEY_NAME}.pem ubuntu@${EIP}
 ============================================================
+Hostname (sslip.io, no DNS setup): ${EIP//./-}.sslip.io
 Next:
-  1) Point your DuckDNS subdomain at ${EIP}
+  1) Set GitHub OAuth callback to https://${EIP//./-}.sslip.io/api/v1/auth/callback
   2) Copy the repo + your filled .env.prod to the box
   3) Run: bash deploy/bootstrap.sh
 EOF
