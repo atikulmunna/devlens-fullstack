@@ -23,6 +23,13 @@ def _provider_chain() -> list[str]:
 
 def _provider_config(provider: str) -> tuple[str, str, str, float]:
     p = provider.strip().lower()
+    if p in ("nemotron", "nim"):
+        return (
+            str(settings.nim_base_url).rstrip("/"),
+            settings.nim_api_key or "",
+            settings.nemotron_model,
+            float(settings.llm_primary_timeout_seconds),
+        )
     if p == "openrouter":
         return (
             str(settings.openrouter_base_url).rstrip("/"),
@@ -40,27 +47,18 @@ def _provider_config(provider: str) -> tuple[str, str, str, float]:
     raise ChatSynthesisError(f"Unsupported LLM provider: {provider}")
 
 
-def _call_provider(
-    provider: str,
-    prompt: str,
-    mode: Literal["answer", "summary"],
-    intent: ChatIntent,
-) -> str:
-    base_url, api_key, model, timeout = _provider_config(provider)
-    if not api_key:
-        raise ChatSynthesisError(f"Missing API key for provider: {provider}")
-
-    system_prompt = (
-        "You answer developer questions strictly from retrieved repository code context. "
-        "Do not invent facts. If evidence is weak, say so briefly."
-    )
+def _system_prompt(mode: Literal["answer", "summary"], intent: ChatIntent) -> str:
     if mode == "summary":
-        system_prompt = (
+        return (
             "You are a repository analyst. Use only retrieved context. "
             "Return exactly 4-6 concise bullets that cover: purpose, core modules, runtime flow, output formats. "
             "Do not include a 'Based on indexed code context' preface."
         )
-    elif intent == "architecture":
+    system_prompt = (
+        "You answer developer questions strictly from retrieved repository code context. "
+        "Do not invent facts. If evidence is weak, say so briefly."
+    )
+    if intent == "architecture":
         system_prompt += " Focus on components, boundaries, and data/control flow between modules."
     elif intent == "setup":
         system_prompt += " Focus on practical setup/run steps, required files, and commands inferred from context."
@@ -68,53 +66,81 @@ def _call_provider(
         system_prompt += " Focus on likely failure points, diagnostics, and concrete next checks from the cited files."
     elif intent == "security":
         system_prompt += " Focus on auth, token handling, secrets, permissions, and security-sensitive flows."
+    return system_prompt
+
+
+def _max_tokens(mode: Literal["answer", "summary"], intent: ChatIntent) -> int:
+    # Architecture/debug answers and summaries need more room than a short factual reply.
+    if mode == "summary":
+        return 320
+    if intent in ("architecture", "debug"):
+        return 512
+    if intent in ("setup", "security"):
+        return 400
+    return 260
+
+
+def _build_request(
+    provider: str,
+    prompt: str,
+    mode: Literal["answer", "summary"],
+    intent: ChatIntent,
+    stream: bool,
+) -> tuple[str, dict, dict, float]:
+    base_url, api_key, model, timeout = _provider_config(provider)
+    if not api_key:
+        raise ChatSynthesisError(f"Missing API key for provider: {provider}")
 
     body = {
         "model": model,
         "messages": [
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
+            {"role": "system", "content": _system_prompt(mode, intent)},
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.1,
-        "max_tokens": 260,
+        "max_tokens": _max_tokens(mode, intent),
     }
+    if stream:
+        body["stream"] = True
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    return f"{base_url}/chat/completions", headers, body, timeout
 
+
+def _iter_provider_tokens(
+    provider: str,
+    prompt: str,
+    mode: Literal["answer", "summary"],
+    intent: ChatIntent,
+):
+    """Yield content tokens from a provider's streaming chat completion (SSE)."""
+    url, headers, body, timeout = _build_request(provider, prompt, mode, intent, stream=True)
     try:
         with httpx.Client(timeout=timeout) as client:
-            response = client.post(f"{base_url}/chat/completions", headers=headers, json=body)
+            with client.stream("POST", url, headers=headers, json=body) as response:
+                if response.status_code != 200:
+                    response.read()
+                    raise ChatSynthesisError(f"{provider} returned status {response.status_code}")
+                for line in response.iter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[len("data:"):].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    delta = (chunk.get("choices", [{}])[0] or {}).get("delta", {}) or {}
+                    piece = delta.get("content")
+                    if piece:
+                        yield piece
     except httpx.TimeoutException as exc:
         raise ChatSynthesisError(f"{provider} timeout: {exc}") from exc
     except httpx.TransportError as exc:
         raise ChatSynthesisError(f"{provider} transport error: {exc}") from exc
 
-    if response.status_code != 200:
-        raise ChatSynthesisError(f"{provider} returned status {response.status_code}")
 
-    payload = response.json()
-    text = (
-        payload.get("choices", [{}])[0]
-        .get("message", {})
-        .get("content", "")
-        .strip()
-    )
-    if not text:
-        raise ChatSynthesisError(f"{provider} returned empty response")
-    return text
-
-
-def synthesize_grounded_answer(
-    query: str,
-    contexts: list[dict],
-    mode: Literal["answer", "summary"] = "answer",
-    intent: ChatIntent = "general",
-) -> str:
-    if not contexts:
-        raise ChatSynthesisError("No contexts provided for synthesis")
-
+def _build_prompt(query: str, contexts: list[dict], mode: Literal["answer", "summary"]) -> str:
     trimmed_contexts = []
     for idx, item in enumerate(contexts[:6], start=1):
         trimmed_contexts.append(
@@ -145,12 +171,38 @@ def synthesize_grounded_answer(
             "Write a concise answer in plain text grounded only in this evidence. "
             "Mention uncertainty if evidence is partial. Keep under 6 sentences."
         )
+    return prompt
+
+
+def synthesize_grounded_answer_stream(
+    query: str,
+    contexts: list[dict],
+    mode: Literal["answer", "summary"] = "answer",
+    intent: ChatIntent = "general",
+):
+    """Stream grounded-answer tokens as they arrive from the LLM.
+
+    Falls back to the next provider only if the current one fails before emitting any
+    token; a mid-stream failure re-raises (partial output has already been delivered).
+    """
+    if not contexts:
+        raise ChatSynthesisError("No contexts provided for synthesis")
+
+    prompt = _build_prompt(query, contexts, mode)
 
     last_error: Exception | None = None
     for provider in _provider_chain():
+        emitted = False
         try:
-            return _call_provider(provider, prompt, mode=mode, intent=intent)
+            for piece in _iter_provider_tokens(provider, prompt, mode=mode, intent=intent):
+                emitted = True
+                yield piece
+            if emitted:
+                return
+            last_error = ChatSynthesisError(f"{provider} returned empty stream")
         except Exception as exc:  # noqa: BLE001
+            if emitted:
+                raise
             last_error = exc
             continue
 

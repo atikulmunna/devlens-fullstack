@@ -40,8 +40,12 @@ jobs:
           python -m compileall backend/app
           python -m compileall workers
 
-      - name: Frontend syntax check
-        run: node --check frontend/server.js
+      - name: Frontend typecheck and build
+        working-directory: frontend-next
+        run: |
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          npm run build
 
   backend_tests:
     name: Backend Tests
@@ -90,6 +94,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Provide provider keys to the smoke stack
+        run: |
+          printf 'NIM_API_KEY=%s\n' "${{ secrets.NIM_API_KEY }}" >> backend/.env
+          printf 'GROQ_API_KEY=%s\n' "${{ secrets.GROQ_API_KEY }}" >> backend/.env
+          printf 'NIM_API_KEY=%s\n' "${{ secrets.NIM_API_KEY }}" >> workers/.env
+          printf 'GROQ_API_KEY=%s\n' "${{ secrets.GROQ_API_KEY }}" >> workers/.env
+
       - name: Build and start smoke stack
         run: docker compose up -d --build postgres redis qdrant backend
 
@@ -124,7 +135,7 @@ jobs:
         run: docker build -t devlens-worker:ci ./workers
 
       - name: Build frontend image
-        run: docker build -t devlens-frontend:ci ./frontend
+        run: docker build -t devlens-frontend:ci ./frontend-next
 
   deploy_main:
     name: Deploy Main
