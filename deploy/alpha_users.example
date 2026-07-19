@@ -1,0 +1,4 @@
+# Alpha tester credentials for Caddy Basic Auth (one per line): <username> <bcrypt-hash>
+# Do NOT edit by hand, use deploy/adduser.sh <name>, which appends here and reloads Caddy.
+# Example line (hash produced by `caddy hash-password`):
+# alice $2a$14$Q9Xm0m8m0m8m0m8m0m8m0uWpQ9Xm0m8m0m8m0m8m0m8m0m8m0m8m0

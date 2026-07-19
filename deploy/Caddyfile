@@ -1,0 +1,26 @@
+# DevLens private-alpha reverse proxy.
+#
+# DEVLENS_DOMAIN / DEVLENS_TLS_EMAIL are injected from .env.prod via docker-compose.
+# Caddy fetches a real Let's Encrypt certificate automatically for a public domain
+# (e.g. a free DuckDNS subdomain). Every request is gated by Basic Auth; the alpha
+# tester credentials live in /etc/caddy/alpha_users (managed by deploy/adduser.sh).
+#
+# All traffic goes to the Next.js frontend, which proxies /api/v1 to the backend
+# internally, so the backend is never exposed directly.
+
+{
+	email {$DEVLENS_TLS_EMAIL}
+}
+
+{$DEVLENS_DOMAIN} {
+	encode zstd gzip
+
+	basic_auth {
+		import /etc/caddy/alpha_users
+	}
+
+	# SSE (chat + status streams) must not be buffered.
+	reverse_proxy frontend:3000 {
+		flush_interval -1
+	}
+}
