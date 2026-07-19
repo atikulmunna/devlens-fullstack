@@ -31,7 +31,8 @@ When you open a new repository, understanding it quickly is hard. DevLens automa
 - Track analysis progress in real time.
 - Open dashboard snapshots for architecture and quality context.
 - Start chat sessions tied to a repository.
-- Ask engineering questions and get citation-backed responses.
+- Ask engineering questions and get streaming, citation-backed responses.
+- Inspect commit-diff intelligence: what changed, its blast radius (impacted importers), and security-sensitive touches, with a diff-grounded Q&A.
 - Share analysis output through signed share links.
 
 ## System Architecture
@@ -51,11 +52,14 @@ flowchart LR
   embed --> analyze["Analyze Worker"]
 
   parse --> postgres
+  parse -->|commit diff| diff["Commit Diffs"]
+  diff --> postgres
   embed --> qdrant
   analyze --> postgres
 
+  embed -->|embeddings| nim["NVIDIA NIM (nv-embedqa-e5-v5)"]
   backend -->|auth| auth["GitHub OAuth and JWT"]
-  backend -->|llm| llm["OpenRouter or Groq"]
+  backend -->|chat llm| llm["Nemotron via NIM, Groq fallback"]
 ```
 
 ## Tech Stack
@@ -99,12 +103,13 @@ flowchart LR
 
 1. User submits GitHub URL from `/workspace` or `/analyze`.
 2. Backend creates/updates repository record and enqueues a job.
-3. `parse_worker` clones and chunks source code.
-4. `embed_worker` generates vectors and upserts into Qdrant.
+3. `parse_worker` clones and chunks source code (tree-sitter, function/class aware) and captures the commit diff.
+4. `embed_worker` generates NVIDIA NIM embeddings and upserts into Qdrant.
 5. `analyze_worker` computes architecture/quality summaries.
 6. UI streams status updates from SSE endpoint.
 7. Dashboard API exposes final analysis payload.
-8. Chat session retrieves relevant chunks and synthesizes response with citations.
+8. Chat session retrieves relevant chunks (hybrid dense + lexical + reranker) and streams a citation-grounded response.
+9. Diff API exposes changed files, blast radius, security flags, and a diff-grounded Q&A.
 
 ## Prerequisites
 
@@ -135,17 +140,18 @@ Copy-Item frontend-next/.env.example frontend-next/.env
 ### 3. Fill required secrets
 
 At minimum, set these in `backend/.env`:
+- `NIM_API_KEY` (NVIDIA NIM: powers embeddings and Nemotron chat)
+- `GROQ_API_KEY` (chat fallback)
 - `GITHUB_CLIENT_ID`
 - `GITHUB_CLIENT_SECRET`
 - `JWT_SECRET`
 
-Recommended for better chat quality/fallback:
-- `OPENROUTER_API_KEY`
-- `GROQ_API_KEY`
-
 Set in `workers/.env` as well:
-- `OPENROUTER_API_KEY`
-- `GROQ_API_KEY`
+- `NIM_API_KEY` (embeddings)
+- `GROQ_API_KEY` (analysis-summary fallback)
+
+Optional:
+- `OPENROUTER_API_KEY` (no longer used by default; a placeholder value is fine unless you switch the primary provider back to OpenRouter)
 
 ### 4. Start services
 
@@ -180,16 +186,22 @@ Required core:
 - `FRONTEND_URL`
 - `JWT_SECRET`
 
+Embeddings (NVIDIA NIM):
+- `NIM_API_KEY`
+- `NIM_BASE_URL` (default `https://integrate.api.nvidia.com/v1`)
+- `EMBED_MODEL` (default `nvidia/nv-embedqa-e5-v5`)
+- `EMBED_VECTOR_SIZE` (default `1024`, must match the model)
+
 Provider / model controls:
-- `OPENROUTER_API_KEY`
-- `GROQ_API_KEY`
-- `LLM_CHAT_MODEL`
-- `LLM_PRIMARY_PROVIDER`
-- `LLM_FALLBACK_PROVIDER`
+- `NIM_API_KEY` / `GROQ_API_KEY` (chat)
+- `NEMOTRON_MODEL` (default `nvidia/llama-3.1-nemotron-70b-instruct`)
+- `LLM_PRIMARY_PROVIDER` (default `nemotron`)
+- `LLM_FALLBACK_PROVIDER` (default `groq`)
 - `LLM_FALLBACK_MODEL`
+- `OPENROUTER_API_KEY` (optional, unused unless primary is switched back)
 
 Retrieval controls:
-- `RERANKER_ENABLED`
+- `RERANKER_ENABLED` (default `true`)
 - `RERANKER_MODEL`
 - `RERANKER_CANDIDATE_LIMIT`
 
@@ -201,16 +213,21 @@ Required core:
 - `QDRANT_URL`
 - `QDRANT_COLLECTION`
 
+Embeddings (NVIDIA NIM):
+- `NIM_API_KEY`
+- `EMBED_MODEL` (default `nvidia/nv-embedqa-e5-v5`)
+- `EMBED_VECTOR_SIZE` (default `1024`, must match the model and the backend)
+
 LLM synthesis for analysis summary:
 - `LLM_SUMMARY_PROVIDER`
 - `LLM_SUMMARY_MODEL`
-- `OPENROUTER_API_KEY`
 - `GROQ_API_KEY`
 
 Pipeline tuning:
 - `PARSE_MAX_FILES`
 - `PARSE_MAX_CHUNKS`
 - `EMBED_BATCH_SIZE`
+- `EMBED_CACHE_TTL_SECONDS` (content-addressed embedding cache)
 
 ### Frontend (`frontend-next/.env`)
 
@@ -245,6 +262,10 @@ Chat:
 - `GET /chat/sessions/{session_id}`
 - `POST /chat/sessions/{session_id}/message` (SSE stream)
 
+Commit diff:
+- `GET /repos/{repo_id}/diff` (changed files, blast radius, security flags)
+- `POST /repos/{repo_id}/diff/ask` (SSE stream, security-aware Q&A)
+
 Auth:
 - `GET /auth/github`
 - `GET /auth/callback`
@@ -262,7 +283,8 @@ Share/Export:
 ```powershell
 ./scripts/test-backend.ps1
 ./scripts/test-worker.ps1
-npm --prefix frontend test
+npm --prefix frontend-next run typecheck
+npm --prefix frontend-next run build
 ```
 
 ### Smoke / E2E
