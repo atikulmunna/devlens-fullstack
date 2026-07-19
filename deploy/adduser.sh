@@ -15,9 +15,12 @@ PASSWORD="${2:-$(openssl rand -base64 12)}"
 HASH=$(sudo docker run --rm caddy:2-alpine caddy hash-password --plaintext "$PASSWORD")
 
 touch deploy/alpha_users
-# Replace any existing entry for this user, then append the new one.
-grep -v "^${USER_NAME} " deploy/alpha_users > deploy/alpha_users.tmp 2>/dev/null || true
-mv deploy/alpha_users.tmp deploy/alpha_users
+# Replace any existing entry for this user, then append the new one. Update the file IN
+# PLACE (truncate + rewrite the same inode) rather than mv/rename: Docker bind-mounts this
+# single file by inode, so a rename would leave the Caddy container reading the old file.
+grep -v "^${USER_NAME} " deploy/alpha_users > deploy/.alpha_users.tmp 2>/dev/null || true
+cat deploy/.alpha_users.tmp > deploy/alpha_users
+rm -f deploy/.alpha_users.tmp
 echo "${USER_NAME} ${HASH}" >> deploy/alpha_users
 
 echo "User:     ${USER_NAME}"
