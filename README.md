@@ -5,12 +5,16 @@ DevLens is a full-stack repository intelligence platform that analyzes public Gi
 - searchable repository context
 - citation-grounded chat over indexed code
 
-It is built as a production-oriented pipeline (API + workers + vector store + UI), and can run both locally with Docker and in the cloud (Railway).
+It is built as a production-oriented pipeline (API + workers + vector store + UI), and can run both locally with Docker and on a single cloud VM (AWS).
 
-## Live Deployment
+## Live Demo
 
-- Frontend: https://frontend-production-57b0.up.railway.app/workspace
-- Backend health: https://backend-production-52c13.up.railway.app/health
+[![Open the live demo](https://img.shields.io/badge/%E2%96%B6%20Live%20Demo-DevLens-0f6dbb?style=for-the-badge)](https://44-206-66-89.sslip.io)
+
+> **Private alpha.** The demo runs on a small AWS instance to conserve limited free-tier
+> credits, so access is invite-only. Opening the link shows a login page asking for an
+> access key, **contact the author** ([GitHub](https://github.com/atikulmunna)) to request
+> one. Chat additionally requires signing in with GitHub inside the app.
 
 ## Demo Screenshot
 
@@ -87,7 +91,7 @@ flowchart LR
 
 ### Infra
 - Docker Compose for local stack
-- Railway for cloud deployment
+- AWS single-box deployment (Caddy TLS + gated private alpha), see `deploy/aws.md`
 - GitHub OAuth for auth
 
 ## Repository Structure
@@ -301,24 +305,19 @@ npm --prefix frontend-next run build
 
 Outputs are written under `artifacts/chat-quality/<run_id>/`.
 
-## Deployment (Railway)
+## Deployment (AWS single box)
 
-Production currently uses Railway services for:
-- frontend
-- backend
-- worker
-- postgres
-- redis
-- qdrant
+The live demo runs the whole stack on one AWS EC2 instance via `docker-compose.prod.yml`,
+fronted by Caddy (automatic HTTPS + a gated private-alpha login page). Full runbook,
+provisioning, gate secret, backups, and teardown, is in [`deploy/aws.md`](deploy/aws.md).
 
-Important deployment note:
-- For frontend deploy from monorepo root, use path-as-root:
+Provision and bootstrap:
 
-```powershell
-railway up frontend --path-as-root --service frontend
+```bash
+AWS_REGION=us-east-1 INSTANCE_TYPE=t3.medium bash deploy/provision-aws.sh
+# then on the box: copy deploy/env.prod.example to .env.prod, fill it, and run:
+bash deploy/bootstrap.sh
 ```
-
-If you deploy from root without path-as-root, Railpack may fail to detect frontend app.
 
 ## New User Walkthrough
 
