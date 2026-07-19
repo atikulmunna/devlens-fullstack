@@ -1,0 +1,4 @@
+# Shell scripts and Caddy config must keep LF endings so they run on Linux hosts.
+*.sh text eol=lf
+deploy/Caddyfile text eol=lf
+deploy/alpha_users text eol=lf

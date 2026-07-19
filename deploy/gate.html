@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DevLens , Private Alpha</title>
+<style>
+  :root {
+    --bg: #f4f7fb; --ink: #182433; --muted: #516377;
+    --panel: #ffffff; --line: #d9e1ec; --accent: #0f6dbb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 10% 10%, #ffffff, var(--bg));
+    color: var(--ink); font-family: "Segoe UI", Tahoma, sans-serif; padding: 24px;
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 28px 26px; max-width: 460px; width: 100%;
+    box-shadow: 0 12px 40px rgba(24, 36, 51, 0.08);
+  }
+  .chip {
+    display: inline-block; border: 1px solid #b5d3f0; color: var(--accent);
+    border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 600;
+  }
+  h1 { margin: 14px 0 6px; font-size: 30px; }
+  .lead { margin: 0 0 16px; color: var(--muted); line-height: 1.5; }
+  .note {
+    border: 1px solid #b9d8f4; background: #eef6ff; border-radius: 10px;
+    padding: 12px 14px; color: #1b3b57; font-size: 14px; line-height: 1.5; margin-bottom: 18px;
+  }
+  form { display: flex; flex-direction: column; gap: 10px; }
+  label { font-size: 13px; color: var(--muted); }
+  input {
+    font: inherit; width: 100%; border: 1px solid var(--line);
+    border-radius: 9px; padding: 11px 13px;
+  }
+  button {
+    font: inherit; border: 1px solid #0b5ea1; background: var(--accent); color: #fff;
+    border-radius: 9px; padding: 11px 14px; cursor: pointer; font-weight: 600;
+  }
+  button:hover { background: #0b5ea1; }
+  .error { color: #8a2500; background: #fff4f1; border: 1px solid #f1c5b8;
+    border-radius: 9px; padding: 9px 12px; font-size: 14px; display: none; }
+  .foot { margin-top: 16px; font-size: 13px; color: var(--muted); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <span class="chip">DevLens</span>
+    <h1>Private Alpha</h1>
+    <p class="lead">Repository intelligence: analyze any public GitHub repo and chat with citation-grounded answers over its code.</p>
+    <div class="note">
+      This demo runs on a small AWS instance to conserve limited free-tier credits, so access is
+      invite-only. <strong>Contact the author for credentials.</strong>
+    </div>
+    <div class="error" id="err">That access key was not recognized. Try again or contact the author.</div>
+    <form method="GET" action="/__gate">
+      <label for="key">Access key</label>
+      <input id="key" name="key" type="password" placeholder="Enter your access key" autofocus required />
+      <button type="submit">Enter DevLens</button>
+    </form>
+    <p class="foot">Need access? Reach the author on <a href="https://github.com/atikulmunna" rel="noreferrer">GitHub</a>. Source: <a href="https://github.com/atikulmunna/devlens-fullstack" rel="noreferrer">devlens-fullstack</a>.</p>
+  </main>
+  <script>
+    if (new URLSearchParams(location.search).has("denied")) {
+      document.getElementById("err").style.display = "block";
+    }
+  </script>
+</body>
+</html>
