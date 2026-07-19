@@ -8,5 +8,7 @@ alembic==1.14.1
 psycopg[binary]==3.2.5
 PyJWT==2.10.1
 prometheus-client==0.21.1
+# Cross-encoder reranker (optional at runtime: retrieval degrades gracefully if absent)
+sentence-transformers==3.3.1
 pytest==8.3.4
 pytest-cov==6.0.0

@@ -1,9 +1,9 @@
 from datetime import UTC, datetime
 
 from fastapi.responses import JSONResponse
-from redis.asyncio import Redis
 
 from app.config import settings
+from app.redis_client import get_redis
 from app.services.tokens import decode_access_token
 
 
@@ -36,7 +36,7 @@ class RateLimitMiddleware:
         window_seconds = settings.rate_limit_window_seconds
         bucket_key = f"ratelimit:{limit_key_prefix}:{identity_type}:{identity_value}"
 
-        redis_client = Redis.from_url(settings.redis_url, decode_responses=True)
+        redis_client = get_redis()
         try:
             count, ttl = await redis_client.eval(LUA_RATE_LIMIT, 1, bucket_key, window_seconds)
             current = int(count)
@@ -45,8 +45,6 @@ class RateLimitMiddleware:
             # Fail-open to preserve availability if redis is temporarily unavailable.
             await self.app(scope, receive, send)
             return
-        finally:
-            await redis_client.aclose()
 
         remaining = max(limit - current, 0)
         reset_epoch = int(datetime.now(UTC).timestamp()) + ttl_value

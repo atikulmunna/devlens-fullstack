@@ -14,7 +14,11 @@ from app.db.models import AnalysisResult, ChatMessage, CodeChunk, ChatSession, R
 from app.api.error_schema import ERROR_RESPONSE_SCHEMA
 from app.deps import get_current_user, get_db_session
 from app.services.citations import format_citation, validate_citations_for_repo
-from app.services.chat_synthesizer import ChatIntent, ChatSynthesisError, synthesize_grounded_answer
+from app.services.chat_synthesizer import (
+    ChatIntent,
+    ChatSynthesisError,
+    synthesize_grounded_answer_stream,
+)
 from app.services.retrieval_hybrid import hybrid_search_chunks
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -384,10 +388,19 @@ def _normalize_summary_text(raw: str) -> str:
     return "\n".join(lines[:6])
 
 
-def _render_assistant_response(db: Session, repo_id: UUID, query: str, results: list[dict]) -> tuple[str, dict]:
+def _plan_assistant_response(db: Session, repo_id: UUID, query: str, results: list[dict]) -> dict:
+    """Decide how to answer: a deterministic final string, or an LLM synthesis plan.
+
+    Returns {"kind": "final", "text", "citations"} for the no-result / language / summary
+    branches, or {"kind": "llm", "contexts", "intent", "citations", "top", "refs"} when the
+    answer should be synthesized (and streamed) from the model.
+    """
     if not results:
-        citations = {"citations": [], "no_citation": True}
-        return "I could not find relevant indexed code context for that query.", citations
+        return {
+            "kind": "final",
+            "text": "I could not find relevant indexed code context for that query.",
+            "citations": {"citations": [], "no_citation": True},
+        }
 
     top = results[: min(3, len(results))]
     diverse = _select_diverse_results(results, limit=min(6, len(results)))
@@ -403,7 +416,6 @@ def _render_assistant_response(db: Session, repo_id: UUID, query: str, results: 
     ]
     valid_citations = validate_citations_for_repo(db, repo_id=repo_id, citations=formatted)
     refs = [f"{item.get('file_path')}:{item.get('line_start') or 1}" for item in valid_citations] or ["no exact anchor"]
-    content = "Relevant code was found in: " + ", ".join(refs) + "."
     citations = {
         "citations": valid_citations,
         "no_citation": len(valid_citations) == 0,
@@ -424,7 +436,7 @@ def _render_assistant_response(db: Session, repo_id: UUID, query: str, results: 
                 content = "The indexed code appears to use: " + ", ".join(languages) + "."
             if refs:
                 content += " Evidence from: " + ", ".join(refs) + "."
-            return content, citations
+            return {"kind": "final", "text": content, "citations": citations}
 
     if _summary_question(query):
         repo = db.execute(select(Repository).where(Repository.id == repo_id)).scalar_one_or_none()
@@ -442,7 +454,7 @@ def _render_assistant_response(db: Session, repo_id: UUID, query: str, results: 
 
         top_paths = [str(item.get("file_path") or "") for item in results[:8] if item.get("file_path")]
         summary = _fallback_repo_summary(repo=repo, analysis=analysis, languages=langs, top_paths=top_paths)
-        return _normalize_summary_text(summary), citations
+        return {"kind": "final", "text": _normalize_summary_text(summary), "citations": citations}
 
     llm_contexts = []
     llm_candidates = diverse if diverse else top
@@ -458,17 +470,18 @@ def _render_assistant_response(db: Session, repo_id: UUID, query: str, results: 
                 "content": str(item.get("content") or ""),
             }
         )
-    try:
-        synthesized = synthesize_grounded_answer(
-            query=query,
-            contexts=llm_contexts,
-            intent=_detect_chat_intent(query),
-        )
-        if synthesized.strip():
-            return synthesized.strip(), citations
-    except ChatSynthesisError:
-        pass
+    return {
+        "kind": "llm",
+        "contexts": llm_contexts,
+        "intent": _detect_chat_intent(query),
+        "citations": citations,
+        "top": top,
+        "refs": refs,
+    }
 
+
+def _snippet_fallback_text(db: Session, repo_id: UUID, top: list[dict], refs: list[str]) -> str:
+    """Deterministic answer used when LLM synthesis is unavailable or empty."""
     snippets: list[str] = []
     content_by_chunk = _load_chunk_content(
         db,
@@ -487,10 +500,8 @@ def _render_assistant_response(db: Session, repo_id: UUID, query: str, results: 
             snippets.append(f"{path}:{line}")
 
     if snippets:
-        content = "Based on indexed code context: " + " | ".join(snippets) + "."
-    else:
-        content = "Relevant code context was found in: " + ", ".join(refs) + "."
-    return content, citations
+        return "Based on indexed code context: " + " | ".join(snippets) + "."
+    return "Relevant code context was found in: " + ", ".join(refs) + "."
 
 
 def _build_suggested_questions(db: Session, repo_id: UUID, limit: int) -> list[str]:
@@ -711,24 +722,53 @@ def send_chat_message(
     db.flush()
 
     results = hybrid_search_chunks(db, repo_id=session_row.repo_id, query=payload.content, limit=payload.top_k)
-    assistant_text, citations = _render_assistant_response(db, session_row.repo_id, payload.content, results)
+    plan = _plan_assistant_response(db, session_row.repo_id, payload.content, results)
+    citations = plan["citations"]
 
-    assistant_msg = ChatMessage(
-        id=uuid4(),
-        session_id=session_row.id,
-        role="assistant",
-        content=assistant_text,
-        source_citations=citations,
-    )
-    db.add(assistant_msg)
-    db.commit()
-    db.refresh(assistant_msg)
+    def _delta(token: str) -> str:
+        return f"event: delta\ndata: {json.dumps({'token': token})}\n\n"
 
     async def event_stream():
-        for token in assistant_text.split(" "):
-            delta = {"token": token + " "}
-            yield f"event: delta\ndata: {json.dumps(delta)}\n\n"
-            await asyncio.sleep(0)
+        # Deterministic branches (no results / language / summary) emit their fixed text.
+        if plan["kind"] == "final":
+            final_text = plan["text"]
+            for token in final_text.split(" "):
+                yield _delta(token + " ")
+                await asyncio.sleep(0)
+        else:
+            # LLM branch: stream real tokens as they arrive from the model.
+            parts: list[str] = []
+            try:
+                for piece in synthesize_grounded_answer_stream(
+                    query=payload.content,
+                    contexts=plan["contexts"],
+                    intent=plan["intent"],
+                ):
+                    parts.append(piece)
+                    yield _delta(piece)
+                    await asyncio.sleep(0)
+            except ChatSynthesisError:
+                # A mid-stream failure keeps whatever partial text was already delivered.
+                pass
+
+            final_text = "".join(parts).strip()
+            if not final_text:
+                # Nothing streamed (all providers failed before emitting): fall back.
+                final_text = _snippet_fallback_text(db, session_row.repo_id, plan["top"], plan["refs"])
+                for token in final_text.split(" "):
+                    yield _delta(token + " ")
+                    await asyncio.sleep(0)
+
+        assistant_msg = ChatMessage(
+            id=uuid4(),
+            session_id=session_row.id,
+            role="assistant",
+            content=final_text,
+            source_citations=citations,
+        )
+        db.add(assistant_msg)
+        db.commit()
+        db.refresh(assistant_msg)
 
         final = {
             "message_id": str(assistant_msg.id),

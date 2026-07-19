@@ -1,6 +1,4 @@
-import hashlib
 import logging
-import math
 import re
 from uuid import UUID
 
@@ -10,26 +8,21 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.services.embeddings import EmbeddingError, embed_query
 from app.services.reranker import RerankerUnavailable, rerank_candidates
 from app.services.retrieval_lexical import lexical_search_chunks
 
 logger = logging.getLogger(__name__)
 
 
-def _embed_query(query: str, size: int = 384) -> list[float]:
-    # Deterministic local embedder used until model-backed embedder is integrated.
-    digest = hashlib.sha256(query.encode("utf-8")).digest()
-    seed = list(digest) * ((size // len(digest)) + 1)
-    vector = [(b / 255.0) * 2.0 - 1.0 for b in seed[:size]]
-    norm = math.sqrt(sum(x * x for x in vector)) or 1.0
-    return [x / norm for x in vector]
-
-
 def dense_search_qdrant(repo_id: str, query: str, limit: int) -> list[dict]:
     if not repo_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="repo_id filter is required")
 
-    vector = _embed_query(query)
+    try:
+        vector = embed_query(query)
+    except EmbeddingError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Query embedding failed: {exc}") from exc
     url = f"{str(settings.qdrant_url).rstrip('/')}/collections/{settings.qdrant_collection}/points/search"
     body = {
         "vector": vector,
@@ -170,10 +163,13 @@ def hybrid_search_chunks(db: Session, repo_id: UUID, query: str, limit: int = 20
         overlap = 0.0
         if query_terms and file_terms:
             overlap = len(query_terms.intersection(file_terms)) / len(query_terms)
+        # Dense is now a real semantic signal, so it and lexical carry the ranking; the
+        # file-path term-overlap heuristic is a light tie-breaker. The cross-encoder reranker
+        # (when enabled) re-scores the top candidates after this fusion selects them.
         row["rerank_score"] = round(
-            0.45 * dense_norm.get(chunk_id, 0.0)
-            + 0.35 * lexical_norm.get(chunk_id, 0.0)
-            + 0.20 * overlap,
+            0.50 * dense_norm.get(chunk_id, 0.0)
+            + 0.40 * lexical_norm.get(chunk_id, 0.0)
+            + 0.10 * overlap,
             6,
         )
 

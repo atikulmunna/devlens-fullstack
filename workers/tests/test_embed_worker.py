@@ -1,6 +1,7 @@
 import embed_worker
+import embeddings
 from embed_worker import ChunkRecord, EmbedSnapshot, EmbedError
-from embeddings import embed_text
+from embeddings import embed_text, embed_texts
 
 
 class FakeSession:
@@ -23,13 +24,63 @@ class FakeSession:
 
 
 
-def test_embed_text_returns_fixed_size_and_is_deterministic(monkeypatch) -> None:
-    monkeypatch.setattr(embed_worker.settings, 'embed_vector_size', 16)
-    v1 = embed_text('hello world', size=16)
-    v2 = embed_text('hello world', size=16)
+class _FakeResponse:
+    def __init__(self, status_code, payload):
+        self.status_code = status_code
+        self._payload = payload
 
-    assert len(v1) == 16
-    assert v1 == v2
+    def json(self):
+        return self._payload
+
+
+class _FakeClient:
+    def __init__(self, response, capture):
+        self._response = response
+        self._capture = capture
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def post(self, url, headers=None, json=None):
+        self._capture['url'] = url
+        self._capture['headers'] = headers
+        self._capture['json'] = json
+        return self._response
+
+
+def test_embed_texts_calls_nim_with_passage_input_type(monkeypatch) -> None:
+    monkeypatch.setattr(embeddings.settings, 'nim_api_key', 'test-key')
+    monkeypatch.setattr(embeddings.settings, 'embed_model', 'nvidia/nv-embedqa-e5-v5')
+    capture = {}
+    payload = {'data': [
+        {'index': 1, 'embedding': [0.4, 0.5, 0.6]},
+        {'index': 0, 'embedding': [0.1, 0.2, 0.3]},
+    ]}
+    monkeypatch.setattr(
+        embeddings.httpx,
+        'Client',
+        lambda *a, **k: _FakeClient(_FakeResponse(200, payload), capture),
+    )
+
+    vectors = embed_texts(['first passage', 'second passage'])
+
+    # Vectors are re-ordered by the "index" field, not response order.
+    assert vectors == [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
+    assert capture['json']['input_type'] == 'passage'
+    assert capture['json']['model'] == 'nvidia/nv-embedqa-e5-v5'
+    assert capture['headers']['Authorization'] == 'Bearer test-key'
+
+
+def test_embed_text_missing_api_key_raises(monkeypatch) -> None:
+    monkeypatch.setattr(embeddings.settings, 'nim_api_key', None)
+    try:
+        embed_text('hello world')
+        assert False, 'expected EmbeddingError'
+    except embeddings.EmbeddingError:
+        pass
 
 
 def test_upsert_vectors_requires_matching_lengths() -> None:
@@ -52,6 +103,7 @@ def test_embed_job_success_transitions_to_analyzing(monkeypatch) -> None:
 
     monkeypatch.setattr(embed_worker, 'load_repo_chunks', lambda *_args, **_kwargs: chunks)
     monkeypatch.setattr(embed_worker, 'ensure_collection', lambda: None)
+    monkeypatch.setattr(embed_worker, 'embed_texts', lambda contents, size=None: [[0.0] * 4 for _ in contents])
     monkeypatch.setattr(embed_worker, 'upsert_chunk_vectors', lambda _repo_id, batch, _vectors: [f'id-{c.id}' for c in batch])
 
     stored = {'count': 0}
@@ -115,6 +167,7 @@ def test_embed_job_retriable_failure_schedules_retry(monkeypatch) -> None:
 
     monkeypatch.setattr(embed_worker, 'load_repo_chunks', lambda *_args, **_kwargs: chunks)
     monkeypatch.setattr(embed_worker, 'ensure_collection', lambda: None)
+    monkeypatch.setattr(embed_worker, 'embed_texts', lambda contents, size=None: [[0.0] * 4 for _ in contents])
     monkeypatch.setattr(
         embed_worker,
         'upsert_chunk_vectors',
