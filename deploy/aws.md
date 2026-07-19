@@ -6,8 +6,8 @@ to can reach the app.
 
 ## What you need
 - AWS CLI configured (`aws sts get-caller-identity` works)
-- A free DuckDNS subdomain (https://www.duckdns.org , sign in, create a subdomain)
 - Your NVIDIA NIM + Groq keys, and a GitHub OAuth app
+- No domain needed: the hostname is derived from the instance IP via sslip.io
 
 ## 1. Provision the instance
 ```bash
@@ -16,16 +16,18 @@ AWS_REGION=us-east-1 INSTANCE_TYPE=t3.medium bash deploy/provision-aws.sh
 Note the **Elastic IP** and the saved `devlens-key.pem`. (t3.medium is well inside the
 $150 credit for year 1; set an AWS billing alarm so you are never surprised.)
 
-## 2. Point DuckDNS at the box
-On duckdns.org, set your subdomain's IP to the Elastic IP from step 1. Confirm:
-`nslookup yourname.duckdns.org` returns that IP.
+## 2. Derive your hostname (sslip.io)
+No DNS setup needed, the hostname is the Elastic IP via sslip.io. For IP `52.1.2.3`
+it is `52-1-2-3.sslip.io` (dashes) or `52.1.2.3.sslip.io`. Confirm with
+`nslookup 52-1-2-3.sslip.io`. Use this as `DEVLENS_DOMAIN` below. (If Let's Encrypt
+ever rate-limits sslip.io, fall back to a free DuckDNS subdomain.)
 
 ## 3. GitHub OAuth app
 Use your existing OAuth app (or create one). Set the **Authorization callback URL** to:
 ```
-https://yourname.duckdns.org/api/v1/auth/callback
+https://<your-sslip-host>/api/v1/auth/callback
 ```
-and the Homepage URL to `https://yourname.duckdns.org`.
+and the Homepage URL to `https://<your-sslip-host>`.
 
 ## 4. Ship the repo + config to the box
 ```bash
@@ -52,7 +54,7 @@ This installs Docker, adds swap, builds + starts the stack, and runs migrations.
 First build is slow (a few minutes) because of the backend image.
 
 ## 7. Verify
-- `https://yourname.duckdns.org` prompts for Basic Auth (401 without it).
+- `https://<your-sslip-host>` prompts for Basic Auth (401 without it).
 - With a tester credential, the workspace loads; "Login with GitHub" enables chat.
 - Analyze a small repo (e.g. `https://github.com/pallets/markupsafe`), then chat and
   open the commit-diff view.
