@@ -36,3 +36,9 @@ docs/evaluation/repo_map.local.json
 
 # Docker
 docker-data/
+
+# Local-only planning / notes (never commit)
+tasks.md
+CLAUDE.md
+*srs*
+*SRS*

@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from config import settings
+from embed_cache import embed_with_cache
 from embeddings import embed_texts
 from parse_worker import update_job_status
 from reliability import schedule_retry_or_dead_letter
@@ -125,10 +126,27 @@ def _request_with_retries(
 
 def ensure_collection() -> None:
     url = f"{str(settings.qdrant_url).rstrip('/')}/collections/{settings.qdrant_collection}"
+    headers = {'api-key': settings.qdrant_api_key} if settings.qdrant_api_key else None
     body = {
         'vectors': {'size': settings.embed_vector_size, 'distance': 'Cosine'}
     }
-    headers = {'api-key': settings.qdrant_api_key} if settings.qdrant_api_key else None
+
+    # Detect an existing collection whose vector dimension no longer matches the
+    # configured embedder (e.g. after migrating from the 384-dim hash stub to a
+    # 1024-dim NIM model). A mismatched collection is dropped and recreated once.
+    existing = _request_with_retries('GET', url, allowed_statuses={404}, headers=headers)
+    if existing:
+        vectors_cfg = (
+            existing.get('result', {})
+            .get('config', {})
+            .get('params', {})
+            .get('vectors', {})
+        )
+        current_size = vectors_cfg.get('size') if isinstance(vectors_cfg, dict) else None
+        if current_size == settings.embed_vector_size:
+            return
+        _request_with_retries('DELETE', url, allowed_statuses={404}, headers=headers)
+
     _request_with_retries('PUT', url, json_body=body, allowed_statuses={409}, headers=headers)
 
 
@@ -201,7 +219,12 @@ def embed_job(db: Session, snapshot: EmbedSnapshot) -> None:
 
             for idx in range(0, len(chunks), batch_size):
                 batch = chunks[idx: idx + batch_size]
-                vectors = embed_texts([chunk.content for chunk in batch], size=settings.embed_vector_size)
+                vectors = embed_with_cache(
+                    [chunk.content for chunk in batch],
+                    embed_texts,
+                    model=settings.embed_model,
+                    ttl_seconds=settings.embed_cache_ttl_seconds,
+                )
                 batch_qdrant_ids = upsert_chunk_vectors(snapshot.repo_id, batch, vectors)
 
                 chunk_ids.extend([chunk.id for chunk in batch])

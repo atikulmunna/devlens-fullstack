@@ -26,6 +26,8 @@ Assert-RouteOk -Base $LegacyBaseUrl -Path "/"
 Assert-RouteOk -Base $LegacyBaseUrl -Path "/analyze"
 Assert-RouteOk -Base $NextBaseUrl -Path "/"
 Assert-RouteOk -Base $NextBaseUrl -Path "/analyze"
+Assert-RouteOk -Base $NextBaseUrl -Path "/workspace"
+Assert-RouteOk -Base $NextBaseUrl -Path "/health"
 
 if ($SampleRepoId) {
     Assert-RouteOk -Base $LegacyBaseUrl -Path "/dashboard/$SampleRepoId"

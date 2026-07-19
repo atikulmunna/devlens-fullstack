@@ -10,6 +10,12 @@ class Settings(BaseSettings):
     qdrant_url: AnyHttpUrl
     qdrant_collection: str = "devlens_code_chunks"
     qdrant_api_key: str | None = None
+    # Embeddings (NVIDIA NIM, OpenAI-compatible /embeddings endpoint)
+    nim_base_url: AnyHttpUrl = "https://integrate.api.nvidia.com/v1"
+    nim_api_key: str | None = None
+    embed_model: str = "nvidia/nv-embedqa-e5-v5"
+    embed_vector_size: int = 1024
+    embed_timeout_seconds: int = 15
     github_client_id: str
     github_client_secret: str
     github_oauth_redirect_uri: AnyHttpUrl
@@ -17,8 +23,9 @@ class Settings(BaseSettings):
     openrouter_api_key: str
     groq_api_key: str
     llm_chat_model: str = "openai/gpt-4o-mini"
+    nemotron_model: str = "nvidia/llama-3.1-nemotron-70b-instruct"
     llm_fallback_model: str = "llama-3.1-8b-instant"
-    llm_primary_provider: str = "openrouter"
+    llm_primary_provider: str = "nemotron"
     llm_fallback_provider: str = "groq"
     llm_primary_timeout_seconds: int = 15
     llm_fallback_timeout_seconds: int = 15
@@ -34,7 +41,7 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = 3600
     rate_limit_guest_per_window: int = 10
     rate_limit_auth_per_window: int = 50
-    reranker_enabled: bool = False
+    reranker_enabled: bool = True
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     reranker_candidate_limit: int = 50
 

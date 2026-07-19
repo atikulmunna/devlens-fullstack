@@ -16,9 +16,15 @@ class WorkerSettings(BaseSettings):
     parse_chunk_lines: int = 120
     parse_chunk_overlap_lines: int = 20
 
-    embed_vector_size: int = 384
+    # Embeddings (NVIDIA NIM, OpenAI-compatible /embeddings endpoint)
+    nim_base_url: AnyHttpUrl = "https://integrate.api.nvidia.com/v1"
+    nim_api_key: str | None = None
+    embed_model: str = "nvidia/nv-embedqa-e5-v5"
+    embed_vector_size: int = 1024
+    embed_timeout_seconds: int = 15
     embed_batch_size: int = 32
     embed_retry_attempts: int = 3
+    embed_cache_ttl_seconds: int = 604800  # 7 days; content-addressed embedding cache
     worker_retry_max_attempts: int = 3
     worker_retry_base_delay_seconds: int = 30
     worker_metrics_port: int = 9101

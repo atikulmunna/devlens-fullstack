@@ -84,6 +84,10 @@ export default function DashboardPage({ params }: Props) {
             {payload.github_url}
           </a>
         </p>
+        <div className="row">
+          <Link href={`/workspace?repo=${encodeURIComponent(payload.repo_id)}`}>Chat about this repo</Link>
+          <Link href={`/diff/${encodeURIComponent(payload.repo_id)}`}>Commit diff intelligence</Link>
+        </div>
       </article>
 
       <article className="card">

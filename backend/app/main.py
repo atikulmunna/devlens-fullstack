@@ -11,11 +11,17 @@ from app.config import settings
 from app.errors import install_exception_handlers
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.observability import begin_trace, http_request_duration_seconds, metrics_response, trace_span
+from app.redis_client import close_redis
 
 app = FastAPI(title=settings.app_name)
 app.add_middleware(RateLimitMiddleware)
 app.include_router(api_router, prefix="/api/v1")
 install_exception_handlers(app)
+
+
+@app.on_event("shutdown")
+async def _close_shared_clients() -> None:
+    await close_redis()
 
 
 @app.middleware("http")

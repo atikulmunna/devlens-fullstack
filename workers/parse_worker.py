@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import subprocess
@@ -11,15 +12,22 @@ from uuid import uuid4
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from chunking import ChunkingUnavailable, chunk_code, ts_language_for
 from config import settings
+from diffing import compute_commit_diff
 from reliability import schedule_retry_or_dead_letter
 from telemetry import record_stage_duration, trace_span
 
 
 SKIP_DIRS = {'.git', 'node_modules', '.venv', 'venv', 'dist', 'build', '__pycache__'}
 ALLOWED_EXTENSIONS = {
+    # Code
     '.py', '.js', '.ts', '.tsx', '.jsx', '.go', '.java', '.cpp', '.c', '.h', '.hpp', '.rs', '.php', '.rb', '.cs',
+    # Config / IaC / data / docs (feed the chat "setup" intent)
+    '.md', '.rst', '.sql', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.env', '.sh', '.tf',
 }
+# Important extensionless files worth indexing for setup/deploy questions.
+ALLOWED_FILENAMES = {'dockerfile', 'makefile', 'procfile'}
 
 
 class ParseError(RuntimeError):
@@ -60,7 +68,7 @@ def iter_source_files(root: str) -> Iterable[Path]:
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
         for filename in files:
             path = Path(current) / filename
-            if path.suffix.lower() in ALLOWED_EXTENSIONS:
+            if path.suffix.lower() in ALLOWED_EXTENSIONS or filename.lower() in ALLOWED_FILENAMES:
                 yield path
 
 
@@ -83,6 +91,19 @@ def chunk_lines(content: str, chunk_lines: int, overlap_lines: int) -> list[tupl
         start = end - overlap_lines
 
     return chunks
+
+
+def chunk_file(content: str, language: str, chunk_size: int, overlap_size: int) -> list[tuple[int, int, str]]:
+    """Structure-aware chunking when a tree-sitter grammar exists; line-window otherwise."""
+    ts_language = ts_language_for(language)
+    if ts_language:
+        try:
+            spans = chunk_code(content, ts_language, chunk_size, overlap_size)
+            if spans:
+                return spans
+        except ChunkingUnavailable:
+            pass  # fall back to line-window chunking below
+    return chunk_lines(content, chunk_size, overlap_size)
 
 
 def update_job_status(db: Session, job_id: str, status: str, progress: int, error_message: str | None = None) -> None:
@@ -160,6 +181,43 @@ def store_chunks(db: Session, repo_id: str, chunks: list[dict]) -> None:
         )
 
 
+def store_commit_diff(db: Session, repo_id: str, diff: dict) -> None:
+    db.execute(
+        text(
+            """
+            INSERT INTO commit_diffs (id, repo_id, base_sha, head_sha, changed_files, security_flags)
+            VALUES (
+                CAST(:id AS uuid),
+                CAST(:repo_id AS uuid),
+                :base_sha,
+                :head_sha,
+                CAST(:changed_files AS jsonb),
+                CAST(:security_flags AS jsonb)
+            )
+            """
+        ),
+        {
+            "id": str(uuid4()),
+            "repo_id": repo_id,
+            "base_sha": diff.get("base_sha"),
+            "head_sha": diff.get("head_sha"),
+            "changed_files": json.dumps(diff.get("changed_files") or []),
+            "security_flags": json.dumps(diff.get("security_flags") or []),
+        },
+    )
+
+
+def maybe_store_commit_diff(db: Session, repo_path: str, repo_id: str, head_sha: str) -> None:
+    """Best-effort: compute and persist the commit diff. Never fails the parse stage."""
+    try:
+        diff = compute_commit_diff(repo_path, head_sha)
+        if diff:
+            store_commit_diff(db, repo_id, diff)
+            db.commit()
+    except Exception:
+        db.rollback()
+
+
 def parse_job(db: Session, snapshot: RepoSnapshot) -> None:
     started = time.perf_counter()
     update_job_status(db, snapshot.job_id, 'parsing', 10)
@@ -179,13 +237,15 @@ def parse_job(db: Session, snapshot: RepoSnapshot) -> None:
             chunks: list[dict] = []
             for file_path in files:
                 rel = str(file_path.relative_to(repo_path)).replace('\\', '/')
-                language = file_path.suffix.lstrip('.').lower()
+                suffix = file_path.suffix.lstrip('.').lower()
+                language = suffix or file_path.name.lower()
 
                 with file_path.open('r', encoding='utf-8', errors='ignore') as fh:
                     content = fh.read()
 
-                for start_line, end_line, chunk_content in chunk_lines(
+                for start_line, end_line, chunk_content in chunk_file(
                     content,
+                    language,
                     settings.parse_chunk_lines,
                     settings.parse_chunk_overlap_lines,
                 ):
@@ -208,6 +268,9 @@ def parse_job(db: Session, snapshot: RepoSnapshot) -> None:
             update_job_status(db, snapshot.job_id, 'embedding', 100)
             db.commit()
             record_stage_duration("parsing", "success", time.perf_counter() - started)
+
+            # Best-effort commit-diff capture (never blocks the parse pipeline).
+            maybe_store_commit_diff(db, repo_path, snapshot.repo_id, snapshot.commit_sha)
 
     except ParseError as exc:
         schedule_retry_or_dead_letter(

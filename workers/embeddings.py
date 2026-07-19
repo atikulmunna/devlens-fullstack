@@ -1,29 +1,73 @@
-import hashlib
+"""Model-backed embeddings via NVIDIA NIM (index/passage side).
+
+Mirrors backend/app/services/embeddings.py but uses the worker settings object.
+Indexed documents are embedded with input_type="passage"; the backend query path
+uses input_type="query". Same model + dimension keeps both in one vector space.
+"""
+
+import time
 from typing import Iterable
+
+import httpx
 
 from config import settings
 
 
-# Deterministic local embedder for development/testing. Replace with sentence-transformers in model-serving phase.
-def embed_text(text: str, size: int | None = None) -> list[float]:
-    target = size or settings.embed_vector_size
-    result: list[float] = []
-    counter = 0
+class EmbeddingError(RuntimeError):
+    pass
 
-    while len(result) < target:
-        digest = hashlib.sha256(f"{text}|{counter}".encode('utf-8')).digest()
-        counter += 1
 
-        for i in range(0, len(digest), 4):
-            if len(result) >= target:
-                break
-            chunk = digest[i:i + 4]
-            value = int.from_bytes(chunk, byteorder='big', signed=False)
-            # Scale to [-1, 1].
-            result.append((value / 2147483647.5) - 1.0)
+def _post_embeddings(texts: list[str], input_type: str) -> list[list[float]]:
+    if not settings.nim_api_key:
+        raise EmbeddingError("Missing NIM API key (nim_api_key)")
 
-    return result
+    url = f"{str(settings.nim_base_url).rstrip('/')}/embeddings"
+    body = {
+        "input": texts,
+        "model": settings.embed_model,
+        "input_type": input_type,
+        "encoding_format": "float",
+        "truncate": "END",
+    }
+    headers = {
+        "Authorization": f"Bearer {settings.nim_api_key}",
+        "Content-Type": "application/json",
+    }
+
+    last_error: Exception | None = None
+    for attempt in range(1, settings.embed_retry_attempts + 1):
+        try:
+            with httpx.Client(timeout=float(settings.embed_timeout_seconds)) as client:
+                response = client.post(url, headers=headers, json=body)
+            if response.status_code == 200:
+                data = response.json().get("data") or []
+                if len(data) != len(texts):
+                    raise EmbeddingError("NIM embeddings returned an unexpected number of vectors")
+                ordered = sorted(data, key=lambda item: item.get("index", 0))
+                return [[float(x) for x in (item.get("embedding") or [])] for item in ordered]
+            if response.status_code < 500 and response.status_code != 429:
+                raise EmbeddingError(f"NIM embeddings returned status {response.status_code}")
+            last_error = EmbeddingError(f"NIM embeddings transient status {response.status_code}")
+        except EmbeddingError as exc:
+            # Non-retryable EmbeddingError (e.g. bad count / 4xx) bubbles up immediately.
+            if "transient" not in str(exc):
+                raise
+            last_error = exc
+        except httpx.HTTPError as exc:
+            last_error = exc
+        if attempt < settings.embed_retry_attempts:
+            time.sleep(0.5 * attempt)
+
+    raise EmbeddingError(f"NIM embeddings failed after retries: {last_error}")
 
 
 def embed_texts(texts: Iterable[str], size: int | None = None) -> list[list[float]]:
-    return [embed_text(text, size=size) for text in texts]
+    # size is accepted for backward compatibility; NIM fixes the dimension by model.
+    items = list(texts)
+    if not items:
+        return []
+    return _post_embeddings(items, input_type="passage")
+
+
+def embed_text(text: str, size: int | None = None) -> list[float]:
+    return embed_texts([text], size=size)[0]

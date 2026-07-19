@@ -95,7 +95,11 @@ def test_chat_message_stream_persists_assistant_with_citations(client, db_sessio
             }
         ],
     )
-    monkeypatch.setattr(chat_module, "synthesize_grounded_answer", lambda **_kwargs: "JWT refresh is handled in src/auth/jwt.py.")
+    monkeypatch.setattr(
+        chat_module,
+        "synthesize_grounded_answer_stream",
+        lambda **_kwargs: iter(["JWT refresh is handled in src/auth/jwt.py."]),
+    )
 
     stream = client.post(
         f"/api/v1/chat/sessions/{session_id}/message",
@@ -203,8 +207,8 @@ def test_chat_response_hydrates_content_when_missing_from_results(client, db_ses
     )
     monkeypatch.setattr(
         chat_module,
-        "synthesize_grounded_answer",
-        lambda **_kwargs: "Refresh logic appears in src/auth/jwt.py with token verification steps.",
+        "synthesize_grounded_answer_stream",
+        lambda **_kwargs: iter(["Refresh logic appears in src/auth/jwt.py with token verification steps."]),
     )
 
     stream = client.post(
@@ -251,7 +255,7 @@ def test_chat_falls_back_when_synthesizer_fails(client, db_session: Session, mon
     def _boom(**_kwargs):
         raise chat_module.ChatSynthesisError("provider unavailable")
 
-    monkeypatch.setattr(chat_module, "synthesize_grounded_answer", _boom)
+    monkeypatch.setattr(chat_module, "synthesize_grounded_answer_stream", _boom)
 
     stream = client.post(
         f"/api/v1/chat/sessions/{session_id}/message",

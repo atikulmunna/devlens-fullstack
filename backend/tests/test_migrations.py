@@ -27,7 +27,7 @@ def test_schema_tables_exist(db_session: Session) -> None:
 
 def test_alembic_head_is_applied(db_session: Session) -> None:
     version = db_session.execute(text('select version_num from alembic_version')).scalar_one()
-    assert version == '20260224_0007'
+    assert version == '20260719_0008'
 
 
 def test_hot_path_indexes_exist(db_session: Session) -> None:

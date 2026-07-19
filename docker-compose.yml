@@ -72,11 +72,11 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: ./frontend-next
     env_file:
-      - path: ./frontend/.env.example
+      - path: ./frontend-next/.env.example
         required: true
-      - path: ./frontend/.env
+      - path: ./frontend-next/.env
         required: false
     environment:
       NEXT_PUBLIC_API_URL: http://backend:8000
