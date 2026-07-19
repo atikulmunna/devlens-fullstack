@@ -129,3 +129,92 @@ a:hover {
   border-radius: 8px;
   padding: 10px 12px;
 }
+
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.bubble {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  max-width: 88%;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bubble.user {
+  align-self: flex-end;
+  background: #eef6ff;
+  border-color: #b9d8f4;
+}
+
+.bubble.assistant {
+  align-self: flex-start;
+  background: var(--panel);
+}
+
+.bubble .role {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.citations {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.citation-pill {
+  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: var(--muted);
+}
+
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.suggestion {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.suggestion:hover {
+  border-color: var(--accent);
+}
+
+.button.secondary {
+  background: var(--panel);
+  color: var(--accent);
+}
+
+.blink::after {
+  content: "▋";
+  animation: blink 1s steps(2, start) infinite;
+  margin-left: 1px;
+}
+
+@keyframes blink {
+  to {
+    visibility: hidden;
+  }
+}

@@ -72,14 +72,14 @@ flowchart LR
 - RQ-style async job processing
 
 ### Frontend
-- Node.js server-rendered UI (`frontend/server.js`)
-- Workspace-centered flow (Analyze -> Dashboard -> Chat)
+- Next.js + TypeScript UI (`frontend-next/`)
+- Workspace-centered flow (Analyze -> Dashboard -> Chat) with streaming, citation-grounded answers
 
 ### AI / Retrieval
-- Dense retrieval (Qdrant)
+- Dense retrieval (Qdrant) with NVIDIA NIM embeddings (`nvidia/nv-embedqa-e5-v5`)
 - Lexical retrieval (PostgreSQL FTS)
-- Optional reranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`)
-- LLM provider routing (OpenRouter primary, Groq fallback)
+- Cross-encoder reranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`)
+- LLM provider routing (Nemotron via NVIDIA NIM primary, Groq fallback)
 
 ### Infra
 - Docker Compose for local stack
@@ -90,8 +90,7 @@ flowchart LR
 
 - `backend/` FastAPI API service
 - `workers/` async analysis pipeline
-- `frontend/` production UI server
-- `frontend-next/` next-phase migration scaffold
+- `frontend-next/` Next.js + TypeScript production UI (analyze, dashboard, chat workspace)
 - `docs/` contracts, planning, QA, runbooks
 - `scripts/` automation for setup, tests, deploy, eval
 - `assets/` static assets (screenshots)
@@ -130,7 +129,7 @@ Copy examples to real env files (do not commit secrets):
 ```powershell
 Copy-Item backend/.env.example backend/.env
 Copy-Item workers/.env.example workers/.env
-Copy-Item frontend/.env.example frontend/.env
+Copy-Item frontend-next/.env.example frontend-next/.env
 ```
 
 ### 3. Fill required secrets
@@ -213,10 +212,9 @@ Pipeline tuning:
 - `PARSE_MAX_CHUNKS`
 - `EMBED_BATCH_SIZE`
 
-### Frontend (`frontend/.env`)
+### Frontend (`frontend-next/.env`)
 
 - `NEXT_PUBLIC_API_URL` (usually `http://localhost:8000` in local)
-- `PORT` (default `3000`)
 
 ## Authentication Overview
 

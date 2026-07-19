@@ -40,8 +40,12 @@ jobs:
           python -m compileall backend/app
           python -m compileall workers
 
-      - name: Frontend syntax check
-        run: node --check frontend/server.js
+      - name: Frontend typecheck and build
+        working-directory: frontend-next
+        run: |
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          npm run build
 
   backend_tests:
     name: Backend Tests
@@ -124,7 +128,7 @@ jobs:
         run: docker build -t devlens-worker:ci ./workers
 
       - name: Build frontend image
-        run: docker build -t devlens-frontend:ci ./frontend
+        run: docker build -t devlens-frontend:ci ./frontend-next
 
   deploy_main:
     name: Deploy Main
