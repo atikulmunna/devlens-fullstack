@@ -76,6 +76,11 @@ aws ec2 release-address --allocation-id <ALLOC_ID> --region us-east-1
 ```
 
 ## Notes
+- Auth model (two layers): Caddy Basic Auth gates pages, analyze, dashboard, and status
+  (your alpha credentials). The chat and commit-diff endpoints are exempt from Basic Auth
+  because they carry their own JWT in the `Authorization` header (which would collide with
+  Basic Auth) and are enforced by the app, testers reach those by logging in with GitHub
+  inside the app. So a tester needs both an alpha credential and a GitHub login for chat.
 - The reranker is forced off in prod (`RERANKER_ENABLED=false`) to keep the box light;
   dense + lexical retrieval still runs. Flip it on later if you size up.
 - The backend is never exposed directly; Caddy serves the Next.js frontend, which

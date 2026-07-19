@@ -2,11 +2,14 @@
 #
 # DEVLENS_DOMAIN / DEVLENS_TLS_EMAIL are injected from .env.prod via docker-compose.
 # Caddy fetches a real Let's Encrypt certificate automatically for a public domain
-# (e.g. a free DuckDNS subdomain). Every request is gated by Basic Auth; the alpha
-# tester credentials live in /etc/caddy/alpha_users (managed by deploy/adduser.sh).
+# (e.g. a free sslip.io hostname derived from the Elastic IP).
 #
-# All traffic goes to the Next.js frontend, which proxies /api/v1 to the backend
-# internally, so the backend is never exposed directly.
+# Gating model: every request needs a Basic Auth alpha credential (managed by
+# deploy/adduser.sh in /etc/caddy/alpha_users) EXCEPT the endpoints that carry their
+# own JWT bearer auth (chat + commit-diff). Those cannot also use Basic Auth, because
+# both live in the Authorization header, so the app protects them instead (they return
+# 401 without a valid token). All traffic goes to the Next.js frontend, which proxies
+# /api/v1 to the backend internally, so the backend is never exposed directly.
 
 {
 	email {$DEVLENS_TLS_EMAIL}
@@ -15,12 +18,22 @@
 {$DEVLENS_DOMAIN} {
 	encode zstd gzip
 
-	basic_auth {
-		import /etc/caddy/alpha_users
+	# JWT-authenticated API paths: skip Basic Auth (Authorization carries the Bearer
+	# token). The app enforces auth on these, so they are not left open.
+	@appauth path_regexp ^/api/v1/(chat/|repos/[^/]+/diff)
+	handle @appauth {
+		reverse_proxy frontend:3000 {
+			flush_interval -1
+		}
 	}
 
-	# SSE (chat + status streams) must not be buffered.
-	reverse_proxy frontend:3000 {
-		flush_interval -1
+	# Everything else (pages, analyze, dashboard, status, auth) is gated by Basic Auth.
+	handle {
+		basic_auth {
+			import /etc/caddy/alpha_users
+		}
+		reverse_proxy frontend:3000 {
+			flush_interval -1
+		}
 	}
 }
