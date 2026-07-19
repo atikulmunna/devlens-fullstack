@@ -173,7 +173,7 @@ jobs:
 
       - name: Build and push frontend image
         run: |
-          docker build -t "${{ steps.vars.outputs.frontend_image }}" ./frontend
+          docker build -t "${{ steps.vars.outputs.frontend_image }}" ./frontend-next
           docker push "${{ steps.vars.outputs.frontend_image }}"
 
       - name: Publish deployment manifest
