@@ -372,18 +372,13 @@ Recommended starter prompts:
 - `scripts/test-worker.ps1`
 - `scripts/smoke-e2e.ps1`
 - `scripts/eval-chat-quality.ps1`
-- `scripts/deploy_railway_prod.ps1`
-- `scripts/deploy_railway_staging.ps1`
 
 ## Documentation Index
 
 - API contract: `docs/api/API_Contract_v1.1.md`
-- Implementation checklist: `docs/planning/Implementation_Checklist.md`
-- CI/CD runbook: `docs/release/CI_CD_Runbook.md`
-- Deployment checklist: `docs/release/Phase5_Deployment_Checklist.md`
-- Staging parity runbook: `docs/release/Staging_Managed_Parity_Runbook.md`
-- Frontend cutover runbook: `docs/release/Frontend_Cutover_Rollback_Runbook.md`
-- QA report: `docs/testing/Release_QA_v1.1.md`
+- Frontend runtime ADR: `docs/architecture/ADR-001-frontend-runtime.md`
+- Retrieval/embedder upgrade eval: `docs/evaluation/Retrieval_Embedder_Upgrade_Eval.md`
+- Reranker delta report: `docs/evaluation/DEV-045_Reranker_Delta_Report.md`
 
 ## License
 
