@@ -41,6 +41,9 @@ services:
   backend:
     build:
       context: ./backend
+      # Skip the torch-based reranker at build time -> much smaller image + disk.
+      args:
+        INSTALL_RERANKER: "false"
     env_file:
       - .env.prod
     # Reranker off keeps torch/sentence-transformers out of the runtime path so

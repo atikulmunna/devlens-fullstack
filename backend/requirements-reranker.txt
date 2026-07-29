@@ -1,0 +1,2 @@
+# Optional cross-encoder reranker deps (torch). Installed only when INSTALL_RERANKER=true.
+sentence-transformers==3.3.1
