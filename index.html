@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DevLens , Private Alpha</title>
+<style>
+  :root { --bg:#f4f7fb; --ink:#182433; --muted:#516377; --panel:#fff; --line:#d9e1ec; --accent:#0f6dbb; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background: radial-gradient(circle at 10% 10%, #ffffff, var(--bg));
+    color: var(--ink); font-family:"Segoe UI", Tahoma, sans-serif; padding:24px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:30px 28px; max-width:520px; width:100%; box-shadow:0 12px 40px rgba(24,36,51,.08); }
+  .chip { display:inline-block; border:1px solid #b5d3f0; color:var(--accent); border-radius:999px;
+    padding:4px 12px; font-size:12px; font-weight:600; }
+  h1 { margin:14px 0 6px; font-size:32px; }
+  .lead { margin:0 0 18px; color:var(--muted); line-height:1.55; }
+  .note { border:1px solid #b9d8f4; background:#eef6ff; border-radius:10px; padding:14px 16px;
+    color:#1b3b57; font-size:15px; line-height:1.55; margin-bottom:18px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; }
+  a.btn { text-decoration:none; font-weight:600; border-radius:9px; padding:11px 16px; font-size:15px; }
+  a.primary { background:var(--accent); color:#fff; border:1px solid #0b5ea1; }
+  a.primary:hover { background:#0b5ea1; }
+  a.secondary { background:var(--panel); color:var(--accent); border:1px solid var(--line); }
+  a.secondary:hover { border-color:var(--accent); }
+  .feat { margin:16px 0 4px; padding-left:18px; color:var(--ink); line-height:1.6; font-size:14.5px; }
+  .foot { margin-top:18px; font-size:13px; color:var(--muted); }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+  <main class="card">
+    <span class="chip">DevLens</span>
+    <h1>Private Alpha</h1>
+    <p class="lead">Repository intelligence: analyze any public GitHub repo and chat with
+      citation-grounded answers over its code, plus commit-diff intelligence (what changed,
+      blast radius, and security-sensitive touches).</p>
+
+    <div class="note">
+      The live demo runs on a small cloud instance that is <strong>started on request</strong>
+      to keep hosting costs near zero, so it is not online around the clock. To try it,
+      <strong>contact the author</strong> for a live-demo window and an access key.
+    </div>
+
+    <ul class="feat">
+      <li>NVIDIA NIM embeddings + Nemotron chat, hybrid retrieval, streaming answers</li>
+      <li>Commit-diff Q&amp;A with dependency-graph blast radius</li>
+      <li>FastAPI + async workers + Next.js, containerized, gated private alpha</li>
+    </ul>
+
+    <div class="row">
+      <a class="btn primary" href="https://github.com/atikulmunna" rel="noreferrer">Contact the author</a>
+      <a class="btn secondary" href="https://github.com/atikulmunna/devlens-fullstack" rel="noreferrer">View source</a>
+    </div>
+
+    <p class="foot">Already have the demo link and access key? It works whenever the
+      instance is running.</p>
+  </main>
+</body>
+</html>
