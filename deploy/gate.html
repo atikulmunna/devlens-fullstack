@@ -58,9 +58,10 @@
       invite-only. <strong>Contact the author for credentials.</strong>
     </div>
     <div class="error" id="err">That access key was not recognized. Try again or contact the author.</div>
-    <form method="GET" action="/__gate">
+    <form method="GET" action="/__gate" id="gateform">
       <label for="key">Access key</label>
-      <input id="key" name="key" type="password" placeholder="Enter your access key" autofocus required />
+      <input id="key" name="key" type="text" placeholder="Enter your access key" autofocus required
+             autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
       <button type="submit">Enter DevLens</button>
     </form>
     <p class="foot">Need access? Reach the author on <a href="https://github.com/atikulmunna" rel="noreferrer">GitHub</a>. Source: <a href="https://github.com/atikulmunna/devlens-fullstack" rel="noreferrer">devlens-fullstack</a>.</p>
@@ -69,6 +70,11 @@
     if (new URLSearchParams(location.search).has("denied")) {
       document.getElementById("err").style.display = "block";
     }
+    // Trim stray whitespace (e.g. a pasted trailing space) so the key matches exactly.
+    document.getElementById("gateform").addEventListener("submit", function () {
+      var k = document.getElementById("key");
+      k.value = k.value.trim();
+    });
   </script>
 </body>
 </html>
