@@ -9,12 +9,12 @@ It is built as a production-oriented pipeline (API + workers + vector store + UI
 
 ## Live Demo
 
-[![Open the live demo](https://img.shields.io/badge/%E2%96%B6%20Live%20Demo-DevLens-0f6dbb?style=for-the-badge)](https://44-206-66-89.sslip.io)
+[![Open the live demo](https://img.shields.io/badge/%E2%96%B6%20Live%20Demo-DevLens-0f6dbb?style=for-the-badge)](https://aimunna.me/devlens-fullstack/)
 
-> **Private alpha.** The demo runs on a small AWS instance to conserve limited free-tier
-> credits, so access is invite-only. Opening the link shows a login page asking for an
-> access key, **contact the author** ([GitHub](https://github.com/atikulmunna)) to request
-> one. Chat additionally requires signing in with GitHub inside the app.
+> **Private alpha.** The live instance is started on request to keep cloud costs near zero,
+> so it is not online 24/7. The link above is always available and explains how to reach the
+> **author** ([GitHub](https://github.com/atikulmunna)) for a live-demo window and an access
+> key. Once in, chat additionally requires signing in with GitHub inside the app.
 
 ## Demo Screenshot
 
