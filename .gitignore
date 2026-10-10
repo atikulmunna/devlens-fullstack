@@ -37,6 +37,7 @@ docker-data/
 
 # Local-only planning / notes (never commit)
 tasks.md
+task.md
 CLAUDE.md
 *srs*
 *SRS*
