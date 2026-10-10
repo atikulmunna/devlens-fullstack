@@ -6,6 +6,7 @@ import { getRepoStatusOnce, postAnalyze, RepoStatusSnapshot } from "@/lib/api";
 export type AnalyzeJob = {
   jobId: string;
   repoId: string;
+  fullName: string;
   cacheHit: boolean;
 };
 
@@ -108,7 +109,7 @@ export function useAnalyzeJob() {
     setProgress(0);
     try {
       const payload = await postAnalyze({ github_url: githubUrl.trim() });
-      setJob({ jobId: payload.job_id, repoId: payload.repo_id, cacheHit: payload.cache_hit });
+      setJob({ jobId: payload.job_id, repoId: payload.repo_id, fullName: payload.full_name, cacheHit: payload.cache_hit });
       setStage(payload.status || "queued");
       connectStatus(payload.repo_id);
     } catch (err) {

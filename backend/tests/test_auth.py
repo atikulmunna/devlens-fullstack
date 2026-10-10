@@ -30,14 +30,14 @@ def test_auth_github_redirect_contains_valid_state(client: TestClient) -> None:
     assert decoded['next'] == '/profile'
 
 
-def test_auth_github_defaults_next_to_workspace(client: TestClient) -> None:
+def test_auth_github_defaults_next_to_home(client: TestClient) -> None:
     response = client.get('/api/v1/auth/github', follow_redirects=False)
 
     state = response.headers['location'].split('state=', 1)[1]
-    assert validate_oauth_state(state)['next'] == '/workspace'
+    assert validate_oauth_state(state)['next'] == '/'
 
 
-def test_auth_callback_sends_unsafe_next_to_workspace(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_auth_callback_sends_unsafe_next_home(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(auth_module, 'exchange_code_for_access_token', lambda code: 'mock-token')
     monkeypatch.setattr(
         auth_module,
@@ -50,7 +50,7 @@ def test_auth_callback_sends_unsafe_next_to_workspace(client: TestClient, monkey
     response = client.get(f'/api/v1/auth/callback?code=dummy&state={state}', follow_redirects=False)
 
     assert response.status_code == 302
-    assert response.headers['location'] == f"{_origin_header()}/workspace"
+    assert response.headers['location'] == f"{_origin_header()}/"
 
 
 def test_auth_callback_rejects_invalid_state(client: TestClient) -> None:

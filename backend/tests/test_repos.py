@@ -216,3 +216,66 @@ def test_get_repo_dashboard_without_analysis(client, db_session: Session):
 def test_get_repo_dashboard_404_for_missing_repo(client):
     response = client.get(f'/api/v1/repos/{uuid4()}/dashboard')
     assert response.status_code == 404
+
+
+def _add_repo(db_session: Session, name: str, analyzed_at: datetime | None) -> Repository:
+    repo = Repository(
+        id=uuid4(),
+        github_url=f'https://github.com/test-owner/{name}',
+        full_name=f'test-owner/{name}',
+        owner='test-owner',
+        name=name,
+        default_branch='main',
+        description=f'{name} description',
+        language='Python',
+        last_analyzed_at=analyzed_at,
+    )
+    db_session.add(repo)
+    db_session.commit()
+    return repo
+
+
+def test_analyze_response_includes_full_name(client, monkeypatch):
+    monkeypatch.setattr(repos_module, 'resolve_public_repo_snapshot', lambda url: _snapshot('sha-name'))
+
+    response = client.post('/api/v1/repos/analyze', json={'github_url': 'https://github.com/test-owner/test-repo'})
+
+    assert response.status_code == 200
+    assert response.json()['full_name'] == 'test-owner/test-repo'
+
+
+def test_repo_by_name_is_case_insensitive(client, db_session: Session):
+    repo = _add_repo(db_session, 'Named-Repo', datetime(2026, 5, 1, tzinfo=timezone.utc))
+
+    response = client.get('/api/v1/repos/by-name/TEST-OWNER/named-repo')
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['repo_id'] == str(repo.id)
+    assert payload['full_name'] == 'test-owner/Named-Repo'
+    assert payload['description'] == 'Named-Repo description'
+
+
+def test_repo_by_name_404_when_never_analyzed(client):
+    response = client.get('/api/v1/repos/by-name/test-owner/never-seen')
+
+    assert response.status_code == 404
+
+
+def test_recent_repos_newest_first_and_only_analyzed(client, db_session: Session):
+    # Far-future timestamps keep these first even when the database holds real analyses.
+    _add_repo(db_session, 'recent-old', datetime(2099, 1, 1, tzinfo=timezone.utc))
+    _add_repo(db_session, 'recent-new', datetime(2099, 1, 3, tzinfo=timezone.utc))
+    _add_repo(db_session, 'recent-mid', datetime(2099, 1, 2, tzinfo=timezone.utc))
+    _add_repo(db_session, 'recent-never', None)
+
+    response = client.get('/api/v1/repos/recent', params={'limit': 2})
+
+    assert response.status_code == 200
+    names = [repo['full_name'] for repo in response.json()['repos']]
+    assert names == ['test-owner/recent-new', 'test-owner/recent-mid']
+
+
+def test_recent_repos_rejects_out_of_range_limits(client):
+    assert client.get('/api/v1/repos/recent', params={'limit': 0}).status_code == 422
+    assert client.get('/api/v1/repos/recent', params={'limit': 21}).status_code == 422

@@ -7,6 +7,7 @@ export type AnalyzeRequest = {
 export type AnalyzeResponse = {
   job_id: string;
   repo_id: string;
+  full_name: string;
   status: string;
   cache_hit: boolean;
   commit_sha: string;
@@ -82,6 +83,34 @@ export async function postAnalyze(payload: AnalyzeRequest): Promise<AnalyzeRespo
     cache: "no-store"
   });
   return assertJson<AnalyzeResponse>(response, "Analyze request failed");
+}
+
+// Mirrors RepoSummaryResponse in backend/app/api/v1/repos.py.
+export type RepoSummary = {
+  repo_id: string;
+  full_name: string;
+  github_url: string;
+  description: string | null;
+  language: string | null;
+  last_analyzed_at: string | null;
+};
+
+// null when DevLens has never analyzed the repository (the page then offers to analyze it).
+export async function getRepoByName(owner: string, name: string): Promise<RepoSummary | null> {
+  const response = await fetch(
+    `/api/v1/repos/by-name/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`,
+    { cache: "no-store" }
+  );
+  if (response.status === 404) {
+    return null;
+  }
+  return assertJson<RepoSummary>(response, "Could not load the repository");
+}
+
+export async function getRecentRepos(limit = 6): Promise<RepoSummary[]> {
+  const response = await fetch(`/api/v1/repos/recent?limit=${limit}`, { cache: "no-store" });
+  const payload = await assertJson<{ repos: RepoSummary[] }>(response, "Could not load recent repositories");
+  return payload.repos;
 }
 
 export async function getDashboard(repoId: string): Promise<DashboardResponse> {

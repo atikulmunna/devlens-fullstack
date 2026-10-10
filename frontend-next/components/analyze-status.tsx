@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { repoPath } from "@/lib/repo-path";
 import { AnalyzeJob } from "@/lib/use-analyze-job";
 
 const STAGE_TEXT: Record<string, string> = {
@@ -17,6 +18,8 @@ type Props = {
   error: string | null;
 };
 
+// Pages that show this move on to the repository by themselves once it is done; the link is
+// the fallback if that navigation is slow or blocked.
 export function AnalyzeStatus({ job, stage, progress, error }: Props) {
   if (error) {
     return (
@@ -28,14 +31,11 @@ export function AnalyzeStatus({ job, stage, progress, error }: Props) {
   if (!job) {
     return null;
   }
-
-  const repo = encodeURIComponent(job.repoId);
   if (stage === "done") {
     return (
       <div className="notice analyze-progress" role="status">
-        {job.cacheHit ? "Already analyzed at this commit." : "Analysis finished."}{" "}
-        <Link href={`/dashboard/${repo}`}>Open the dashboard</Link> or{" "}
-        <Link href={`/workspace?repo=${repo}`}>ask about the code</Link>.
+        {job.cacheHit ? "Already analyzed." : "Analysis finished."} Opening{" "}
+        <Link href={repoPath(job.fullName)}>{job.fullName}</Link>...
       </div>
     );
   }

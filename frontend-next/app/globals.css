@@ -127,6 +127,16 @@ a:hover {
   gap: 12px;
 }
 
+/* Grid items default to min-width: auto, so one long line would widen the whole page. */
+.grid > * {
+  min-width: 0;
+}
+
+.card pre {
+  overflow-x: auto;
+  margin: 0;
+}
+
 .row {
   display: flex;
   gap: 10px;
@@ -413,6 +423,122 @@ a:hover {
   max-width: 36rem;
 }
 
+.recent {
+  margin: 0 0 40px;
+}
+
+.recent h2 {
+  font-size: var(--step-1);
+  margin: 0 0 14px;
+}
+
+.recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px 32px;
+}
+
+.recent-list p {
+  margin: 2px 0 0;
+  color: var(--lichen);
+  font-size: var(--step--1);
+}
+
+/* --- Repository pages ------------------------------------------------------ */
+
+.repo-header {
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 24px;
+}
+
+.repo-title {
+  font-size: clamp(1.6rem, 3.5vw, 2.2rem);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin: 0 0 6px;
+  overflow-wrap: anywhere;
+}
+
+.repo-description {
+  margin: 0 0 6px;
+  color: var(--lichen);
+  max-width: 60ch;
+}
+
+.repo-meta {
+  display: flex;
+  gap: 18px;
+  margin: 0 0 14px;
+  color: var(--lichen);
+  font-size: var(--step--1);
+}
+
+.tabs {
+  display: flex;
+  gap: 28px;
+}
+
+.tab {
+  padding: 8px 0 10px;
+  color: var(--lichen);
+  text-decoration: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tab:hover {
+  color: var(--ink);
+}
+
+.tab[aria-current="page"] {
+  color: var(--ink);
+  font-weight: 700;
+  border-bottom-color: var(--ochre);
+}
+
+.repo-missing {
+  max-width: 36rem;
+}
+
+.repo-missing .button {
+  margin-top: 8px;
+}
+
+.chat {
+  display: grid;
+  gap: 14px;
+}
+
+.chat-form {
+  display: flex;
+  gap: 10px;
+}
+
+.chat-form .input {
+  flex: 1;
+}
+
+.no-citation {
+  margin-top: 6px;
+  color: var(--lichen);
+  font-size: var(--step--1);
+}
+
+.changed-file {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.diff-answer {
+  margin-top: 12px;
+  max-width: 100%;
+}
+
 @media (max-width: 760px) {
   .site-header-inner {
     gap: 6px 28px;
@@ -433,7 +559,8 @@ a:hover {
     max-width: 300px;
   }
 
-  .repo-form {
+  .repo-form,
+  .chat-form {
     flex-direction: column;
   }
 
