@@ -94,6 +94,42 @@ def test_analyze_repo_force_reanalyze_creates_new_job(client, monkeypatch):
     assert second.json()['job_id'] != first.json()['job_id']
 
 
+def test_analyze_repo_after_forced_reanalyze_returns_latest_done_job(client, db_session: Session, monkeypatch):
+    monkeypatch.setattr(repos_module, 'resolve_public_repo_snapshot', lambda url: _snapshot('sha-forced'))
+    url = 'https://github.com/test-owner/test-repo'
+
+    def _mark_done(job_id: str) -> None:
+        job = db_session.execute(select(AnalysisJob).where(AnalysisJob.id == job_id)).scalar_one()
+        job.status = 'done'
+        db_session.commit()
+
+    first = client.post('/api/v1/repos/analyze', json={'github_url': url})
+    _mark_done(first.json()['job_id'])
+    forced = client.post('/api/v1/repos/analyze', json={'github_url': url, 'force_reanalyze': True})
+    _mark_done(forced.json()['job_id'])
+
+    # Two done jobs now exist for the same commit; a normal analyze must reuse the newest one.
+    repeated = client.post('/api/v1/repos/analyze', json={'github_url': url})
+
+    assert repeated.status_code == 200
+    assert repeated.json()['job_id'] == forced.json()['job_id']
+    assert repeated.json()['cache_hit'] is True
+
+
+def test_analyze_repo_idempotency_key_shared_with_forced_job_returns_latest(client, monkeypatch):
+    monkeypatch.setattr(repos_module, 'resolve_public_repo_snapshot', lambda url: _snapshot('sha-idem-forced'))
+    url = 'https://github.com/test-owner/test-repo'
+    headers = {'Idempotency-Key': 'idem-shared'}
+
+    client.post('/api/v1/repos/analyze', json={'github_url': url}, headers=headers)
+    forced = client.post('/api/v1/repos/analyze', json={'github_url': url, 'force_reanalyze': True}, headers=headers)
+
+    repeated = client.post('/api/v1/repos/analyze', json={'github_url': url}, headers=headers)
+
+    assert repeated.status_code == 200
+    assert repeated.json()['job_id'] == forced.json()['job_id']
+
+
 def test_analyze_repo_rejects_invalid_url(client):
     response = client.post('/api/v1/repos/analyze', json={'github_url': 'https://example.com/not-github'})
     assert response.status_code == 400
