@@ -36,11 +36,9 @@ def main() -> None:
         finally:
             db.close()
 
-        if not processed_parse and not processed_embed and not processed_analyze:
+        # Poll again right away after doing work; only back off while the queue is empty.
+        if not (processed_parse or processed_embed or processed_analyze):
             time.sleep(2)
-            continue
-
-        time.sleep(10)
 
 
 if __name__ == "__main__":
