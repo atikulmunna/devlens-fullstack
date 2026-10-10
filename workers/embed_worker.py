@@ -124,15 +124,15 @@ def _request_with_retries(
     raise EmbedError('EMBED_UPSERT_FAILED', f'Qdrant request failed after retries: {last_error}')
 
 
-def ensure_collection() -> None:
+def ensure_collection(vector_size: int) -> None:
     url = f"{str(settings.qdrant_url).rstrip('/')}/collections/{settings.qdrant_collection}"
     headers = {'api-key': settings.qdrant_api_key} if settings.qdrant_api_key else None
     body = {
-        'vectors': {'size': settings.embed_vector_size, 'distance': 'Cosine'}
+        'vectors': {'size': vector_size, 'distance': 'Cosine'}
     }
 
     # Detect an existing collection whose vector dimension no longer matches the
-    # configured embedder (e.g. after switching embedding models). A mismatched
+    # embedder's output (e.g. after switching embedding models). A mismatched
     # collection is dropped and recreated once; every repo must then be re-analyzed.
     existing = _request_with_retries('GET', url, allowed_statuses={404}, headers=headers)
     if existing:
@@ -143,11 +143,23 @@ def ensure_collection() -> None:
             .get('vectors', {})
         )
         current_size = vectors_cfg.get('size') if isinstance(vectors_cfg, dict) else None
-        if current_size == settings.embed_vector_size:
+        if current_size == vector_size:
             return
         _request_with_retries('DELETE', url, allowed_statuses={404}, headers=headers)
 
     _request_with_retries('PUT', url, json_body=body, allowed_statuses={409}, headers=headers)
+
+
+def prepare_collection(repo_id: str, first_vectors: list[list[float]]) -> None:
+    """Size the collection from the model's actual output, then clear the repo's old points.
+
+    A hand-set vector size drifted from the model twice; the first batch is the source of truth.
+    """
+    vector_size = len(first_vectors[0]) if first_vectors else 0
+    if vector_size == 0:
+        raise EmbedError('EMBED_EMPTY_VECTOR', 'Embedding model returned an empty vector')
+    ensure_collection(vector_size)
+    delete_repo_vectors(repo_id)
 
 
 def delete_repo_vectors(repo_id: str) -> None:
@@ -218,8 +230,6 @@ def embed_job(db: Session, snapshot: EmbedSnapshot) -> None:
             if not chunks:
                 raise EmbedError('NO_CHUNKS', 'No chunks available for embedding')
 
-            ensure_collection()
-            delete_repo_vectors(snapshot.repo_id)
             update_job_status(db, snapshot.job_id, 'embedding', 40)
             db.commit()
 
@@ -235,6 +245,8 @@ def embed_job(db: Session, snapshot: EmbedSnapshot) -> None:
                     model=settings.embed_model,
                     ttl_seconds=settings.embed_cache_ttl_seconds,
                 )
+                if idx == 0:
+                    prepare_collection(snapshot.repo_id, vectors)
                 batch_qdrant_ids = upsert_chunk_vectors(snapshot.repo_id, batch, vectors)
 
                 chunk_ids.extend([chunk.id for chunk in batch])
