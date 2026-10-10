@@ -85,7 +85,9 @@ def chunk_lines(content: str, chunk_lines: int, overlap_lines: int) -> list[tupl
     while start < len(lines):
         end = min(start + chunk_lines, len(lines))
         chunk_content = '\n'.join(lines[start:end])
-        chunks.append((start + 1, end, chunk_content))
+        # Blank windows carry nothing searchable, and embedding APIs reject empty inputs.
+        if chunk_content.strip():
+            chunks.append((start + 1, end, chunk_content))
         if end == len(lines):
             break
         start = end - overlap_lines

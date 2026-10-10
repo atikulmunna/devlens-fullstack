@@ -38,6 +38,19 @@ def test_chunk_lines_with_overlap() -> None:
     assert chunks[2][1] == 10
 
 
+def test_chunk_lines_skips_blank_windows() -> None:
+    # Embedding APIs reject empty inputs, so a blank window must never become a chunk.
+    assert chunk_lines('\n', chunk_lines=120, overlap_lines=20) == []
+    chunks = chunk_lines('a\n' + '\n' * 10 + 'b', chunk_lines=4, overlap_lines=0)
+    assert [content.strip() for _, _, content in chunks] == ['a', 'b']
+
+
+def test_chunk_file_whitespace_only_source_file_has_no_chunks() -> None:
+    # An __init__.py holding only a newline produced an empty chunk that failed the whole embed job.
+    assert parse_worker.chunk_file('\n', 'py', 120, 20) == []
+    assert parse_worker.chunk_file('   \n\t\n', 'md', 120, 20) == []
+
+
 def test_chunk_lines_rejects_invalid_config() -> None:
     with pytest.raises(ParseError) as exc:
         chunk_lines('a\nb', chunk_lines=10, overlap_lines=10)
