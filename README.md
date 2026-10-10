@@ -83,7 +83,8 @@ flowchart LR
 
 ### Frontend
 - Next.js + TypeScript UI (`frontend-next/`)
-- Workspace-centered flow (Analyze -> Dashboard -> Chat) with streaming, citation-grounded answers
+- One flow: paste a repo on the home page, then each repository lives at `/r/<owner>/<repo>` with Overview, Chat, and Changes tabs
+- Streaming, citation-grounded chat answers
 
 ### AI / Retrieval
 - Dense retrieval (Qdrant) with embeddings via OpenRouter (`openai/text-embedding-3-small`)
@@ -100,20 +101,20 @@ flowchart LR
 
 - `backend/` FastAPI API service
 - `workers/` async analysis pipeline
-- `frontend-next/` Next.js + TypeScript production UI (analyze, dashboard, chat workspace)
+- `frontend-next/` Next.js + TypeScript production UI (home, repository overview, chat, changes)
 - `docs/` contracts, planning, QA, runbooks
 - `scripts/` automation for setup, tests, deploy, eval
 - `assets/` static assets (screenshots)
 
 ## End-to-End Runtime Flow
 
-1. User submits GitHub URL from `/workspace` or `/analyze`.
+1. User submits a GitHub URL on the home page (`/`).
 2. Backend creates/updates repository record and enqueues a job.
 3. `parse_worker` clones and chunks source code (tree-sitter, function/class aware) and captures the commit diff.
 4. `embed_worker` generates embeddings via OpenRouter and upserts into Qdrant.
 5. `analyze_worker` computes architecture/quality summaries.
-6. UI streams status updates from SSE endpoint.
-7. Dashboard API exposes final analysis payload.
+6. UI streams status updates from SSE endpoint, then opens `/r/<owner>/<repo>`.
+7. Dashboard API exposes final analysis payload (the Overview tab).
 8. Chat session retrieves relevant chunks (hybrid dense + lexical + reranker) and streams a citation-grounded response.
 9. Diff API exposes changed files, blast radius, security flags, and a diff-grounded Q&A.
 
@@ -168,8 +169,7 @@ Set in `workers/.env` as well:
 
 ### 6. Open app
 
-- Workspace: http://localhost:3000/workspace
-- Classic analyze page: http://localhost:3000/analyze
+- App: http://localhost:3000 (a repository page looks like http://localhost:3000/r/pallets/itsdangerous)
 - Backend health: http://localhost:8000/health
 
 ## Environment Variables Reference
@@ -225,10 +225,10 @@ Pipeline tuning:
 ## Authentication Overview
 
 DevLens uses GitHub OAuth + backend JWT session flow:
-1. Start login from `/api/v1/auth/github?next=/workspace`
+1. Start login from `/api/v1/auth/github?next=<path>` (the Sign in link in the header does this for the current page)
 2. Callback hits backend (`/api/v1/auth/callback`)
-3. Backend sets refresh/session cookies
-4. Frontend can call `/api/v1/auth/refresh` to get access token
+3. Backend sets refresh/session cookies and returns the user to `next`
+4. The frontend calls `/api/v1/auth/refresh` on load and again on any 401, keeping the access token in memory only
 5. Access token is sent as `Authorization: Bearer ...` for chat APIs
 
 CSRF protection:
@@ -306,13 +306,12 @@ bash deploy/bootstrap.sh
 
 ## New User Walkthrough
 
-1. Open `/workspace`.
-2. Paste GitHub URL -> click Analyze.
-3. Wait until status reaches done.
-4. Load Dashboard (auto context or repo ID).
-5. Login with GitHub.
-6. Refresh and save access token.
-7. Create chat session and ask questions.
+1. Open the home page.
+2. Paste a GitHub URL and click Analyze repository.
+3. When analysis finishes, DevLens opens the repository page on its Overview tab.
+4. Open the Chat tab and sign in with GitHub if asked.
+5. Ask a question. The chat session is created with your first question.
+6. Open the Changes tab to see what the latest commit touched.
 
 Recommended starter prompts:
 - "Summarize this repository in 6 bullets."
@@ -333,9 +332,9 @@ Recommended starter prompts:
 - Ensure repo URL is public and reachable.
 
 ### Chat says no token / 401
-- Run GitHub login flow.
-- Refresh token from auth endpoint.
-- Save access token in Workspace before chat calls.
+- Sign in with GitHub from the header or the Chat tab.
+- If sign-in does not stick, check that `devlens_refresh_token` and `devlens_csrf_token` cookies are set for the app's domain.
+- Confirm `FRONTEND_URL` in `backend/.env` matches the address you open the app on.
 
 ### GitHub OAuth redirect_uri mismatch
 - OAuth app callback URL must exactly match backend setting:

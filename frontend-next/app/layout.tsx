@@ -35,8 +35,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 DevLens
               </Link>
               <nav className="nav" aria-label="Main">
-                <Link href="/analyze">Analyze</Link>
-                <Link href="/workspace">Workspace</Link>
                 <span className="auth">
                   <AuthStatus />
                 </span>

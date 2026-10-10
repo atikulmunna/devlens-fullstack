@@ -34,7 +34,7 @@ from app.services.tokens import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 CSRF_COOKIE_NAME = "devlens_csrf_token"
 CSRF_HEADER_NAME = "x-csrf-token"
-DEFAULT_POST_LOGIN_PATH = "/workspace"
+DEFAULT_POST_LOGIN_PATH = "/"
 REFRESH_RESPONSE_EXAMPLE = {
     "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "token_type": "bearer",

@@ -1,13 +1,14 @@
 import asyncio
 import json
 import time
+from datetime import datetime
 from uuid import UUID
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import AnalysisJob, AnalysisResult, CodeChunk, Repository
@@ -30,6 +31,7 @@ ANALYZE_REQUEST_EXAMPLE = {
 ANALYZE_RESPONSE_EXAMPLE = {
     "job_id": "d7a2ca6c-f9d1-42ce-9de0-35e0dbdc47dc",
     "repo_id": "cd3ce6f7-76fc-4cc2-8e34-c176f7af6f82",
+    "full_name": "owner/repo",
     "status": "queued",
     "cache_hit": False,
     "commit_sha": "abcdef1234567890",
@@ -50,6 +52,7 @@ class AnalyzeRepoRequest(BaseModel):
 class AnalyzeRepoResponse(BaseModel):
     job_id: str
     repo_id: str
+    full_name: str
     status: str
     cache_hit: bool
     commit_sha: str
@@ -109,6 +112,30 @@ class DashboardResponse(BaseModel):
     repository: DashboardRepositoryResponse
     analysis: dict | None = None
     has_analysis: bool
+
+
+class RepoSummaryResponse(BaseModel):
+    repo_id: str
+    full_name: str
+    github_url: str
+    description: str | None = None
+    language: str | None = None
+    last_analyzed_at: datetime | None = None
+
+
+class RecentReposResponse(BaseModel):
+    repos: list[RepoSummaryResponse]
+
+
+def _repo_summary(repo: Repository) -> RepoSummaryResponse:
+    return RepoSummaryResponse(
+        repo_id=str(repo.id),
+        full_name=repo.full_name,
+        github_url=repo.github_url,
+        description=repo.description,
+        language=repo.language,
+        last_analyzed_at=repo.last_analyzed_at,
+    )
 
 
 class DependencyNode(BaseModel):
@@ -268,6 +295,7 @@ def analyze_repo(
                 return AnalyzeRepoResponse(
                     job_id=str(by_key.id),
                     repo_id=str(repo.id),
+                    full_name=repo.full_name,
                     status=by_key.status,
                     cache_hit=by_key.status == "done",
                     commit_sha=commit_sha,
@@ -287,6 +315,7 @@ def analyze_repo(
             return AnalyzeRepoResponse(
                 job_id=str(by_commit.id),
                 repo_id=str(repo.id),
+                full_name=repo.full_name,
                 status=by_commit.status,
                 cache_hit=by_commit.status == "done",
                 commit_sha=commit_sha,
@@ -308,6 +337,7 @@ def analyze_repo(
     return AnalyzeRepoResponse(
         job_id=str(new_job.id),
         repo_id=str(repo.id),
+        full_name=repo.full_name,
         status=new_job.status,
         cache_hit=False,
         commit_sha=commit_sha,
@@ -432,6 +462,46 @@ def get_repo_dashboard(repo_id: UUID, db: Session = Depends(get_db_session)) -> 
         analysis=analysis_payload,
         has_analysis=result is not None,
     )
+
+
+@router.get(
+    "/recent",
+    response_model=RecentReposResponse,
+    summary="Recently analyzed repositories",
+    description="Repositories with a finished analysis, newest first.",
+)
+def list_recent_repos(
+    limit: int = Query(default=6, ge=1, le=20),
+    db: Session = Depends(get_db_session),
+) -> RecentReposResponse:
+    repos = db.execute(
+        select(Repository)
+        .where(Repository.last_analyzed_at.is_not(None))
+        .order_by(Repository.last_analyzed_at.desc())
+        .limit(limit)
+    ).scalars().all()
+    return RecentReposResponse(repos=[_repo_summary(repo) for repo in repos])
+
+
+@router.get(
+    "/by-name/{owner}/{name}",
+    response_model=RepoSummaryResponse,
+    summary="Look up a repository by owner and name",
+    description="Case-insensitive, like GitHub. Returns 404 when the repository has never been analyzed.",
+    responses={
+        404: {
+            "description": "Repository not analyzed yet",
+            "content": {"application/json": {"schema": ERROR_RESPONSE_SCHEMA}},
+        },
+    },
+)
+def get_repo_by_name(owner: str, name: str, db: Session = Depends(get_db_session)) -> RepoSummaryResponse:
+    repo = db.execute(
+        select(Repository).where(func.lower(Repository.full_name) == f"{owner}/{name}".lower())
+    ).scalars().first()
+    if repo is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not analyzed yet")
+    return _repo_summary(repo)
 
 
 @router.get(

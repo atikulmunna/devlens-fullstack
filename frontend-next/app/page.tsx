@@ -1,15 +1,34 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { FormEvent, useEffect, useState } from "react";
 import { AnalyzeStatus } from "@/components/analyze-status";
 import { ContourMap } from "@/components/contour-map";
+import { getRecentRepos, RepoSummary } from "@/lib/api";
+import { repoPath } from "@/lib/repo-path";
 import { useAnalyzeJob } from "@/lib/use-analyze-job";
 
 const EXAMPLES = ["pallets/itsdangerous", "psf/requests"];
 
 export default function HomePage() {
+  const router = useRouter();
   const [url, setUrl] = useState("");
+  const [recent, setRecent] = useState<RepoSummary[]>([]);
   const { start, pending, error, job, stage, progress } = useAnalyzeJob();
+
+  // The recent list is a convenience; the page works the same without it.
+  useEffect(() => {
+    getRecentRepos()
+      .then(setRecent)
+      .catch(() => setRecent([]));
+  }, []);
+
+  useEffect(() => {
+    if (stage === "done" && job) {
+      router.push(repoPath(job.fullName));
+    }
+  }, [stage, job, router]);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -54,6 +73,22 @@ export default function HomePage() {
         </div>
         <ContourMap />
       </section>
+
+      {recent.length > 0 && (
+        <section className="recent" aria-labelledby="recent-heading">
+          <h2 id="recent-heading">Recently analyzed</h2>
+          <ul className="recent-list">
+            {recent.map((repo) => (
+              <li key={repo.repo_id}>
+                <Link href={repoPath(repo.full_name)} className="mono">
+                  {repo.full_name}
+                </Link>
+                {repo.description && <p>{repo.description}</p>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <ul className="features">
         <li>
