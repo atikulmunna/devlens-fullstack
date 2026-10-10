@@ -137,3 +137,18 @@ def test_auth_rate_limit_for_chat_session_create(client, db_session: Session, mo
     assert r2.headers["X-RateLimit-Remaining"] == "0"
     assert r3.headers["X-RateLimit-Limit"] == "2"
     assert r3.json()["error"]["code"] == "RATE_LIMITED"
+
+
+def test_auth_rate_limit_for_diff_ask(client, db_session: Session, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "rate_limit_window_seconds", 3600)
+    monkeypatch.setattr(settings, "rate_limit_auth_per_window", 2)
+
+    user, repo = _seed_chat_user_and_repo(db_session)
+    headers = {"Authorization": f"Bearer {create_access_token(user.id)}", "X-Forwarded-For": "198.51.100.31"}
+    url = f"/api/v1/repos/{repo.id}/diff/ask"
+
+    # The repo has no commit diff, so allowed calls 404; the limit applies before the handler (and its LLM call) runs.
+    responses = [client.post(url, json={"question": "Is this risky?"}, headers=headers) for _ in range(3)]
+
+    assert [response.status_code for response in responses] == [404, 404, 429]
+    assert responses[2].json()["error"]["details"] == {"scope": "diff_ask", "identity_type": "auth"}

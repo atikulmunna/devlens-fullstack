@@ -91,6 +91,8 @@ class RateLimitMiddleware:
             return "analyze"
         if method == "POST" and path.startswith("/api/v1/chat"):
             return "chat"
+        if method == "POST" and path.startswith("/api/v1/repos/") and path.endswith("/diff/ask"):
+            return "diff_ask"
         return None
 
     @staticmethod
