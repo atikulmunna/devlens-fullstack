@@ -2,16 +2,8 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
-import {
-  ChatCitation,
-  clearToken,
-  createChatSession,
-  getSuggestions,
-  getToken,
-  refreshAccessToken,
-  sendChatMessageStream,
-  setToken as persistToken
-} from "@/lib/api";
+import { SignInLink, useAuth } from "@/components/auth";
+import { ChatCitation, createChatSession, getSuggestions, sendChatMessageStream } from "@/lib/api";
 
 type ChatBubble = {
   role: "user" | "assistant";
@@ -28,10 +20,7 @@ function citationLabel(citation: ChatCitation): string {
 }
 
 export default function WorkspacePage() {
-  const [tokenInput, setTokenInput] = useState("");
-  const [hasToken, setHasToken] = useState(false);
-  const [authNote, setAuthNote] = useState("No token saved.");
-
+  const { status } = useAuth();
   const [repoId, setRepoId] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -43,10 +32,8 @@ export default function WorkspacePage() {
 
   const logRef = useRef<HTMLDivElement | null>(null);
 
-  // Read the token and any ?repo= hint on mount (client-only, avoids Suspense).
+  // Read any ?repo= hint on mount (client-only, avoids Suspense).
   useEffect(() => {
-    setHasToken(getToken().length > 0);
-    setAuthNote(getToken().length > 0 ? "Token saved." : "No token saved.");
     const params = new URLSearchParams(window.location.search);
     const repo = params.get("repo");
     if (repo) {
@@ -59,30 +46,6 @@ export default function WorkspacePage() {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
   }, [messages]);
-
-  function saveToken() {
-    persistToken(tokenInput);
-    setHasToken(getToken().length > 0);
-    setAuthNote(getToken().length > 0 ? "Token saved." : "No token saved.");
-    setTokenInput("");
-  }
-
-  function forgetToken() {
-    clearToken();
-    setHasToken(false);
-    setAuthNote("No token saved.");
-  }
-
-  async function refresh() {
-    setError(null);
-    try {
-      await refreshAccessToken();
-      setHasToken(true);
-      setAuthNote("Access token refreshed.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Token refresh failed");
-    }
-  }
 
   async function startSession(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -175,36 +138,20 @@ export default function WorkspacePage() {
         </p>
         <div className="row">
           <Link href="/analyze">Analyze a repo</Link>
-          <a href="/api/v1/auth/github?next=/workspace">Login with GitHub</a>
         </div>
       </article>
 
-      <article className="card">
-        <h3>Access</h3>
-        <p className="muted">{authNote}</p>
-        <div className="grid">
-          <input
-            className="input"
-            placeholder="Paste bearer access token"
-            value={tokenInput}
-            onChange={(e) => setTokenInput(e.target.value)}
-          />
-          <div className="row">
-            <button type="button" className="button" onClick={saveToken}>
-              Save token
-            </button>
-            <button type="button" className="button secondary" onClick={refresh}>
-              Refresh token
-            </button>
-            {hasToken && (
-              <button type="button" className="button secondary" onClick={forgetToken}>
-                Clear
-              </button>
-            )}
-          </div>
-        </div>
-      </article>
+      {status === "loading" && <article className="notice">Checking sign-in...</article>}
 
+      {status === "signed-out" && (
+        <article className="card">
+          <h3>Sign in to chat</h3>
+          <p className="muted">Chat uses your GitHub sign-in. You will come back to this page afterwards.</p>
+          <SignInLink>Sign in with GitHub</SignInLink>
+        </article>
+      )}
+
+      {status === "signed-in" && (
       <article className="card">
         <h3>Repository</h3>
         <form className="grid" onSubmit={startSession}>
@@ -227,6 +174,7 @@ export default function WorkspacePage() {
           </div>
         </form>
       </article>
+      )}
 
       {error && (
         <article className="error">
@@ -234,7 +182,7 @@ export default function WorkspacePage() {
         </article>
       )}
 
-      {sessionId && (
+      {status === "signed-in" && sessionId && (
         <article className="card">
           <h3>Chat</h3>
           {suggestions.length > 0 && messages.length === 0 && (

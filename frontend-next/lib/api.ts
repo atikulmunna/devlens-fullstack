@@ -1,3 +1,5 @@
+import { authFetch } from "./auth";
+
 export type AnalyzeRequest = {
   github_url: string;
 };
@@ -89,65 +91,6 @@ export async function getDashboard(repoId: string): Promise<DashboardResponse> {
   return assertJson<DashboardResponse>(response, "Dashboard request failed");
 }
 
-// --- Auth / token handling ---------------------------------------------------
-
-const TOKEN_KEY = "devlens.access_token";
-const CSRF_COOKIE = "devlens_csrf_token";
-
-export function getToken(): string {
-  if (typeof window === "undefined") {
-    return "";
-  }
-  return (window.localStorage.getItem(TOKEN_KEY) || "").trim();
-}
-
-export function setToken(token: string): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-  window.localStorage.setItem(TOKEN_KEY, token.trim());
-}
-
-export function clearToken(): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-  window.localStorage.removeItem(TOKEN_KEY);
-}
-
-function authHeaders(extra?: Record<string, string>): Record<string, string> {
-  const headers: Record<string, string> = { ...(extra || {}) };
-  const token = getToken();
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-  return headers;
-}
-
-function readCookie(name: string): string {
-  if (typeof document === "undefined") {
-    return "";
-  }
-  const match = document.cookie.split("; ").find((entry) => entry.startsWith(`${name}=`));
-  return match ? decodeURIComponent(match.split("=").slice(1).join("=")) : "";
-}
-
-export async function refreshAccessToken(): Promise<string> {
-  const csrf = readCookie(CSRF_COOKIE);
-  const response = await fetch("/api/v1/auth/refresh", {
-    method: "POST",
-    credentials: "include",
-    headers: csrf ? { "X-CSRF-Token": csrf } : {},
-    cache: "no-store"
-  });
-  const payload = await assertJson<{ access_token: string }>(response, "Token refresh failed");
-  if (!payload.access_token) {
-    throw new Error("No access token returned");
-  }
-  setToken(payload.access_token);
-  return payload.access_token;
-}
-
 // --- Chat --------------------------------------------------------------------
 
 export type ChatCitation = {
@@ -171,20 +114,16 @@ export type CreateSessionResponse = {
 };
 
 export async function createChatSession(repoId: string): Promise<CreateSessionResponse> {
-  const response = await fetch("/api/v1/chat/sessions", {
+  const response = await authFetch("/api/v1/chat/sessions", {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ repo_id: repoId }),
-    cache: "no-store"
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ repo_id: repoId })
   });
   return assertJson<CreateSessionResponse>(response, "Could not start chat session");
 }
 
 export async function getSuggestions(repoId: string): Promise<string[]> {
-  const response = await fetch(`/api/v1/chat/repos/${encodeURIComponent(repoId)}/suggestions`, {
-    headers: authHeaders(),
-    cache: "no-store"
-  });
+  const response = await authFetch(`/api/v1/chat/repos/${encodeURIComponent(repoId)}/suggestions`);
   const payload = await assertJson<{ suggestions: string[] }>(response, "Could not load suggestions");
   return payload.suggestions || [];
 }
@@ -200,11 +139,10 @@ export async function sendChatMessageStream(
   topK: number,
   handlers: ChatStreamHandlers
 ): Promise<void> {
-  const response = await fetch(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/message`, {
+  const response = await authFetch(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/message`, {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json", Accept: "text/event-stream" }),
-    body: JSON.stringify({ content, top_k: topK }),
-    cache: "no-store"
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    body: JSON.stringify({ content, top_k: topK })
   });
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => null);
@@ -281,10 +219,7 @@ export type CommitDiffSummary = {
 
 export async function getCommitDiff(repoId: string, head?: string): Promise<CommitDiffSummary> {
   const suffix = head ? `?head=${encodeURIComponent(head)}` : "";
-  const response = await fetch(`/api/v1/repos/${encodeURIComponent(repoId)}/diff${suffix}`, {
-    headers: authHeaders(),
-    cache: "no-store"
-  });
+  const response = await authFetch(`/api/v1/repos/${encodeURIComponent(repoId)}/diff${suffix}`);
   return assertJson<CommitDiffSummary>(response, "Could not load commit diff");
 }
 
@@ -293,11 +228,10 @@ export async function askAboutDiffStream(
   question: string,
   handlers: ChatStreamHandlers
 ): Promise<void> {
-  const response = await fetch(`/api/v1/repos/${encodeURIComponent(repoId)}/diff/ask`, {
+  const response = await authFetch(`/api/v1/repos/${encodeURIComponent(repoId)}/diff/ask`, {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json", Accept: "text/event-stream" }),
-    body: JSON.stringify({ question }),
-    cache: "no-store"
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    body: JSON.stringify({ question })
   });
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => null);

@@ -10,6 +10,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "frontend-next lint failed" }
     npm run typecheck
     if ($LASTEXITCODE -ne 0) { throw "frontend-next typecheck failed" }
+    npm test
+    if ($LASTEXITCODE -ne 0) { throw "frontend-next tests failed" }
     npm run build
     if ($LASTEXITCODE -ne 0) { throw "frontend-next build failed" }
 }

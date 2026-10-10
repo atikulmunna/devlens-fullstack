@@ -30,6 +30,29 @@ def test_auth_github_redirect_contains_valid_state(client: TestClient) -> None:
     assert decoded['next'] == '/profile'
 
 
+def test_auth_github_defaults_next_to_workspace(client: TestClient) -> None:
+    response = client.get('/api/v1/auth/github', follow_redirects=False)
+
+    state = response.headers['location'].split('state=', 1)[1]
+    assert validate_oauth_state(state)['next'] == '/workspace'
+
+
+def test_auth_callback_sends_unsafe_next_to_workspace(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(auth_module, 'exchange_code_for_access_token', lambda code: 'mock-token')
+    monkeypatch.setattr(
+        auth_module,
+        'fetch_github_user',
+        lambda token: {'id': 900000004, 'login': 'redirect-test-user', 'email': None, 'avatar_url': None},
+    )
+
+    # An absolute URL is not a safe in-app path; the fallback must be a page that exists.
+    state = generate_oauth_state('https://evil.example/phish')
+    response = client.get(f'/api/v1/auth/callback?code=dummy&state={state}', follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers['location'] == f"{_origin_header()}/workspace"
+
+
 def test_auth_callback_rejects_invalid_state(client: TestClient) -> None:
     response = client.get('/api/v1/auth/callback?code=dummy&state=bad')
     assert response.status_code == 400
