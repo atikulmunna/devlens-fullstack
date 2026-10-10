@@ -56,6 +56,8 @@ services:
       timeout: 3s
       retries: 10
 
+  # Exactly one worker: jobs are claimed from the analysis_jobs table without a lease, so a
+  # second replica would pick up the same in-progress job and process it twice.
   worker:
     build:
       context: ./workers

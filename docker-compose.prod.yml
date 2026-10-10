@@ -64,6 +64,8 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Exactly one worker: jobs are claimed from the analysis_jobs table without a lease, so a
+  # second replica would pick up the same in-progress job and process it twice.
   worker:
     build:
       context: ./workers

@@ -50,8 +50,8 @@ flowchart LR
   backend --> redis["Redis"]
   backend --> qdrant["Qdrant"]
 
-  backend -->|enqueue| queue["Redis Queue"]
-  queue --> parse["Parse Worker"]
+  backend -->|insert queued job| jobs["Job table (PostgreSQL)"]
+  jobs -->|polled| parse["Parse Worker"]
   parse --> embed["Embed Worker"]
   embed --> analyze["Analyze Worker"]
 
@@ -73,12 +73,13 @@ flowchart LR
 - Python, FastAPI
 - SQLAlchemy + Alembic
 - PostgreSQL
-- Redis (queue + caching + limits)
+- Redis (rate limits, embedding cache, worker heartbeat)
 - Qdrant (vector search)
 
 ### Workers
 - Python worker services (`parse_worker`, `embed_worker`, `analyze_worker`)
-- RQ-style async job processing
+- Job queue: the `analysis_jobs` table in PostgreSQL, polled by a single worker process. Run exactly one
+  worker: jobs are not leased, so a second worker would process the same job twice.
 
 ### Frontend
 - Next.js + TypeScript UI (`frontend-next/`)
