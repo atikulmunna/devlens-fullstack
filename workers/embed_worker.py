@@ -150,6 +150,15 @@ def ensure_collection() -> None:
     _request_with_retries('PUT', url, json_body=body, allowed_statuses={409}, headers=headers)
 
 
+def delete_repo_vectors(repo_id: str) -> None:
+    # The parse stage replaces every chunk row, so the repo's existing points all reference
+    # chunks that no longer exist; left in place they pile up and crowd out fresh results.
+    url = f"{str(settings.qdrant_url).rstrip('/')}/collections/{settings.qdrant_collection}/points/delete?wait=true"
+    headers = {'api-key': settings.qdrant_api_key} if settings.qdrant_api_key else None
+    body = {'filter': {'must': [{'key': 'repo_id', 'match': {'value': repo_id}}]}}
+    _request_with_retries('POST', url, json_body=body, headers=headers)
+
+
 def upsert_chunk_vectors(repo_id: str, chunks: list[ChunkRecord], vectors: list[list[float]]) -> list[str]:
     if len(chunks) != len(vectors):
         raise EmbedError('EMBED_VECTOR_MISMATCH', 'Chunks and vectors length mismatch')
@@ -210,6 +219,7 @@ def embed_job(db: Session, snapshot: EmbedSnapshot) -> None:
                 raise EmbedError('NO_CHUNKS', 'No chunks available for embedding')
 
             ensure_collection()
+            delete_repo_vectors(snapshot.repo_id)
             update_job_status(db, snapshot.job_id, 'embedding', 40)
             db.commit()
 
