@@ -1,4 +1,3 @@
-import asyncio
 import json
 import re
 from datetime import datetime
@@ -11,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import AnalysisResult, ChatMessage, CodeChunk, ChatSession, Repository, User
+from app.db.session import SessionLocal
 from app.api.error_schema import ERROR_RESPONSE_SCHEMA
 from app.deps import get_current_user, get_db_session
 from app.services.citations import format_citation, validate_citations_for_repo
@@ -717,16 +717,20 @@ def send_chat_message(
     plan = _plan_assistant_response(db, session_row.repo_id, payload.content, results)
     citations = plan["citations"]
 
+    repo_id = session_row.repo_id
+
     def _delta(token: str) -> str:
         return f"event: delta\ndata: {json.dumps({'token': token})}\n\n"
 
-    async def event_stream():
+    # A sync generator on purpose: Starlette iterates it in a worker thread, so the blocking
+    # LLM HTTP stream never stalls the event loop. The request's `db` is closed by the time
+    # this runs, so any DB work here uses its own session.
+    def event_stream():
         # Deterministic branches (no results / language / summary) emit their fixed text.
         if plan["kind"] == "final":
             final_text = plan["text"]
             for token in final_text.split(" "):
                 yield _delta(token + " ")
-                await asyncio.sleep(0)
         else:
             # LLM branch: stream real tokens as they arrive from the model.
             parts: list[str] = []
@@ -738,7 +742,6 @@ def send_chat_message(
                 ):
                     parts.append(piece)
                     yield _delta(piece)
-                    await asyncio.sleep(0)
             except ChatSynthesisError:
                 # A mid-stream failure keeps whatever partial text was already delivered.
                 pass
@@ -746,24 +749,26 @@ def send_chat_message(
             final_text = "".join(parts).strip()
             if not final_text:
                 # Nothing streamed (all providers failed before emitting): fall back.
-                final_text = _snippet_fallback_text(db, session_row.repo_id, plan["top"], plan["refs"])
+                with SessionLocal() as stream_db:
+                    final_text = _snippet_fallback_text(stream_db, repo_id, plan["top"], plan["refs"])
                 for token in final_text.split(" "):
                     yield _delta(token + " ")
-                    await asyncio.sleep(0)
 
-        assistant_msg = ChatMessage(
-            id=uuid4(),
-            session_id=session_row.id,
-            role="assistant",
-            content=final_text,
-            source_citations=citations,
-        )
-        db.add(assistant_msg)
-        db.commit()
-        db.refresh(assistant_msg)
+        message_id = uuid4()
+        with SessionLocal() as stream_db:
+            stream_db.add(
+                ChatMessage(
+                    id=message_id,
+                    session_id=session_id,
+                    role="assistant",
+                    content=final_text,
+                    source_citations=citations,
+                )
+            )
+            stream_db.commit()
 
         final = {
-            "message_id": str(assistant_msg.id),
+            "message_id": str(message_id),
             "citations": citations.get("citations", []),
             "no_citation": bool(citations.get("no_citation")),
         }

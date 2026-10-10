@@ -1,4 +1,3 @@
-import asyncio
 import json
 from uuid import UUID
 
@@ -155,7 +154,9 @@ def ask_about_diff(
         note = f" Security-sensitive areas: {', '.join(security_categories)}." if security_categories else ""
         return f"This commit ({diff.head_sha[:10]}) changed: {touched}.{note}"
 
-    async def event_stream():
+    # A sync generator on purpose: Starlette iterates it in a worker thread, so the blocking
+    # LLM HTTP stream never stalls the event loop.
+    def event_stream():
         parts: list[str] = []
         try:
             for piece in synthesize_grounded_answer_stream(
@@ -165,14 +166,12 @@ def ask_about_diff(
             ):
                 parts.append(piece)
                 yield _delta(piece)
-                await asyncio.sleep(0)
         except ChatSynthesisError:
             pass
 
         if not "".join(parts).strip():
             for token in _fallback_text().split(" "):
                 yield _delta(token + " ")
-                await asyncio.sleep(0)
 
         final = {
             "head_sha": diff.head_sha,
