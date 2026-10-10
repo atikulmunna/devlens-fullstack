@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import AnalysisResult, ChatMessage, CodeChunk, ChatSession, Repository, User
@@ -19,7 +19,7 @@ from app.services.chat_synthesizer import (
     ChatSynthesisError,
     synthesize_grounded_answer_stream,
 )
-from app.services.retrieval_hybrid import hybrid_search_chunks
+from app.services.retrieval_hybrid import hybrid_search_chunks, load_chunk_content
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 CHAT_CREATE_SESSION_REQUEST_EXAMPLE = {"repo_id": "cd3ce6f7-76fc-4cc2-8e34-c176f7af6f82"}
@@ -228,23 +228,6 @@ def _select_diverse_results(results: list[dict], limit: int = 6) -> list[dict]:
             if len(selected) >= limit:
                 break
     return selected
-
-
-def _load_chunk_content(db: Session, repo_id: UUID, chunk_ids: list[str]) -> dict[str, str]:
-    if not chunk_ids:
-        return {}
-    rows = db.execute(
-        text(
-            """
-            SELECT id::text AS chunk_id, content
-            FROM code_chunks
-            WHERE repo_id = CAST(:repo_id AS uuid)
-              AND id = ANY(CAST(:chunk_ids AS uuid[]))
-            """
-        ),
-        {"repo_id": str(repo_id), "chunk_ids": chunk_ids},
-    ).mappings().all()
-    return {row["chunk_id"]: row.get("content") or "" for row in rows}
 
 
 def _fallback_repo_summary(
@@ -458,6 +441,12 @@ def _plan_assistant_response(db: Session, repo_id: UUID, query: str, results: li
 
     llm_contexts = []
     llm_candidates = diverse if diverse else top
+    # Retrieval results carry only metadata, so load the chunk code the LLM must ground on.
+    content_by_chunk = load_chunk_content(
+        db,
+        repo_id=repo_id,
+        chunk_ids=[str(item.get("chunk_id")) for item in llm_candidates if item.get("chunk_id")],
+    )
     for item in llm_candidates:
         chunk_id = str(item.get("chunk_id") or "")
         llm_contexts.append(
@@ -467,7 +456,7 @@ def _plan_assistant_response(db: Session, repo_id: UUID, query: str, results: li
                 "line_start": item.get("start_line"),
                 "line_end": item.get("end_line"),
                 "language": item.get("language"),
-                "content": str(item.get("content") or ""),
+                "content": str(item.get("content") or content_by_chunk.get(chunk_id) or ""),
             }
         )
     return {
@@ -483,7 +472,7 @@ def _plan_assistant_response(db: Session, repo_id: UUID, query: str, results: li
 def _snippet_fallback_text(db: Session, repo_id: UUID, top: list[dict], refs: list[str]) -> str:
     """Deterministic answer used when LLM synthesis is unavailable or empty."""
     snippets: list[str] = []
-    content_by_chunk = _load_chunk_content(
+    content_by_chunk = load_chunk_content(
         db,
         repo_id=repo_id,
         chunk_ids=[str(item.get("chunk_id")) for item in top if item.get("chunk_id")],
