@@ -1,10 +1,26 @@
+/* DevLens palette: survey-map colors. Paper, spruce ink, pine for actions, ochre for the one accent. */
 :root {
-  --bg: #f4f7fb;
-  --ink: #182433;
-  --muted: #516377;
-  --panel: #ffffff;
-  --line: #d9e1ec;
-  --accent: #0f6dbb;
+  --paper: #edf0ea;
+  --surface: #f8f9f5;
+  --ink: #1e2b24;
+  --lichen: #55635b;
+  --rule: #c7d0c6;
+  --pine: #2d5a47;
+  --pine-deep: #234637;
+  --ochre: #a86f24;
+  --brick: #9c3b2e;
+  --brick-wash: #f6e9e5;
+  --pine-wash: #e2ebe3;
+
+  --font-body: var(--font-atkinson), "Atkinson Hyperlegible", system-ui, sans-serif;
+  --font-code: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
+
+  /* Type scale, ratio ~1.25 */
+  --step--1: 0.875rem;
+  --step-0: 1.0625rem;
+  --step-1: 1.3rem;
+  --step-2: 1.65rem;
+  --radius: 6px;
 }
 
 * {
@@ -13,66 +29,97 @@
 
 body {
   margin: 0;
-  background: radial-gradient(circle at 10% 10%, #ffffff, var(--bg));
+  background: var(--paper);
   color: var(--ink);
-  font-family: "Segoe UI", Tahoma, sans-serif;
+  font-family: var(--font-body);
+  font-size: var(--step-0);
+  line-height: 1.55;
 }
 
 a {
-  color: var(--accent);
-  text-decoration: none;
+  color: var(--pine);
+  text-underline-offset: 0.2em;
 }
 
 a:hover {
+  color: var(--pine-deep);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ochre);
+  outline-offset: 3px;
+}
+
+/* --- Site header ------------------------------------------------------------ */
+
+.site-header {
+  border-bottom: 1px solid var(--rule);
+  background: var(--surface);
+}
+
+.site-header-inner {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+
+.wordmark {
+  font-weight: 700;
+  font-size: var(--step-1);
+  color: var(--ink);
+  text-decoration: none;
+  letter-spacing: -0.01em;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.nav a {
+  text-decoration: none;
+}
+
+.nav a:hover {
   text-decoration: underline;
+}
+
+.nav .auth {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+
+.avatar {
+  border-radius: 999px;
 }
 
 .shell {
   max-width: 1040px;
   margin: 0 auto;
-  padding: 24px 16px 28px;
+  padding: 32px 16px 56px;
 }
 
-.chip {
-  display: inline-block;
-  border: 1px solid #b5d3f0;
-  color: var(--accent);
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.title {
-  margin: 8px 0;
-  font-size: 34px;
-}
-
-.subtitle {
-  margin: 0;
-  color: var(--muted);
-}
-
-.nav {
-  margin: 14px 0 20px;
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.nav a {
-  border: 1px solid var(--line);
-  background: var(--panel);
-  border-radius: 8px;
-  padding: 8px 11px;
-}
+/* --- Shared building blocks (workspace, dashboard, diff) -------------------- */
 
 .card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 18px;
   margin-bottom: 12px;
+}
+
+.card > h2:first-child,
+.card > h3:first-child {
+  margin-top: 0;
 }
 
 .grid {
@@ -82,51 +129,76 @@ a:hover {
 
 .row {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
   flex-wrap: wrap;
 }
 
 .muted {
-  color: var(--muted);
+  color: var(--lichen);
 }
 
 .mono {
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family: var(--font-code);
+  font-size: 0.92em;
 }
 
 .input,
 .button {
   font: inherit;
-  border-radius: 8px;
+  border-radius: var(--radius);
 }
 
 .input {
   width: 100%;
-  border: 1px solid var(--line);
+  border: 1px solid var(--rule);
+  background: #fff;
+  color: var(--ink);
   padding: 10px 12px;
 }
 
+.input:focus-visible {
+  border-color: var(--ochre);
+}
+
 .button {
-  border: 1px solid #0b5ea1;
-  background: var(--accent);
+  border: 1px solid var(--pine);
+  background: var(--pine);
   color: #fff;
-  padding: 10px 14px;
+  padding: 10px 16px;
   cursor: pointer;
 }
 
+.button:hover {
+  background: var(--pine-deep);
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.button.secondary {
+  background: transparent;
+  color: var(--pine);
+}
+
+.button.secondary:hover {
+  background: var(--pine-wash);
+}
+
 .notice {
-  border: 1px solid #b9d8f4;
-  background: #eef6ff;
-  border-radius: 8px;
+  border: 1px solid var(--rule);
+  background: var(--pine-wash);
+  border-radius: var(--radius);
   padding: 10px 12px;
 }
 
 .error {
-  border: 1px solid #f1c5b8;
-  background: #fff4f1;
-  color: #8a2500;
-  border-radius: 8px;
+  border: 1px solid #e3c2ba;
+  background: var(--brick-wash);
+  color: var(--brick);
+  border-radius: var(--radius);
   padding: 10px 12px;
 }
 
@@ -140,8 +212,8 @@ a:hover {
 }
 
 .bubble {
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
   padding: 10px 12px;
   max-width: 88%;
   white-space: pre-wrap;
@@ -150,21 +222,18 @@ a:hover {
 
 .bubble.user {
   align-self: flex-end;
-  background: #eef6ff;
-  border-color: #b9d8f4;
+  background: var(--pine-wash);
 }
 
 .bubble.assistant {
   align-self: flex-start;
-  background: var(--panel);
+  background: #fff;
 }
 
 .bubble .role {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: var(--step--1);
+  font-weight: 700;
+  color: var(--lichen);
   margin-bottom: 4px;
 }
 
@@ -176,11 +245,11 @@ a:hover {
 }
 
 .citation-pill {
-  font-size: 12px;
-  border: 1px solid var(--line);
+  font-size: var(--step--1);
+  border: 1px solid var(--rule);
   border-radius: 999px;
   padding: 2px 8px;
-  color: var(--muted);
+  color: var(--lichen);
 }
 
 .suggestions {
@@ -190,8 +259,8 @@ a:hover {
 }
 
 .suggestion {
-  border: 1px solid var(--line);
-  background: var(--panel);
+  border: 1px solid var(--rule);
+  background: #fff;
   border-radius: 999px;
   padding: 6px 12px;
   cursor: pointer;
@@ -199,16 +268,11 @@ a:hover {
 }
 
 .suggestion:hover {
-  border-color: var(--accent);
-}
-
-.button.secondary {
-  background: var(--panel);
-  color: var(--accent);
+  border-color: var(--pine);
 }
 
 .blink::after {
-  content: "▋";
+  content: "\258B";
   animation: blink 1s steps(2, start) infinite;
   margin-left: 1px;
 }
@@ -219,12 +283,168 @@ a:hover {
   }
 }
 
-.nav .auth {
-  margin-left: auto;
-  display: flex;
+/* --- Home ------------------------------------------------------------------- */
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 40px;
   align-items: center;
+  padding: 24px 0 48px;
 }
 
-.avatar {
-  border-radius: 999px;
+.hero-title {
+  font-size: clamp(2.25rem, 5vw, 3.4rem);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  margin: 0 0 18px;
+  max-width: 15ch;
+}
+
+.hero-lede {
+  color: var(--lichen);
+  font-size: var(--step-1);
+  line-height: 1.45;
+  margin: 0 0 28px;
+  max-width: 34rem;
+}
+
+.repo-form {
+  display: flex;
+  gap: 10px;
+  max-width: 36rem;
+}
+
+.repo-form .input {
+  flex: 1;
+  font-family: var(--font-code);
+  font-size: 0.95rem;
+}
+
+.repo-form .button {
+  white-space: nowrap;
+}
+
+.examples {
+  margin: 12px 0 0;
+  color: var(--lichen);
+  font-size: var(--step--1);
+}
+
+.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-family: var(--font-code);
+  color: var(--pine);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: var(--pine-deep);
+}
+
+.contours {
+  width: 100%;
+  height: auto;
+  max-width: 420px;
+  justify-self: end;
+}
+
+.contours .ring {
+  fill: none;
+  stroke: var(--ochre);
+  stroke-width: 1.4;
+}
+
+.contours .ring-faint {
+  fill: none;
+  stroke: var(--ochre);
+  stroke-width: 1;
+  opacity: 0.45;
+}
+
+.contours .node {
+  fill: var(--pine);
+}
+
+.contours .node-changed {
+  fill: var(--surface);
+  stroke: var(--pine);
+  stroke-width: 2.5;
+}
+
+/* Map lettering gets a paper-colored halo so it stays legible where it crosses a contour. */
+.contours .label {
+  font-family: var(--font-code);
+  font-size: 13px;
+  fill: var(--ink);
+  paint-order: stroke;
+  stroke: var(--paper);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.features {
+  list-style: none;
+  margin: 0;
+  padding: 32px 0 0;
+  border-top: 1px solid var(--rule);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 32px;
+}
+
+.features h2 {
+  font-size: var(--step-1);
+  margin: 0 0 6px;
+}
+
+.features p {
+  margin: 0;
+  color: var(--lichen);
+}
+
+.analyze-progress {
+  margin-top: 20px;
+  max-width: 36rem;
+}
+
+@media (max-width: 760px) {
+  .site-header-inner {
+    gap: 6px 28px;
+  }
+
+  /* Wordmark on its own row; links and sign-in share the row below. */
+  .nav {
+    flex-basis: 100%;
+  }
+
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .contours {
+    justify-self: start;
+    max-width: 300px;
+  }
+
+  .repo-form {
+    flex-direction: column;
+  }
+
+  .features {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blink::after {
+    animation: none;
+  }
 }
