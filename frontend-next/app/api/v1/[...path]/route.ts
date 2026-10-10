@@ -1,18 +1,6 @@
 import { NextRequest } from "next/server";
 import { getBackendBase } from "@/lib/api";
-
-const hopByHopHeaders = new Set([
-  "host",
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-  "content-length"
-]);
+import { forwardResponseHeaders, HOP_BY_HOP_HEADERS } from "@/lib/proxy";
 
 async function proxy(request: NextRequest, path: string[]): Promise<Response> {
   const upstreamUrl = new URL(`${getBackendBase()}/api/v1/${path.join("/")}`);
@@ -20,8 +8,7 @@ async function proxy(request: NextRequest, path: string[]): Promise<Response> {
 
   const headers = new Headers();
   request.headers.forEach((value, key) => {
-    const lower = key.toLowerCase();
-    if (!hopByHopHeaders.has(lower)) {
+    if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
       headers.set(key, value);
     }
   });
@@ -36,17 +23,10 @@ async function proxy(request: NextRequest, path: string[]): Promise<Response> {
   }
 
   const upstream = await fetch(upstreamUrl.toString(), init);
-  const responseHeaders = new Headers();
-  upstream.headers.forEach((value, key) => {
-    const lower = key.toLowerCase();
-    if (!hopByHopHeaders.has(lower)) {
-      responseHeaders.set(key, value);
-    }
-  });
   return new Response(upstream.body, {
     status: upstream.status,
     statusText: upstream.statusText,
-    headers: responseHeaders
+    headers: forwardResponseHeaders(upstream.headers)
   });
 }
 
