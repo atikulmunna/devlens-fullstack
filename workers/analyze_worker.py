@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 from parse_worker import update_job_status
 from reliability import schedule_retry_or_dead_letter
 from telemetry import (
-    record_llm_fallback,
     record_llm_provider_attempt,
     record_stage_duration,
     trace_span,
@@ -201,45 +200,18 @@ def build_architecture_summary(snapshot: AnalyzeSnapshot, lang_breakdown: dict, 
     )
 
 
-def _provider_timeout_seconds(is_fallback: bool) -> float:
-    if is_fallback and settings.llm_fallback_timeout_seconds is not None:
-        return float(settings.llm_fallback_timeout_seconds)
-    if not is_fallback and settings.llm_primary_timeout_seconds is not None:
-        return float(settings.llm_primary_timeout_seconds)
-    return float(settings.llm_summary_timeout_seconds)
+def _request_summary(prompt: str) -> str:
+    """Ask OpenRouter for the summary; every failure becomes an AnalyzeError with a specific code."""
+    if not settings.openrouter_api_key:
+        raise AnalyzeError("LLM_PROVIDER_NO_API_KEY", "OPENROUTER_API_KEY is not set")
 
-
-def _provider_chain() -> list[str]:
-    primary = (settings.llm_primary_provider or settings.llm_summary_provider or "openrouter").strip().lower()
-    fallback = (settings.llm_fallback_provider or "").strip().lower()
-    if fallback and fallback == primary:
-        fallback = ""
-    return [primary] + ([fallback] if fallback else [])
-
-
-def _provider_request(provider: str, prompt: str, timeout_seconds: float) -> str:
-    provider_name = provider.strip().lower()
-    if provider_name == "openrouter":
-        base = str(settings.openrouter_base_url).rstrip("/")
-        api_key = settings.openrouter_api_key
-        model = settings.llm_summary_model
-    elif provider_name == "groq":
-        base = str(settings.groq_base_url).rstrip("/")
-        api_key = settings.groq_api_key
-        model = settings.llm_fallback_model or settings.llm_summary_model
-    else:
-        raise AnalyzeError("LLM_PROVIDER_UNSUPPORTED", f"Unsupported LLM provider: {provider_name}")
-
-    if not api_key:
-        raise AnalyzeError("LLM_PROVIDER_NO_API_KEY", f"API key missing for provider: {provider_name}")
-
-    url = f"{base}/chat/completions"
+    url = f"{str(settings.openrouter_base_url).rstrip('/')}/chat/completions"
     headers = {
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {settings.openrouter_api_key}",
         "Content-Type": "application/json",
     }
     body = {
-        "model": model,
+        "model": settings.llm_summary_model,
         "messages": [
             {"role": "system", "content": "You summarize repository architecture for developers."},
             {"role": "user", "content": prompt},
@@ -249,7 +221,7 @@ def _provider_request(provider: str, prompt: str, timeout_seconds: float) -> str
     }
 
     try:
-        with httpx.Client(timeout=timeout_seconds) as client:
+        with httpx.Client(timeout=float(settings.llm_summary_timeout_seconds)) as client:
             response = client.post(url, headers=headers, json=body)
     except httpx.TimeoutException as exc:
         raise AnalyzeError("LLM_PROVIDER_TIMEOUT", str(exc)) from exc
@@ -260,8 +232,8 @@ def _provider_request(provider: str, prompt: str, timeout_seconds: float) -> str
 
     if response.status_code != 200:
         if response.status_code == 429:
-            raise AnalyzeError("LLM_PROVIDER_RATE_LIMITED", f"{provider_name} returned status 429")
-        raise AnalyzeError("LLM_PROVIDER_HTTP_ERROR", f"{provider_name} returned status {response.status_code}")
+            raise AnalyzeError("LLM_PROVIDER_RATE_LIMITED", "OpenRouter returned status 429")
+        raise AnalyzeError("LLM_PROVIDER_HTTP_ERROR", f"OpenRouter returned status {response.status_code}")
 
     data = response.json()
     text = (
@@ -271,7 +243,7 @@ def _provider_request(provider: str, prompt: str, timeout_seconds: float) -> str
         .strip()
     )
     if not text:
-        raise AnalyzeError("LLM_PROVIDER_EMPTY_RESPONSE", f"{provider_name} returned empty summary")
+        raise AnalyzeError("LLM_PROVIDER_EMPTY_RESPONSE", "OpenRouter returned an empty summary")
     return text
 
 
@@ -290,28 +262,18 @@ def generate_architecture_summary(snapshot: AnalyzeSnapshot, lang_breakdown: dic
         "Do not invent files or technologies not reflected in the provided metadata."
     )
 
-    providers = _provider_chain()
-    primary = providers[0] if providers else "openrouter"
-    last_error_code = "none"
+    try:
+        summary = _request_summary(prompt)
+    except AnalyzeError as exc:
+        error_code = exc.code
+    except Exception:
+        error_code = "LLM_PROVIDER_UNEXPECTED_ERROR"
+    else:
+        record_llm_provider_attempt("openrouter", "success")
+        return summary
 
-    for index, provider in enumerate(providers):
-        is_fallback = index > 0
-        try:
-            summary = _provider_request(provider, prompt, _provider_timeout_seconds(is_fallback=is_fallback))
-            record_llm_provider_attempt(provider, "success")
-            if is_fallback:
-                record_llm_fallback(primary, provider, "primary_failed")
-            return summary
-        except AnalyzeError as exc:
-            last_error_code = exc.code
-            record_llm_provider_attempt(provider, "error", exc.code)
-            continue
-        except Exception:
-            last_error_code = "LLM_PROVIDER_UNEXPECTED_ERROR"
-            record_llm_provider_attempt(provider, "error", last_error_code)
-            continue
-
-    record_llm_provider_attempt("fallback_summary", "success", last_error_code)
+    record_llm_provider_attempt("openrouter", "error", error_code)
+    record_llm_provider_attempt("fallback_summary", "success", error_code)
     return fallback
 
 

@@ -63,7 +63,7 @@ flowchart LR
 
   embed -->|embeddings| nim["NVIDIA NIM (nv-embedqa-e5-v5)"]
   backend -->|auth| auth["GitHub OAuth and JWT"]
-  backend -->|chat llm| llm["Nemotron via NIM, Groq fallback"]
+  backend -->|chat llm| llm["OpenRouter"]
 ```
 
 ## Tech Stack
@@ -87,7 +87,7 @@ flowchart LR
 - Dense retrieval (Qdrant) with NVIDIA NIM embeddings (`nvidia/nv-embedqa-e5-v5`)
 - Lexical retrieval (PostgreSQL FTS)
 - Cross-encoder reranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`)
-- LLM provider routing (Nemotron via NVIDIA NIM primary, Groq fallback)
+- LLM via OpenRouter (chat answers and analysis summaries)
 
 ### Infra
 - Docker Compose for local stack
@@ -144,18 +144,15 @@ Copy-Item frontend-next/.env.example frontend-next/.env
 ### 3. Fill required secrets
 
 At minimum, set these in `backend/.env`:
-- `NIM_API_KEY` (NVIDIA NIM: powers embeddings and Nemotron chat)
-- `GROQ_API_KEY` (chat fallback)
+- `NIM_API_KEY` (NVIDIA NIM: powers embeddings)
+- `OPENROUTER_API_KEY` (chat answers; without it, chat replies with code snippets)
 - `GITHUB_CLIENT_ID`
 - `GITHUB_CLIENT_SECRET`
 - `JWT_SECRET`
 
 Set in `workers/.env` as well:
 - `NIM_API_KEY` (embeddings)
-- `GROQ_API_KEY` (analysis-summary fallback)
-
-Optional:
-- `OPENROUTER_API_KEY` (no longer used by default; a placeholder value is fine unless you switch the primary provider back to OpenRouter)
+- `OPENROUTER_API_KEY` (analysis summary; without it, the summary is structural)
 
 ### 4. Start services
 
@@ -196,13 +193,10 @@ Embeddings (NVIDIA NIM):
 - `EMBED_MODEL` (default `nvidia/nv-embedqa-e5-v5`)
 - `EMBED_VECTOR_SIZE` (default `1024`, must match the model)
 
-Provider / model controls:
-- `NIM_API_KEY` / `GROQ_API_KEY` (chat)
-- `NEMOTRON_MODEL` (default `nvidia/llama-3.1-nemotron-70b-instruct`)
-- `LLM_PRIMARY_PROVIDER` (default `nemotron`)
-- `LLM_FALLBACK_PROVIDER` (default `groq`)
-- `LLM_FALLBACK_MODEL`
-- `OPENROUTER_API_KEY` (optional, unused unless primary is switched back)
+Chat LLM (OpenRouter, the only provider):
+- `OPENROUTER_API_KEY`
+- `LLM_CHAT_MODEL` (default `openai/gpt-4o-mini`)
+- `LLM_CHAT_TIMEOUT_SECONDS` (default `15`)
 
 Retrieval controls:
 - `RERANKER_ENABLED` (default `true`)
@@ -222,10 +216,9 @@ Embeddings (NVIDIA NIM):
 - `EMBED_MODEL` (default `nvidia/nv-embedqa-e5-v5`)
 - `EMBED_VECTOR_SIZE` (default `1024`, must match the model and the backend)
 
-LLM synthesis for analysis summary:
-- `LLM_SUMMARY_PROVIDER`
-- `LLM_SUMMARY_MODEL`
-- `GROQ_API_KEY`
+Analysis summary LLM (OpenRouter):
+- `OPENROUTER_API_KEY`
+- `LLM_SUMMARY_MODEL` (default `openai/gpt-4o-mini`)
 
 Pipeline tuning:
 - `PARSE_MAX_FILES`

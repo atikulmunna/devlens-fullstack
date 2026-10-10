@@ -13,40 +13,6 @@ class ChatSynthesisError(RuntimeError):
 ChatIntent = Literal["general", "architecture", "setup", "debug", "security"]
 
 
-def _provider_chain() -> list[str]:
-    primary = (settings.llm_primary_provider or "openrouter").strip().lower()
-    fallback = (settings.llm_fallback_provider or "").strip().lower()
-    if fallback and fallback == primary:
-        fallback = ""
-    return [primary] + ([fallback] if fallback else [])
-
-
-def _provider_config(provider: str) -> tuple[str, str, str, float]:
-    p = provider.strip().lower()
-    if p in ("nemotron", "nim"):
-        return (
-            str(settings.nim_base_url).rstrip("/"),
-            settings.nim_api_key or "",
-            settings.nemotron_model,
-            float(settings.llm_primary_timeout_seconds),
-        )
-    if p == "openrouter":
-        return (
-            str(settings.openrouter_base_url).rstrip("/"),
-            settings.openrouter_api_key,
-            settings.llm_chat_model,
-            float(settings.llm_primary_timeout_seconds),
-        )
-    if p == "groq":
-        return (
-            str(settings.groq_base_url).rstrip("/"),
-            settings.groq_api_key,
-            settings.llm_fallback_model or settings.llm_chat_model,
-            float(settings.llm_fallback_timeout_seconds),
-        )
-    raise ChatSynthesisError(f"Unsupported LLM provider: {provider}")
-
-
 def _system_prompt(mode: Literal["answer", "summary"], intent: ChatIntent) -> str:
     if mode == "summary":
         return (
@@ -81,45 +47,40 @@ def _max_tokens(mode: Literal["answer", "summary"], intent: ChatIntent) -> int:
 
 
 def _build_request(
-    provider: str,
     prompt: str,
     mode: Literal["answer", "summary"],
     intent: ChatIntent,
-    stream: bool,
-) -> tuple[str, dict, dict, float]:
-    base_url, api_key, model, timeout = _provider_config(provider)
-    if not api_key:
-        raise ChatSynthesisError(f"Missing API key for provider: {provider}")
+) -> tuple[str, dict, dict]:
+    if not settings.openrouter_api_key:
+        raise ChatSynthesisError("OPENROUTER_API_KEY is not set")
 
     body = {
-        "model": model,
+        "model": settings.llm_chat_model,
         "messages": [
             {"role": "system", "content": _system_prompt(mode, intent)},
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.1,
         "max_tokens": _max_tokens(mode, intent),
+        "stream": True,
     }
-    if stream:
-        body["stream"] = True
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    return f"{base_url}/chat/completions", headers, body, timeout
+    headers = {"Authorization": f"Bearer {settings.openrouter_api_key}", "Content-Type": "application/json"}
+    return f"{str(settings.openrouter_base_url).rstrip('/')}/chat/completions", headers, body
 
 
-def _iter_provider_tokens(
-    provider: str,
+def _iter_tokens(
     prompt: str,
     mode: Literal["answer", "summary"],
     intent: ChatIntent,
 ):
-    """Yield content tokens from a provider's streaming chat completion (SSE)."""
-    url, headers, body, timeout = _build_request(provider, prompt, mode, intent, stream=True)
+    """Yield content tokens from OpenRouter's streaming chat completion (SSE)."""
+    url, headers, body = _build_request(prompt, mode, intent)
     try:
-        with httpx.Client(timeout=timeout) as client:
+        with httpx.Client(timeout=float(settings.llm_chat_timeout_seconds)) as client:
             with client.stream("POST", url, headers=headers, json=body) as response:
                 if response.status_code != 200:
                     response.read()
-                    raise ChatSynthesisError(f"{provider} returned status {response.status_code}")
+                    raise ChatSynthesisError(f"OpenRouter returned status {response.status_code}")
                 for line in response.iter_lines():
                     if not line or not line.startswith("data:"):
                         continue
@@ -135,9 +96,9 @@ def _iter_provider_tokens(
                     if piece:
                         yield piece
     except httpx.TimeoutException as exc:
-        raise ChatSynthesisError(f"{provider} timeout: {exc}") from exc
+        raise ChatSynthesisError(f"OpenRouter timeout: {exc}") from exc
     except httpx.TransportError as exc:
-        raise ChatSynthesisError(f"{provider} transport error: {exc}") from exc
+        raise ChatSynthesisError(f"OpenRouter transport error: {exc}") from exc
 
 
 def _build_prompt(query: str, contexts: list[dict], mode: Literal["answer", "summary"]) -> str:
@@ -180,30 +141,25 @@ def synthesize_grounded_answer_stream(
     mode: Literal["answer", "summary"] = "answer",
     intent: ChatIntent = "general",
 ):
-    """Stream grounded-answer tokens as they arrive from the LLM.
+    """Stream grounded-answer tokens from OpenRouter as they arrive.
 
-    Falls back to the next provider only if the current one fails before emitting any
-    token; a mid-stream failure re-raises (partial output has already been delivered).
+    Every failure surfaces as ChatSynthesisError, so callers handle one error type: tokens
+    already yielded stay delivered, and callers fall back to deterministic text when nothing
+    was streamed.
     """
     if not contexts:
         raise ChatSynthesisError("No contexts provided for synthesis")
 
     prompt = _build_prompt(query, contexts, mode)
+    emitted = False
+    try:
+        for piece in _iter_tokens(prompt, mode=mode, intent=intent):
+            emitted = True
+            yield piece
+    except ChatSynthesisError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - e.g. a malformed stream chunk
+        raise ChatSynthesisError(f"OpenRouter stream failed: {exc}") from exc
 
-    last_error: Exception | None = None
-    for provider in _provider_chain():
-        emitted = False
-        try:
-            for piece in _iter_provider_tokens(provider, prompt, mode=mode, intent=intent):
-                emitted = True
-                yield piece
-            if emitted:
-                return
-            last_error = ChatSynthesisError(f"{provider} returned empty stream")
-        except Exception as exc:  # noqa: BLE001
-            if emitted:
-                raise
-            last_error = exc
-            continue
-
-    raise ChatSynthesisError(str(last_error) if last_error else "No provider available")
+    if not emitted:
+        raise ChatSynthesisError("OpenRouter returned an empty stream")

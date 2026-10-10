@@ -20,17 +20,11 @@ class Settings(BaseSettings):
     github_client_secret: str
     github_oauth_redirect_uri: AnyHttpUrl
     frontend_url: AnyHttpUrl
-    openrouter_api_key: str
-    groq_api_key: str
-    llm_chat_model: str = "openai/gpt-4o-mini"
-    nemotron_model: str = "nvidia/llama-3.1-nemotron-70b-instruct"
-    llm_fallback_model: str = "llama-3.1-8b-instant"
-    llm_primary_provider: str = "nemotron"
-    llm_fallback_provider: str = "groq"
-    llm_primary_timeout_seconds: int = 15
-    llm_fallback_timeout_seconds: int = 15
+    # Chat LLM: OpenRouter is the only provider. Without a key, chat answers with code snippets.
+    openrouter_api_key: str | None = None
     openrouter_base_url: AnyHttpUrl = "https://openrouter.ai/api/v1"
-    groq_base_url: AnyHttpUrl = "https://api.groq.com/openai/v1"
+    llm_chat_model: str = "openai/gpt-4o-mini"
+    llm_chat_timeout_seconds: int = 15
     jwt_secret: str
     jwt_access_ttl_minutes: int
     jwt_refresh_ttl_days: int
@@ -45,7 +39,8 @@ class Settings(BaseSettings):
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     reranker_candidate_limit: int = 50
 
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
+    # Ignore unknown keys so env files that still carry removed settings keep working.
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 
 
 settings = Settings()
