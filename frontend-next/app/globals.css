@@ -218,3 +218,13 @@ a:hover {
     visibility: hidden;
   }
 }
+
+.nav .auth {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+
+.avatar {
+  border-radius: 999px;
+}

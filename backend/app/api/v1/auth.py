@@ -34,6 +34,7 @@ from app.services.tokens import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 CSRF_COOKIE_NAME = "devlens_csrf_token"
 CSRF_HEADER_NAME = "x-csrf-token"
+DEFAULT_POST_LOGIN_PATH = "/workspace"
 REFRESH_RESPONSE_EXAMPLE = {
     "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "token_type": "bearer",
@@ -138,7 +139,7 @@ def _persist_refresh_token(db: Session, user_id: UUID) -> str:
         302: {"description": "Redirect to GitHub OAuth authorize endpoint"},
     },
 )
-def auth_github(next_path: str = Query(default="/profile", alias="next")) -> RedirectResponse:
+def auth_github(next_path: str = Query(default=DEFAULT_POST_LOGIN_PATH, alias="next")) -> RedirectResponse:
     state = generate_oauth_state(next_path=next_path)
     auth_url = build_github_auth_url(state)
     return RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
@@ -192,8 +193,8 @@ def auth_callback(code: str, state: str, db: Session = Depends(get_db_session)) 
     refresh_token = _persist_refresh_token(db, user.id)
     db.commit()
 
-    redirect_path = state_data.get("next") or "/profile"
-    safe_redirect = redirect_path if str(redirect_path).startswith("/") else "/profile"
+    redirect_path = state_data.get("next") or DEFAULT_POST_LOGIN_PATH
+    safe_redirect = redirect_path if str(redirect_path).startswith("/") else DEFAULT_POST_LOGIN_PATH
     redirect_url = f"{str(settings.frontend_url).rstrip('/')}{quote(safe_redirect, safe='/:?=&')}"
     response = RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
     _set_refresh_cookie(response, refresh_token)

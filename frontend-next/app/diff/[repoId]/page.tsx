@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
+import { SignInLink, useAuth } from "@/components/auth";
 import { askAboutDiffStream, CommitDiffSummary, getCommitDiff } from "@/lib/api";
 
 type Props = {
@@ -10,6 +11,7 @@ type Props = {
 
 export default function DiffPage({ params }: Props) {
   const repoId = params.repoId;
+  const { status } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [diff, setDiff] = useState<CommitDiffSummary | null>(null);
@@ -19,6 +21,9 @@ export default function DiffPage({ params }: Props) {
   const [asking, setAsking] = useState(false);
 
   useEffect(() => {
+    if (status !== "signed-in") {
+      return;
+    }
     let cancelled = false;
     async function run() {
       setLoading(true);
@@ -42,7 +47,7 @@ export default function DiffPage({ params }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [repoId]);
+  }, [repoId, status]);
 
   async function onAsk(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,18 +77,24 @@ export default function DiffPage({ params }: Props) {
         <p className="mono">Repo ID: {repoId}</p>
         <div className="row">
           <Link href={`/dashboard/${encodeURIComponent(repoId)}`}>Dashboard</Link>
-          <Link href={`/workspace?repo=${encodeURIComponent(repoId)}`}>Workspace / set token</Link>
+          <Link href={`/workspace?repo=${encodeURIComponent(repoId)}`}>Chat about this repo</Link>
         </div>
       </article>
 
-      {loading && <article className="notice">Loading latest commit diff...</article>}
+      {status === "loading" && <article className="notice">Checking sign-in...</article>}
+
+      {status === "signed-out" && (
+        <article className="card">
+          <p className="muted">Commit diff intelligence uses your GitHub sign-in.</p>
+          <SignInLink>Sign in with GitHub</SignInLink>
+        </article>
+      )}
+
+      {status === "signed-in" && loading && <article className="notice">Loading latest commit diff...</article>}
 
       {error && (
         <article className="error">
           <strong>Problem:</strong> {error}
-          <div className="muted" style={{ marginTop: 6 }}>
-            If this says unauthorized, set an access token in the Workspace first.
-          </div>
         </article>
       )}
 

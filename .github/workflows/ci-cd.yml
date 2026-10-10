@@ -45,6 +45,7 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm run typecheck
+          npm test
           npm run build
 
   backend_tests:
