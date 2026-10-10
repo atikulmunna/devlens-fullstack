@@ -20,8 +20,6 @@ ENV_DEFAULTS = {
     "GITHUB_CLIENT_SECRET": "test-client-secret",
     "GITHUB_OAUTH_REDIRECT_URI": "http://localhost:8000/api/v1/auth/callback",
     "FRONTEND_URL": "http://localhost:3000",
-    "OPENROUTER_API_KEY": "test-openrouter",
-    "GROQ_API_KEY": "test-groq",
     "JWT_SECRET": "test-secret",
     "JWT_ACCESS_TTL_MINUTES": "15",
     "JWT_REFRESH_TTL_DAYS": "7",

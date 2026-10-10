@@ -29,22 +29,14 @@ class WorkerSettings(BaseSettings):
     worker_retry_base_delay_seconds: int = 30
     worker_metrics_port: int = 9101
 
-    # LLM summary generation routing
-    llm_summary_provider: str = "openrouter"
-    llm_summary_model: str = "openai/gpt-4o-mini"
-    llm_summary_timeout_seconds: int = 15
-    llm_primary_provider: str | None = None
-    llm_fallback_provider: str | None = "groq"
-    llm_primary_timeout_seconds: int | None = None
-    llm_fallback_timeout_seconds: int | None = None
-    llm_fallback_model: str | None = "llama-3.1-8b-instant"
-
+    # LLM analysis summary: OpenRouter is the only provider. Without a key, the summary is structural.
     openrouter_api_key: str | None = None
     openrouter_base_url: AnyHttpUrl = "https://openrouter.ai/api/v1"
-    groq_api_key: str | None = None
-    groq_base_url: AnyHttpUrl = "https://api.groq.com/openai/v1"
+    llm_summary_model: str = "openai/gpt-4o-mini"
+    llm_summary_timeout_seconds: int = 15
 
-    model_config = SettingsConfigDict(env_file='.env', case_sensitive=False)
+    # Ignore unknown keys so env files that still carry removed settings keep working.
+    model_config = SettingsConfigDict(env_file='.env', case_sensitive=False, extra='ignore')
 
 
 settings = WorkerSettings()

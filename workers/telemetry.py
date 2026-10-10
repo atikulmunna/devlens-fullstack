@@ -19,13 +19,6 @@ llm_provider_attempts_total = Counter(
     ["provider", "status", "error_code"],
 )
 
-llm_fallback_total = Counter(
-    "devlens_llm_fallback_total",
-    "LLM provider fallback events.",
-    ["primary_provider", "fallback_provider", "reason"],
-)
-
-
 def start_metrics_server(port: int) -> None:
     try:
         start_http_server(port)
@@ -42,14 +35,6 @@ def record_llm_provider_attempt(provider: str, status: str, error_code: str = "n
         provider=(provider or "unknown").lower(),
         status=(status or "unknown").lower(),
         error_code=(error_code or "none").lower(),
-    ).inc()
-
-
-def record_llm_fallback(primary_provider: str, fallback_provider: str, reason: str) -> None:
-    llm_fallback_total.labels(
-        primary_provider=(primary_provider or "unknown").lower(),
-        fallback_provider=(fallback_provider or "unknown").lower(),
-        reason=(reason or "unknown").lower(),
     ).inc()
 
 

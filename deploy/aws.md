@@ -6,7 +6,7 @@ shared access key (`DEVLENS_GATE_SECRET`) before reaching the app, so it stays i
 
 ## What you need
 - AWS CLI configured (`aws sts get-caller-identity` works)
-- Your NVIDIA NIM + Groq keys, and a GitHub OAuth app
+- Your NVIDIA NIM key (embeddings), an OpenRouter key (LLM), and a GitHub OAuth app
 - No domain needed: the hostname is derived from the instance IP via sslip.io
 
 ## 1. Provision the instance
@@ -34,7 +34,7 @@ and the Homepage URL to `https://<your-sslip-host>`.
 ssh -i devlens-key.pem ubuntu@<ELASTIC_IP>
 git clone https://github.com/atikulmunna/devlens-fullstack.git && cd devlens-fullstack
 cp deploy/env.prod.example .env.prod
-nano .env.prod   # fill DEVLENS_DOMAIN, TLS email, DEVLENS_GATE_SECRET, NIM/Groq keys, GitHub OAuth, JWT_SECRET, strong POSTGRES_PASSWORD
+nano .env.prod   # fill DEVLENS_DOMAIN, TLS email, DEVLENS_GATE_SECRET, NIM/OpenRouter keys, GitHub OAuth, JWT_SECRET, strong POSTGRES_PASSWORD
 ```
 Keep `DATABASE_URL`'s password in sync with `POSTGRES_PASSWORD`.
 

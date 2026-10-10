@@ -97,9 +97,9 @@ jobs:
       - name: Provide provider keys to the smoke stack
         run: |
           printf 'NIM_API_KEY=%s\n' "${{ secrets.NIM_API_KEY }}" >> backend/.env
-          printf 'GROQ_API_KEY=%s\n' "${{ secrets.GROQ_API_KEY }}" >> backend/.env
+          printf 'OPENROUTER_API_KEY=%s\n' "${{ secrets.OPENROUTER_API_KEY }}" >> backend/.env
           printf 'NIM_API_KEY=%s\n' "${{ secrets.NIM_API_KEY }}" >> workers/.env
-          printf 'GROQ_API_KEY=%s\n' "${{ secrets.GROQ_API_KEY }}" >> workers/.env
+          printf 'OPENROUTER_API_KEY=%s\n' "${{ secrets.OPENROUTER_API_KEY }}" >> workers/.env
 
       - name: Build and start smoke stack
         run: docker compose up -d --build postgres redis qdrant backend
