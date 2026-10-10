@@ -205,11 +205,13 @@ def test_chat_response_hydrates_content_when_missing_from_results(client, db_ses
             }
         ],
     )
-    monkeypatch.setattr(
-        chat_module,
-        "synthesize_grounded_answer_stream",
-        lambda **_kwargs: iter(["Refresh logic appears in src/auth/jwt.py with token verification steps."]),
-    )
+    captured: dict = {}
+
+    def fake_stream(**kwargs):
+        captured.update(kwargs)
+        return iter(["Refresh logic appears in src/auth/jwt.py with token verification steps."])
+
+    monkeypatch.setattr(chat_module, "synthesize_grounded_answer_stream", fake_stream)
 
     stream = client.post(
         f"/api/v1/chat/sessions/{session_id}/message",
@@ -219,6 +221,8 @@ def test_chat_response_hydrates_content_when_missing_from_results(client, db_ses
     assert stream.status_code == 200
     assert '"anchor": "src/auth/jwt.py#L10-L30"' in stream.text
     assert '"no_citation": false' in stream.text
+    # The LLM must receive the chunk's code, which retrieval results do not carry.
+    assert [context["content"] for context in captured["contexts"]] == ["jwt refresh token logic"]
 
     assistant = db_session.execute(
         select(ChatMessage)

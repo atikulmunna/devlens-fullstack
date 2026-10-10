@@ -76,7 +76,7 @@ def _tokenize(text: str) -> set[str]:
     return {token for token in re.findall(r"[a-zA-Z0-9_]+", text.lower()) if token}
 
 
-def _load_chunk_content(db: Session, repo_id: UUID, chunk_ids: list[str]) -> dict[str, str]:
+def load_chunk_content(db: Session, repo_id: UUID, chunk_ids: list[str]) -> dict[str, str]:
     if not chunk_ids:
         return {}
     rows = db.execute(
@@ -99,7 +99,7 @@ def _apply_cross_encoder_rerank(db: Session, repo_id: UUID, query: str, rows: li
     candidate_limit = max(1, min(settings.reranker_candidate_limit, len(rows)))
     candidates = rows[:candidate_limit]
     chunk_ids = [row["chunk_id"] for row in candidates]
-    contents = _load_chunk_content(db, repo_id=repo_id, chunk_ids=chunk_ids)
+    contents = load_chunk_content(db, repo_id=repo_id, chunk_ids=chunk_ids)
     rerank_input = [
         {
             "chunk_id": row["chunk_id"],
