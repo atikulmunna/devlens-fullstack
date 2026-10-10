@@ -189,7 +189,7 @@ Required core:
 OpenRouter (the only AI provider):
 - `OPENROUTER_API_KEY`
 - `EMBED_MODEL` (default `openai/text-embedding-3-small`, must match the worker)
-- `LLM_CHAT_MODEL` (default `openai/gpt-4o-mini`)
+- `LLM_CHAT_MODEL` (default `openai/gpt-4.1-mini`)
 - `LLM_CHAT_TIMEOUT_SECONDS` (default `15`)
 
 Retrieval controls:

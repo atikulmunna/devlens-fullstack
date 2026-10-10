@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # needs the key; if only the LLM call fails, chat falls back to code snippets.
     openrouter_api_key: str | None = None
     openrouter_base_url: AnyHttpUrl = "https://openrouter.ai/api/v1"
-    llm_chat_model: str = "openai/gpt-4o-mini"
+    llm_chat_model: str = "openai/gpt-4.1-mini"
     llm_chat_timeout_seconds: int = 15
     jwt_secret: str
     jwt_access_ttl_minutes: int
