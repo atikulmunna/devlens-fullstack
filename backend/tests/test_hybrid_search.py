@@ -79,6 +79,20 @@ def test_dense_search_qdrant_requires_repo_id() -> None:
     assert exc.value.status_code == 400
 
 
+def test_dense_search_embedding_failure_logs_reason_but_returns_generic_502(monkeypatch, caplog) -> None:
+    def failing_embed(_query):
+        raise retrieval_hybrid.EmbeddingError("OpenRouter embeddings returned status 401: User not found.")
+
+    monkeypatch.setattr(retrieval_hybrid, "embed_query", failing_embed)
+
+    with pytest.raises(HTTPException) as exc:
+        retrieval_hybrid.dense_search_qdrant("repo-1", "auth token", 5)
+
+    assert exc.value.status_code == 502
+    assert exc.value.detail == "Query embedding failed"
+    assert "status 401: User not found." in caplog.text
+
+
 def test_hybrid_endpoint_returns_results(client, db_session: Session, monkeypatch) -> None:
     repo = _seed_repo(db_session)
     monkeypatch.setattr(

@@ -19,10 +19,12 @@ def dense_search_qdrant(repo_id: str, query: str, limit: int) -> list[dict]:
     if not repo_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="repo_id filter is required")
 
+    # Log the provider's reason server-side; clients get a generic message, not upstream internals.
     try:
         vector = embed_query(query)
     except EmbeddingError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Query embedding failed: {exc}") from exc
+        logger.warning("Query embedding failed: %s", exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Query embedding failed") from exc
     url = f"{str(settings.qdrant_url).rstrip('/')}/collections/{settings.qdrant_collection}/points/search"
     body = {
         "vector": vector,
@@ -36,7 +38,8 @@ def dense_search_qdrant(repo_id: str, query: str, limit: int) -> list[dict]:
         with httpx.Client(timeout=10.0) as client:
             response = client.post(url, json=body, headers=headers)
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Qdrant request failed: {exc}") from exc
+        logger.warning("Qdrant request failed: %s", exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Qdrant request failed") from exc
 
     if response.status_code != 200:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Qdrant search failed")

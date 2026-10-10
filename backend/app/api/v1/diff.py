@@ -1,4 +1,5 @@
 import json
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -13,6 +14,7 @@ from app.deps import get_current_user, get_db_session
 from app.services.blast_radius import compute_blast_radius
 from app.services.chat_synthesizer import ChatSynthesisError, synthesize_grounded_answer_stream
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/repos", tags=["diff"])
 
 
@@ -166,8 +168,8 @@ def ask_about_diff(
             ):
                 parts.append(piece)
                 yield _delta(piece)
-        except ChatSynthesisError:
-            pass
+        except ChatSynthesisError as exc:
+            logger.warning("Diff LLM synthesis failed for repo %s: %s", repo_id, exc)
 
         if not "".join(parts).strip():
             for token in _fallback_text().split(" "):

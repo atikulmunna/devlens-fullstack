@@ -7,6 +7,7 @@ The worker embeds indexed chunks with the same model and dimension
 import httpx
 
 from app.config import settings
+from app.services.openrouter import describe_error
 
 # The embedding model rejects inputs over 8192 tokens instead of truncating them. Code can
 # run near 2 characters per token, so cap by characters well under the limit.
@@ -43,7 +44,7 @@ def _embed(texts: list[str]) -> list[list[float]]:
         raise EmbeddingError(f"OpenRouter embeddings transport error: {exc}") from exc
 
     if response.status_code != 200:
-        raise EmbeddingError(f"OpenRouter embeddings returned status {response.status_code}")
+        raise EmbeddingError(f"OpenRouter embeddings returned {describe_error(response)}")
 
     data = response.json().get("data") or []
     if len(data) != len(texts):

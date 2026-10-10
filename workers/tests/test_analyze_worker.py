@@ -190,8 +190,13 @@ def test_generate_architecture_summary_falls_back_when_openrouter_fails(monkeypa
     )
 
     class DummyResponse:
+        text = ''
+
         def __init__(self, status_code: int):
             self.status_code = status_code
+
+        def json(self):
+            return {}
 
     class DummyClient:
         def __init__(self, *args, **kwargs):
@@ -241,3 +246,66 @@ def test_analyze_job_unexpected_failure_schedules_retry(monkeypatch) -> None:
     assert called['stage'] == 'analyzing'
     assert called['code'] == 'UNEXPECTED_ANALYZE_ERROR'
     assert observed['count'] == 1
+
+
+class _ErrorClient:
+    """httpx.Client stand-in whose post/get return one canned response or raise."""
+
+    def __init__(self, response=None, error=None):
+        self._response = response
+        self._error = error
+
+    def __call__(self, *args, **kwargs):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def post(self, *args, **kwargs):
+        if self._error:
+            raise self._error
+        return self._response
+
+    get = post
+
+
+class _JsonResponse:
+    def __init__(self, status_code: int, payload: dict):
+        self.status_code = status_code
+        self._payload = payload
+        self.text = ''
+
+    def json(self):
+        return self._payload
+
+
+def test_summary_failure_logs_openrouter_reason(monkeypatch, caplog) -> None:
+    snapshot = AnalyzeSnapshot(repo_id='r', job_id='j', full_name='test-owner/repo', default_branch='main')
+    chunks = [ChunkRecord(file_path='src/a.py', start_line=1, end_line=10, content='print(1)', language='py')]
+    monkeypatch.setattr(analyze_worker.settings, 'openrouter_api_key', 'openrouter-key')
+    monkeypatch.setattr(analyze_worker, 'record_llm_provider_attempt', lambda *args, **kwargs: None)
+    retired = _JsonResponse(404, {'error': {'message': 'This model is unavailable for free', 'code': 404}})
+    monkeypatch.setattr(analyze_worker.httpx, 'Client', _ErrorClient(response=retired))
+
+    summary = analyze_worker.generate_architecture_summary(snapshot, {'py': 100.0}, chunks)
+
+    assert 'Repository test-owner/repo' in summary
+    # This exact failure (a retired free model) was invisible before: only "llm_provider_http_error" was recorded.
+    assert 'LLM_PROVIDER_HTTP_ERROR' in caplog.text
+    assert 'status 404: This model is unavailable for free' in caplog.text
+
+
+def test_contributor_stats_failures_are_logged(monkeypatch, caplog) -> None:
+    monkeypatch.setattr(analyze_worker.httpx, 'Client', _ErrorClient(error=analyze_worker.httpx.ConnectError('dns failure')))
+    unreachable = analyze_worker.get_contributor_stats('test-owner/repo')
+
+    monkeypatch.setattr(analyze_worker.httpx, 'Client', _ErrorClient(response=_JsonResponse(403, {})))
+    rate_limited = analyze_worker.get_contributor_stats('test-owner/repo')
+
+    assert unreachable == {'top_contributors': [], 'error': 'github_unreachable'}
+    assert rate_limited == {'top_contributors': [], 'error': 'github_status_403'}
+    assert 'dns failure' in caplog.text
+    assert 'returned status 403' in caplog.text

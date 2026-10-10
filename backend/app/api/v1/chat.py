@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from datetime import datetime
 from uuid import UUID, uuid4
@@ -21,6 +22,7 @@ from app.services.chat_synthesizer import (
 )
 from app.services.retrieval_hybrid import hybrid_search_chunks, load_chunk_content
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 CHAT_CREATE_SESSION_REQUEST_EXAMPLE = {"repo_id": "cd3ce6f7-76fc-4cc2-8e34-c176f7af6f82"}
 CHAT_CREATE_SESSION_RESPONSE_EXAMPLE = {
@@ -742,9 +744,9 @@ def send_chat_message(
                 ):
                     parts.append(piece)
                     yield _delta(piece)
-            except ChatSynthesisError:
+            except ChatSynthesisError as exc:
                 # A mid-stream failure keeps whatever partial text was already delivered.
-                pass
+                logger.warning("Chat LLM synthesis failed for session %s: %s", session_id, exc)
 
             final_text = "".join(parts).strip()
             if not final_text:

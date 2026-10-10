@@ -4,6 +4,7 @@ from typing import Literal
 import httpx
 
 from app.config import settings
+from app.services.openrouter import describe_error
 
 
 class ChatSynthesisError(RuntimeError):
@@ -80,7 +81,7 @@ def _iter_tokens(
             with client.stream("POST", url, headers=headers, json=body) as response:
                 if response.status_code != 200:
                     response.read()
-                    raise ChatSynthesisError(f"OpenRouter returned status {response.status_code}")
+                    raise ChatSynthesisError(f"OpenRouter returned {describe_error(response)}")
                 for line in response.iter_lines():
                     if not line or not line.startswith("data:"):
                         continue

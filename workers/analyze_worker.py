@@ -1,5 +1,6 @@
 import re
 import json
+import logging
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -9,6 +10,7 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from openrouter import describe_error
 from parse_worker import update_job_status
 from reliability import schedule_retry_or_dead_letter
 from telemetry import (
@@ -17,6 +19,8 @@ from telemetry import (
     trace_span,
 )
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class AnalyzeError(RuntimeError):
@@ -171,6 +175,7 @@ def get_contributor_stats(full_name: str) -> dict:
             response = client.get(url, headers=headers)
 
         if response.status_code != 200:
+            logger.warning('GitHub contributors request for %s returned status %s', full_name, response.status_code)
             return {'top_contributors': [], 'error': f'github_status_{response.status_code}'}
 
         data = response.json()
@@ -183,7 +188,8 @@ def get_contributor_stats(full_name: str) -> dict:
                 for row in data
             ]
         }
-    except Exception:
+    except Exception as exc:
+        logger.warning('GitHub contributors request for %s failed: %r', full_name, exc)
         return {'top_contributors': [], 'error': 'github_unreachable'}
 
 
@@ -231,9 +237,8 @@ def _request_summary(prompt: str) -> str:
         raise AnalyzeError("LLM_PROVIDER_REQUEST_FAILED", str(exc)) from exc
 
     if response.status_code != 200:
-        if response.status_code == 429:
-            raise AnalyzeError("LLM_PROVIDER_RATE_LIMITED", "OpenRouter returned status 429")
-        raise AnalyzeError("LLM_PROVIDER_HTTP_ERROR", f"OpenRouter returned status {response.status_code}")
+        code = "LLM_PROVIDER_RATE_LIMITED" if response.status_code == 429 else "LLM_PROVIDER_HTTP_ERROR"
+        raise AnalyzeError(code, f"OpenRouter returned {describe_error(response)}")
 
     data = response.json()
     text = (
@@ -266,8 +271,10 @@ def generate_architecture_summary(snapshot: AnalyzeSnapshot, lang_breakdown: dic
         summary = _request_summary(prompt)
     except AnalyzeError as exc:
         error_code = exc.code
-    except Exception:
+        logger.warning("Summary LLM call failed for %s (%s): %s", snapshot.full_name, exc.code, exc)
+    except Exception as exc:
         error_code = "LLM_PROVIDER_UNEXPECTED_ERROR"
+        logger.warning("Summary LLM call failed for %s: %r", snapshot.full_name, exc)
     else:
         record_llm_provider_attempt("openrouter", "success")
         return summary

@@ -148,3 +148,23 @@ def test_parse_job_retriable_failure_schedules_retry(monkeypatch) -> None:
     assert called['stage'] == 'parsing'
     assert called['code'] == 'CLONE_TIMEOUT'
     assert observed['count'] == 1
+
+
+def test_maybe_store_commit_diff_rolls_back_and_logs_on_store_failure(monkeypatch, caplog) -> None:
+    class FailingSession:
+        rolled_back = False
+
+        def execute(self, *_args, **_kwargs):
+            raise RuntimeError("commit_diffs table is missing")
+
+        def rollback(self):
+            self.rolled_back = True
+
+    db = FailingSession()
+    monkeypatch.setattr(parse_worker, 'compute_commit_diff', lambda *_args, **_kwargs: {'head_sha': 'sha', 'changed_files': []})
+
+    parse_worker.maybe_store_commit_diff(db, '/tmp/repo', 'repo-1', 'sha')
+
+    assert db.rolled_back is True
+    assert 'Storing the commit diff for repo repo-1 failed' in caplog.text
+    assert 'commit_diffs table is missing' in caplog.text

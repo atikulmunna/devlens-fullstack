@@ -278,7 +278,7 @@ def test_chat_stream_runs_llm_off_the_event_loop(
     assert assistant.content == "JWT refresh lives in src/auth/jwt.py."
 
 
-def test_chat_falls_back_when_synthesizer_fails(client, db_session: Session, monkeypatch) -> None:
+def test_chat_falls_back_when_synthesizer_fails(client, db_session: Session, monkeypatch, caplog) -> None:
     user, repo, chunk_id = _seed_user_and_repo(db_session)
     token = create_access_token(user.id)
     headers = {"Authorization": f"Bearer {token}"}
@@ -322,6 +322,8 @@ def test_chat_falls_back_when_synthesizer_fails(client, db_session: Session, mon
         .order_by(ChatMessage.created_at.desc())
     ).scalar_one()
     assert "Based on indexed code context" in assistant.content
+    # The fallback is visible to the user; the reason must be visible to operators.
+    assert f"Chat LLM synthesis failed for session {session_id}: provider unavailable" in caplog.text
 
 
 def test_chat_sessions_list_filtered_by_repo(client, db_session: Session) -> None:
