@@ -1,4 +1,6 @@
+import asyncio
 import os
+from collections.abc import Callable
 
 from fastapi.testclient import TestClient
 import pytest
@@ -38,6 +40,7 @@ from app.db.models import (
     ChatMessage,
     ChatSession,
     CodeChunk,
+    CommitDiff,
     DeadLetterJob,
     RefreshToken,
     Repository,
@@ -51,6 +54,20 @@ from app.main import app
 @pytest.fixture()
 def client() -> TestClient:
     return TestClient(app)
+
+
+@pytest.fixture()
+def running_on_event_loop() -> Callable[[], bool]:
+    """Probe for fakes: True when called on the asyncio event loop thread, where blocking I/O stalls the server."""
+
+    def probe() -> bool:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return False
+        return True
+
+    return probe
 
 
 @pytest.fixture()
@@ -75,6 +92,7 @@ def cleanup_test_users(db_session: Session):
         db_session.execute(delete(ChatMessage).where(ChatMessage.session_id.in_(test_session_ids)))
         db_session.execute(delete(ChatSession).where(ChatSession.id.in_(test_session_ids)))
         db_session.execute(delete(CodeChunk).where(CodeChunk.repo_id.in_(test_repo_ids)))
+        db_session.execute(delete(CommitDiff).where(CommitDiff.repo_id.in_(test_repo_ids)))
         db_session.execute(delete(AnalysisResult).where(AnalysisResult.repo_id.in_(test_repo_ids)))
         db_session.execute(delete(DeadLetterJob).where(DeadLetterJob.repo_id.in_(test_repo_ids)))
         db_session.execute(delete(AnalysisJob).where(AnalysisJob.repo_id.in_(test_repo_ids)))

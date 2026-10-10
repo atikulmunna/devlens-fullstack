@@ -232,6 +232,52 @@ def test_chat_response_hydrates_content_when_missing_from_results(client, db_ses
     assert "token verification steps" in assistant.content
 
 
+def test_chat_stream_runs_llm_off_the_event_loop(
+    client, db_session: Session, monkeypatch, running_on_event_loop
+) -> None:
+    user, repo, chunk_id = _seed_user_and_repo(db_session)
+    headers = {"Authorization": f"Bearer {create_access_token(user.id)}"}
+    created = client.post("/api/v1/chat/sessions", json={"repo_id": str(repo.id)}, headers=headers)
+    session_id = created.json()["session_id"]
+
+    monkeypatch.setattr(
+        chat_module,
+        "hybrid_search_chunks",
+        lambda *_args, **_kwargs: [
+            {
+                "chunk_id": chunk_id,
+                "file_path": "src/auth/jwt.py",
+                "start_line": 10,
+                "end_line": 30,
+                "language": "py",
+                "rerank_score": 0.71,
+            }
+        ],
+    )
+    llm_on_event_loop: list[bool] = []
+
+    def fake_stream(**_kwargs):
+        llm_on_event_loop.append(running_on_event_loop())
+        yield "JWT refresh lives in src/auth/jwt.py."
+
+    monkeypatch.setattr(chat_module, "synthesize_grounded_answer_stream", fake_stream)
+
+    stream = client.post(
+        f"/api/v1/chat/sessions/{session_id}/message",
+        json={"content": "where is jwt refresh logic?"},
+        headers=headers,
+    )
+    assert stream.status_code == 200
+    assert "event: done" in stream.text
+    # Blocking LLM I/O must run in a worker thread; on the event loop it freezes every request.
+    assert llm_on_event_loop == [False]
+
+    assistant = db_session.execute(
+        select(ChatMessage).where(ChatMessage.session_id == UUID(session_id), ChatMessage.role == "assistant")
+    ).scalar_one()
+    assert assistant.content == "JWT refresh lives in src/auth/jwt.py."
+
+
 def test_chat_falls_back_when_synthesizer_fails(client, db_session: Session, monkeypatch) -> None:
     user, repo, chunk_id = _seed_user_and_repo(db_session)
     token = create_access_token(user.id)
