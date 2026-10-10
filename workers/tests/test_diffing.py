@@ -1,4 +1,7 @@
-from diffing import detect_security_touches, parse_unified_diff
+import subprocess
+
+import diffing
+from diffing import compute_commit_diff, detect_security_touches, parse_unified_diff
 
 SAMPLE_DIFF = """diff --git a/app/auth.py b/app/auth.py
 index 111..222 100644
@@ -62,3 +65,18 @@ def test_detect_security_touches_flags_auth_file() -> None:
 
 def test_empty_diff_returns_no_files() -> None:
     assert parse_unified_diff("") == []
+
+
+def test_compute_commit_diff_logs_git_failure_reason(monkeypatch, caplog) -> None:
+    def fake_run(cmd, **_kwargs):
+        if cmd[1] == "rev-parse":
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"base-sha\n", stderr=b"")
+        if cmd[1] == "diff":
+            return subprocess.CompletedProcess(cmd, 128, stdout=b"", stderr=b"fatal: bad object head-sha")
+        return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(diffing.subprocess, "run", fake_run)
+
+    assert compute_commit_diff("/tmp/repo", "head-sha") is None
+    # Best-effort stays best-effort, but the reason (git's own message) is now recorded.
+    assert "Commit diff for head-sha failed: git diff exited 128: fatal: bad object head-sha" in caplog.text

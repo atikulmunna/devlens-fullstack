@@ -142,7 +142,7 @@ def test_get_diff_404_for_unknown_repo_and_missing_diff(client, db_session: Sess
     assert no_diff.json()["error"]["message"] == "No commit diff available for this repository"
 
 
-def test_diff_ask_falls_back_to_change_summary_when_llm_fails(client, db_session: Session, monkeypatch) -> None:
+def test_diff_ask_falls_back_to_change_summary_when_llm_fails(client, db_session: Session, monkeypatch, caplog) -> None:
     user, repo = _seed_repo_with_diff(db_session)
 
     def failing_stream(**_kwargs):
@@ -158,6 +158,7 @@ def test_diff_ask_falls_back_to_change_summary_when_llm_fails(client, db_session
     answer = "".join(event.get("token", "") for event in events)
     assert answer.strip() == "This commit (sha-head) changed: src/auth.py. Security-sensitive areas: auth, token."
     assert events[-1] == {"head_sha": "sha-head", "base_sha": "sha-base", "security_categories": ["auth", "token"]}
+    assert "Diff LLM synthesis failed" in caplog.text and "status 503" in caplog.text
 
 
 def test_diff_ask_rejects_blank_question_and_missing_diff(client, db_session: Session) -> None:

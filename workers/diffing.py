@@ -5,8 +5,11 @@ The default comparison is the head commit against its parent (head~1), which is 
 not depend on any prior analysis state.
 """
 
+import logging
 import re
 import subprocess
+
+logger = logging.getLogger(__name__)
 
 _DIFF_GIT_RE = re.compile(r"^diff --git a/(.+?) b/(.+)$")
 _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
@@ -94,11 +97,14 @@ def _run_git(args: list[str], cwd: str, timeout: int = 60) -> str:
     result = subprocess.run(
         ["git", *args],
         cwd=cwd,
-        check=True,
         timeout=timeout,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
+    if result.returncode != 0:
+        # Carry git's own message: CalledProcessError alone would hide why the command failed.
+        stderr = result.stderr.decode("utf-8", errors="ignore").strip()
+        raise RuntimeError(f"git {args[0]} exited {result.returncode}: {stderr[:300]}")
     return result.stdout.decode("utf-8", errors="ignore")
 
 
@@ -121,7 +127,8 @@ def compute_commit_diff(repo_path: str, head_sha: str, timeout: int = 60) -> dic
             cwd=repo_path,
             timeout=timeout,
         )
-    except Exception:
+    except Exception as exc:
+        logger.warning("Commit diff for %s failed: %s", head_sha, exc)
         return None
 
     changed_files = parse_unified_diff(diff_text)

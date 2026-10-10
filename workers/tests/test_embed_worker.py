@@ -93,13 +93,14 @@ def test_embed_texts_caps_oversized_inputs(monkeypatch) -> None:
 
 
 def test_embed_texts_client_error_fails_without_retry(monkeypatch) -> None:
-    capture = _fake_openrouter(monkeypatch, 410, {})
+    capture = _fake_openrouter(monkeypatch, 410, {'error': {'message': 'The model has reached its end of life', 'code': 410}})
 
     try:
         embed_texts(['hello'])
         assert False, 'expected EmbeddingError'
     except embeddings.EmbeddingError as exc:
-        assert 'status 410' in str(exc)
+        # The provider's reason travels with the error into the job's failure message.
+        assert 'status 410: The model has reached its end of life' in str(exc)
     assert capture['posts'] == 1
 
 

@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -17,6 +18,8 @@ from config import settings
 from diffing import compute_commit_diff
 from reliability import schedule_retry_or_dead_letter
 from telemetry import record_stage_duration, trace_span
+
+logger = logging.getLogger(__name__)
 
 
 SKIP_DIRS = {'.git', 'node_modules', '.venv', 'venv', 'dist', 'build', '__pycache__'}
@@ -216,7 +219,8 @@ def maybe_store_commit_diff(db: Session, repo_path: str, repo_id: str, head_sha:
         if diff:
             store_commit_diff(db, repo_id, diff)
             db.commit()
-    except Exception:
+    except Exception as exc:
+        logger.warning("Storing the commit diff for repo %s failed: %r", repo_id, exc)
         db.rollback()
 
 

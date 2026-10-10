@@ -9,6 +9,7 @@ class _FakeResponse:
     def __init__(self, status_code: int, payload: dict):
         self.status_code = status_code
         self._payload = payload
+        self.text = ""
 
     def json(self) -> dict:
         return self._payload
@@ -80,6 +81,7 @@ def test_missing_api_key_raises_without_request(monkeypatch) -> None:
     ("status_code", "payload", "error", "message"),
     [
         (410, {}, None, "status 410"),
+        (401, {"error": {"message": "User not found.", "code": 401}}, None, "status 401: User not found."),
         (200, {"data": []}, None, "unexpected number of vectors"),
         (200, {}, httpx.ReadTimeout("slow"), "timeout"),
         (200, {}, httpx.ConnectError("down"), "transport error"),

@@ -10,6 +10,7 @@ from typing import Iterable
 import httpx
 
 from config import settings
+from openrouter import describe_error
 
 # The embedding model rejects inputs over 8192 tokens instead of truncating them, which would
 # fail the whole batch (e.g. on a minified file). Code can run near 2 characters per token.
@@ -47,13 +48,9 @@ def _post_embeddings(texts: list[str]) -> list[list[float]]:
                 ordered = sorted(data, key=lambda item: item.get("index", 0))
                 return [[float(x) for x in (item.get("embedding") or [])] for item in ordered]
             if response.status_code < 500 and response.status_code != 429:
-                raise EmbeddingError(f"OpenRouter embeddings returned status {response.status_code}")
-            last_error = EmbeddingError(f"OpenRouter embeddings transient status {response.status_code}")
-        except EmbeddingError as exc:
-            # Non-retryable EmbeddingError (e.g. bad count / 4xx) bubbles up immediately.
-            if "transient" not in str(exc):
-                raise
-            last_error = exc
+                # Non-retryable (e.g. bad key, unknown model): fail now with the provider's reason.
+                raise EmbeddingError(f"OpenRouter embeddings returned {describe_error(response)}")
+            last_error = EmbeddingError(f"OpenRouter embeddings transient {describe_error(response)}")
         except httpx.HTTPError as exc:
             last_error = exc
         if attempt < settings.embed_retry_attempts:
