@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from fastapi import Request
 
 from app import observability
@@ -39,3 +41,17 @@ def test_metrics_response_has_prometheus_content_type() -> None:
 def test_trace_span_executes() -> None:
     with observability.trace_span("unit.test", step="x"):
         assert True
+
+
+def test_request_metrics_are_labeled_by_route_template_not_raw_path(client) -> None:
+    repo_id = uuid4()
+    client.get(f"/api/v1/repos/{repo_id}/dashboard")  # matched route; the handler answers 404
+    client.get(f"/no-such-route/{repo_id}")  # matches no route at all
+
+    metrics = client.get("/metrics").text
+    counts = [line for line in metrics.splitlines() if line.startswith("devlens_http_request_duration_seconds_count")]
+
+    assert any('path="/api/v1/repos/{repo_id}/dashboard"' in line for line in counts)
+    assert any('path="unmatched"' in line for line in counts)
+    # Raw paths embed ids, which would create one time series per repo (unbounded cardinality).
+    assert str(repo_id) not in metrics

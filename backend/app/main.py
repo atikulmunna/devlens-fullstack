@@ -24,6 +24,14 @@ async def _close_shared_clients() -> None:
     await close_redis()
 
 
+def _route_template(request: Request) -> str:
+    # Raw paths embed repo/session ids, so labeling metrics with them creates one time series
+    # per id. The matched route's template keeps the label set bounded; FastAPI records the
+    # route in the scope during routing.
+    route = request.scope.get("route")
+    return getattr(route, "path", None) or "unmatched"
+
+
 @app.middleware("http")
 async def observability_middleware(request: Request, call_next):
     start = time.perf_counter()
@@ -35,7 +43,9 @@ async def observability_middleware(request: Request, call_next):
         response = await call_next(request)
 
     duration = time.perf_counter() - start
-    http_request_duration_seconds.labels(method=method, path=path, status=str(response.status_code)).observe(duration)
+    http_request_duration_seconds.labels(
+        method=method, path=_route_template(request), status=str(response.status_code)
+    ).observe(duration)
     response.headers["X-Trace-Id"] = trace_id
     return response
 
