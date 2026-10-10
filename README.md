@@ -61,9 +61,10 @@ flowchart LR
   embed --> qdrant
   analyze --> postgres
 
-  embed -->|embeddings| nim["NVIDIA NIM (nv-embedqa-e5-v5)"]
+  embed -->|embeddings| openrouter["OpenRouter"]
+  analyze -->|summary llm| openrouter
   backend -->|auth| auth["GitHub OAuth and JWT"]
-  backend -->|chat llm| llm["OpenRouter"]
+  backend -->|query embeddings and chat llm| openrouter
 ```
 
 ## Tech Stack
@@ -84,7 +85,7 @@ flowchart LR
 - Workspace-centered flow (Analyze -> Dashboard -> Chat) with streaming, citation-grounded answers
 
 ### AI / Retrieval
-- Dense retrieval (Qdrant) with NVIDIA NIM embeddings (`nvidia/nv-embedqa-e5-v5`)
+- Dense retrieval (Qdrant) with embeddings via OpenRouter (`openai/text-embedding-3-small`)
 - Lexical retrieval (PostgreSQL FTS)
 - Cross-encoder reranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`)
 - LLM via OpenRouter (chat answers and analysis summaries)
@@ -108,7 +109,7 @@ flowchart LR
 1. User submits GitHub URL from `/workspace` or `/analyze`.
 2. Backend creates/updates repository record and enqueues a job.
 3. `parse_worker` clones and chunks source code (tree-sitter, function/class aware) and captures the commit diff.
-4. `embed_worker` generates NVIDIA NIM embeddings and upserts into Qdrant.
+4. `embed_worker` generates embeddings via OpenRouter and upserts into Qdrant.
 5. `analyze_worker` computes architecture/quality summaries.
 6. UI streams status updates from SSE endpoint.
 7. Dashboard API exposes final analysis payload.
@@ -144,15 +145,13 @@ Copy-Item frontend-next/.env.example frontend-next/.env
 ### 3. Fill required secrets
 
 At minimum, set these in `backend/.env`:
-- `NIM_API_KEY` (NVIDIA NIM: powers embeddings)
-- `OPENROUTER_API_KEY` (chat answers; without it, chat replies with code snippets)
+- `OPENROUTER_API_KEY` (the only AI provider: query embeddings and chat answers)
 - `GITHUB_CLIENT_ID`
 - `GITHUB_CLIENT_SECRET`
 - `JWT_SECRET`
 
 Set in `workers/.env` as well:
-- `NIM_API_KEY` (embeddings)
-- `OPENROUTER_API_KEY` (analysis summary; without it, the summary is structural)
+- `OPENROUTER_API_KEY` (chunk embeddings and the analysis summary)
 
 ### 4. Start services
 
@@ -187,14 +186,9 @@ Required core:
 - `FRONTEND_URL`
 - `JWT_SECRET`
 
-Embeddings (NVIDIA NIM):
-- `NIM_API_KEY`
-- `NIM_BASE_URL` (default `https://integrate.api.nvidia.com/v1`)
-- `EMBED_MODEL` (default `nvidia/nv-embedqa-e5-v5`)
-- `EMBED_VECTOR_SIZE` (default `1024`, must match the model)
-
-Chat LLM (OpenRouter, the only provider):
+OpenRouter (the only AI provider):
 - `OPENROUTER_API_KEY`
+- `EMBED_MODEL` (default `openai/text-embedding-3-small`, must match the worker)
 - `LLM_CHAT_MODEL` (default `openai/gpt-4o-mini`)
 - `LLM_CHAT_TIMEOUT_SECONDS` (default `15`)
 
@@ -211,13 +205,10 @@ Required core:
 - `QDRANT_URL`
 - `QDRANT_COLLECTION`
 
-Embeddings (NVIDIA NIM):
-- `NIM_API_KEY`
-- `EMBED_MODEL` (default `nvidia/nv-embedqa-e5-v5`)
-- `EMBED_VECTOR_SIZE` (default `1024`, must match the model and the backend)
-
-Analysis summary LLM (OpenRouter):
+OpenRouter (the only AI provider):
 - `OPENROUTER_API_KEY`
+- `EMBED_MODEL` (default `openai/text-embedding-3-small`, must match the backend)
+- `EMBED_VECTOR_SIZE` (default `1536`, must match the model; changing it recreates the collection)
 - `LLM_SUMMARY_MODEL` (default `openai/gpt-4o-mini`)
 
 Pipeline tuning:

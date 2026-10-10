@@ -48,34 +48,63 @@ class _FakeClient:
         self._capture['url'] = url
         self._capture['headers'] = headers
         self._capture['json'] = json
+        self._capture['posts'] = self._capture.get('posts', 0) + 1
         return self._response
 
 
-def test_embed_texts_calls_nim_with_passage_input_type(monkeypatch) -> None:
-    monkeypatch.setattr(embeddings.settings, 'nim_api_key', 'test-key')
-    monkeypatch.setattr(embeddings.settings, 'embed_model', 'nvidia/nv-embedqa-e5-v5')
+def _fake_openrouter(monkeypatch, status_code, payload) -> dict:
+    monkeypatch.setattr(embeddings.settings, 'openrouter_api_key', 'test-key')
+    monkeypatch.setattr(embeddings.settings, 'openrouter_base_url', 'https://openrouter.test/api/v1')
+    monkeypatch.setattr(embeddings.settings, 'embed_model', 'openai/text-embedding-3-small')
     capture = {}
+    monkeypatch.setattr(
+        embeddings.httpx,
+        'Client',
+        lambda *a, **k: _FakeClient(_FakeResponse(status_code, payload), capture),
+    )
+    return capture
+
+
+def test_embed_texts_calls_openrouter_embeddings(monkeypatch) -> None:
     payload = {'data': [
         {'index': 1, 'embedding': [0.4, 0.5, 0.6]},
         {'index': 0, 'embedding': [0.1, 0.2, 0.3]},
     ]}
-    monkeypatch.setattr(
-        embeddings.httpx,
-        'Client',
-        lambda *a, **k: _FakeClient(_FakeResponse(200, payload), capture),
-    )
+    capture = _fake_openrouter(monkeypatch, 200, payload)
 
     vectors = embed_texts(['first passage', 'second passage'])
 
     # Vectors are re-ordered by the "index" field, not response order.
     assert vectors == [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
-    assert capture['json']['input_type'] == 'passage'
-    assert capture['json']['model'] == 'nvidia/nv-embedqa-e5-v5'
+    assert capture['url'] == 'https://openrouter.test/api/v1/embeddings'
+    assert capture['json']['model'] == 'openai/text-embedding-3-small'
+    assert capture['json']['input'] == ['first passage', 'second passage']
+    assert 'input_type' not in capture['json']
     assert capture['headers']['Authorization'] == 'Bearer test-key'
 
 
+def test_embed_texts_caps_oversized_inputs(monkeypatch) -> None:
+    capture = _fake_openrouter(monkeypatch, 200, {'data': [{'index': 0, 'embedding': [0.1]}]})
+
+    embed_texts(['x' * (embeddings.MAX_INPUT_CHARS + 500)])
+
+    # Over the model's token limit the whole batch is rejected (e.g. one minified file).
+    assert len(capture['json']['input'][0]) == embeddings.MAX_INPUT_CHARS
+
+
+def test_embed_texts_client_error_fails_without_retry(monkeypatch) -> None:
+    capture = _fake_openrouter(monkeypatch, 410, {})
+
+    try:
+        embed_texts(['hello'])
+        assert False, 'expected EmbeddingError'
+    except embeddings.EmbeddingError as exc:
+        assert 'status 410' in str(exc)
+    assert capture['posts'] == 1
+
+
 def test_embed_text_missing_api_key_raises(monkeypatch) -> None:
-    monkeypatch.setattr(embeddings.settings, 'nim_api_key', None)
+    monkeypatch.setattr(embeddings.settings, 'openrouter_api_key', None)
     try:
         embed_text('hello world')
         assert False, 'expected EmbeddingError'

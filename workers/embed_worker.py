@@ -132,8 +132,8 @@ def ensure_collection() -> None:
     }
 
     # Detect an existing collection whose vector dimension no longer matches the
-    # configured embedder (e.g. after migrating from the 384-dim hash stub to a
-    # 1024-dim NIM model). A mismatched collection is dropped and recreated once.
+    # configured embedder (e.g. after switching embedding models). A mismatched
+    # collection is dropped and recreated once; every repo must then be re-analyzed.
     existing = _request_with_retries('GET', url, allowed_statuses={404}, headers=headers)
     if existing:
         vectors_cfg = (
