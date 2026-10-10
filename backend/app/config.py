@@ -10,17 +10,15 @@ class Settings(BaseSettings):
     qdrant_url: AnyHttpUrl
     qdrant_collection: str = "devlens_code_chunks"
     qdrant_api_key: str | None = None
-    # Embeddings (NVIDIA NIM, OpenAI-compatible /embeddings endpoint)
-    nim_base_url: AnyHttpUrl = "https://integrate.api.nvidia.com/v1"
-    nim_api_key: str | None = None
-    embed_model: str = "nvidia/nv-embedqa-e5-v5"
-    embed_vector_size: int = 1024
+    # Embeddings via OpenRouter; must be the worker's model so vectors share one space.
+    embed_model: str = "openai/text-embedding-3-small"
     embed_timeout_seconds: int = 15
     github_client_id: str
     github_client_secret: str
     github_oauth_redirect_uri: AnyHttpUrl
     frontend_url: AnyHttpUrl
-    # Chat LLM: OpenRouter is the only provider. Without a key, chat answers with code snippets.
+    # OpenRouter is the only external AI provider: query embeddings and the chat LLM. Search
+    # needs the key; if only the LLM call fails, chat falls back to code snippets.
     openrouter_api_key: str | None = None
     openrouter_base_url: AnyHttpUrl = "https://openrouter.ai/api/v1"
     llm_chat_model: str = "openai/gpt-4o-mini"

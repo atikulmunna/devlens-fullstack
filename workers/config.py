@@ -16,11 +16,9 @@ class WorkerSettings(BaseSettings):
     parse_chunk_lines: int = 120
     parse_chunk_overlap_lines: int = 20
 
-    # Embeddings (NVIDIA NIM, OpenAI-compatible /embeddings endpoint)
-    nim_base_url: AnyHttpUrl = "https://integrate.api.nvidia.com/v1"
-    nim_api_key: str | None = None
-    embed_model: str = "nvidia/nv-embedqa-e5-v5"
-    embed_vector_size: int = 1024
+    # Embeddings via OpenRouter; model and size must match the backend's.
+    embed_model: str = "openai/text-embedding-3-small"
+    embed_vector_size: int = 1536
     embed_timeout_seconds: int = 15
     embed_batch_size: int = 32
     embed_retry_attempts: int = 3
@@ -29,7 +27,8 @@ class WorkerSettings(BaseSettings):
     worker_retry_base_delay_seconds: int = 30
     worker_metrics_port: int = 9101
 
-    # LLM analysis summary: OpenRouter is the only provider. Without a key, the summary is structural.
+    # OpenRouter is the only external AI provider: chunk embeddings (required) and the analysis
+    # summary LLM (if only that call fails, the summary falls back to a structural one).
     openrouter_api_key: str | None = None
     openrouter_base_url: AnyHttpUrl = "https://openrouter.ai/api/v1"
     llm_summary_model: str = "openai/gpt-4o-mini"
