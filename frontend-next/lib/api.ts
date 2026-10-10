@@ -10,17 +10,37 @@ export type AnalyzeResponse = {
   commit_sha: string;
 };
 
+// Mirrors DashboardResponse in backend/app/api/v1/repos.py.
+export type DashboardRepository = {
+  id: string;
+  github_url: string;
+  full_name: string;
+  owner: string;
+  name: string;
+  default_branch: string;
+  latest_commit_sha: string | null;
+  description: string | null;
+  stars: number | null;
+  forks: number | null;
+  language: string | null;
+  size_kb: number | null;
+};
+
+export type DashboardAnalysis = {
+  quality_score: number | null;
+  architecture_summary: string | null;
+  language_breakdown: Record<string, number> | null;
+  contributor_stats: Record<string, unknown> | null;
+  tech_debt_flags: Record<string, unknown> | null;
+  file_tree: Record<string, unknown> | null;
+  created_at: string;
+};
+
 export type DashboardResponse = {
   repo_id: string;
-  full_name: string;
-  github_url: string;
-  default_branch: string;
-  latest_commit_sha: string;
-  quality_score: number;
-  architecture_summary: string;
-  contributor_stats: Record<string, unknown>;
-  tech_debt_flags: Record<string, unknown>;
-  file_tree: Record<string, unknown>;
+  repository: DashboardRepository;
+  analysis: DashboardAnalysis | null;
+  has_analysis: boolean;
 };
 
 export type RepoStatusSnapshot = {

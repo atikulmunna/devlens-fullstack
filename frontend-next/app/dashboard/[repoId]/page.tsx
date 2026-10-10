@@ -73,15 +73,17 @@ export default function DashboardPage({ params }: Props) {
     );
   }
 
+  const { repository, analysis } = payload;
+
   return (
     <section className="grid">
       <article className="card">
         <h2>Repository Dashboard</h2>
-        <p className="muted">{payload.full_name}</p>
+        <p className="muted">{repository.full_name}</p>
         <p className="mono">Repo ID: {payload.repo_id}</p>
         <p>
-          <a href={payload.github_url} target="_blank" rel="noreferrer">
-            {payload.github_url}
+          <a href={repository.github_url} target="_blank" rel="noreferrer">
+            {repository.github_url}
           </a>
         </p>
         <div className="row">
@@ -90,30 +92,39 @@ export default function DashboardPage({ params }: Props) {
         </div>
       </article>
 
-      <article className="card">
-        <h2>Quality Score</h2>
-        <p>{payload.quality_score}</p>
-      </article>
+      {analysis ? (
+        <>
+          <article className="card">
+            <h2>Quality Score</h2>
+            <p>{analysis.quality_score ?? "Not available"}</p>
+          </article>
 
-      <article className="card">
-        <h2>Architecture Summary</h2>
-        <p className="muted">{payload.architecture_summary}</p>
-      </article>
+          <article className="card">
+            <h2>Architecture Summary</h2>
+            <p className="muted">{analysis.architecture_summary || "Not available"}</p>
+          </article>
 
-      <article className="card">
-        <h2>Tech Debt Flags</h2>
-        <pre className="mono">{pretty(payload.tech_debt_flags)}</pre>
-      </article>
+          <article className="card">
+            <h2>Tech Debt Flags</h2>
+            <pre className="mono">{pretty(analysis.tech_debt_flags)}</pre>
+          </article>
 
-      <article className="card">
-        <h2>Contributors</h2>
-        <pre className="mono">{pretty(payload.contributor_stats)}</pre>
-      </article>
+          <article className="card">
+            <h2>Contributors</h2>
+            <pre className="mono">{pretty(analysis.contributor_stats)}</pre>
+          </article>
 
-      <article className="card">
-        <h2>File Tree</h2>
-        <pre className="mono">{pretty(payload.file_tree)}</pre>
-      </article>
+          <article className="card">
+            <h2>File Tree</h2>
+            <pre className="mono">{pretty(analysis.file_tree)}</pre>
+          </article>
+        </>
+      ) : (
+        <article className="notice">
+          This repository has not been analyzed yet. <Link href="/analyze">Analyze it</Link> to see its
+          dashboard.
+        </article>
+      )}
     </section>
   );
 }
