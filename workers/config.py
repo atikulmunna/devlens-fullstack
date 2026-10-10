@@ -16,9 +16,9 @@ class WorkerSettings(BaseSettings):
     parse_chunk_lines: int = 120
     parse_chunk_overlap_lines: int = 20
 
-    # Embeddings via OpenRouter; model and size must match the backend's.
+    # Embeddings via OpenRouter; must be the backend's model so vectors share one space.
+    # The Qdrant collection is sized from the model's output, so there is no size setting.
     embed_model: str = "openai/text-embedding-3-small"
-    embed_vector_size: int = 1536
     embed_timeout_seconds: int = 15
     embed_batch_size: int = 32
     embed_retry_attempts: int = 3

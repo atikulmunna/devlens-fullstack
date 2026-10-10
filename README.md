@@ -209,7 +209,7 @@ Required core:
 OpenRouter (the only AI provider):
 - `OPENROUTER_API_KEY`
 - `EMBED_MODEL` (default `openai/text-embedding-3-small`, must match the backend)
-- `EMBED_VECTOR_SIZE` (default `1536`, must match the model; changing it recreates the collection)
+- The Qdrant collection is sized from the model's output; switching to a model with a different size recreates it (re-analyze every repo after)
 - `LLM_SUMMARY_MODEL` (default `openai/gpt-4o-mini`)
 
 Pipeline tuning:
