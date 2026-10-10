@@ -1,6 +1,5 @@
 from uuid import uuid4
 
-from redis import Redis
 from sqlalchemy.orm import Session
 
 import app.api.v1.repos as repos_module
@@ -25,15 +24,7 @@ def _snapshot(commit_sha: str) -> dict:
     }
 
 
-def _clear_rate_limit_keys() -> None:
-    redis_client = Redis.from_url(settings.redis_url)
-    keys = list(redis_client.scan_iter(match="ratelimit:*"))
-    if keys:
-        redis_client.delete(*keys)
-
-
 def test_guest_rate_limit_for_analyze(client, monkeypatch) -> None:
-    _clear_rate_limit_keys()
     monkeypatch.setattr(settings, "rate_limit_window_seconds", 3600)
     monkeypatch.setattr(settings, "rate_limit_guest_per_window", 2)
     monkeypatch.setattr(settings, "rate_limit_auth_per_window", 50)
@@ -67,7 +58,6 @@ def test_guest_rate_limit_for_analyze(client, monkeypatch) -> None:
 
 
 def test_auth_rate_limit_for_analyze(client, monkeypatch) -> None:
-    _clear_rate_limit_keys()
     monkeypatch.setattr(settings, "rate_limit_window_seconds", 3600)
     monkeypatch.setattr(settings, "rate_limit_guest_per_window", 2)
     monkeypatch.setattr(settings, "rate_limit_auth_per_window", 3)
@@ -129,7 +119,6 @@ def _seed_chat_user_and_repo(db_session: Session) -> tuple[User, Repository]:
 
 
 def test_auth_rate_limit_for_chat_session_create(client, db_session: Session, monkeypatch) -> None:
-    _clear_rate_limit_keys()
     monkeypatch.setattr(settings, "rate_limit_window_seconds", 3600)
     monkeypatch.setattr(settings, "rate_limit_guest_per_window", 2)
     monkeypatch.setattr(settings, "rate_limit_auth_per_window", 2)

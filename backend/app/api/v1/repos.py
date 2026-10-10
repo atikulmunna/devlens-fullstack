@@ -263,7 +263,7 @@ def analyze_repo(
                     AnalysisJob.idempotency_key == idempotency_key,
                 )
                 .order_by(AnalysisJob.created_at.desc())
-            ).scalar_one_or_none()
+            ).scalars().first()
             if by_key:
                 return AnalyzeRepoResponse(
                     job_id=str(by_key.id),
@@ -281,7 +281,7 @@ def analyze_repo(
                 AnalysisJob.status.in_(ACTIVE_STATUSES | {"done"}),
             )
             .order_by(AnalysisJob.created_at.desc())
-        ).scalar_one_or_none()
+        ).scalars().first()
 
         if by_commit:
             return AnalyzeRepoResponse(

@@ -4,6 +4,7 @@ from collections.abc import Callable
 
 from fastapi.testclient import TestClient
 import pytest
+from redis import Redis
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
@@ -47,6 +48,7 @@ from app.db.models import (
     ShareToken,
     User,
 )
+from app.config import settings
 from app.db.session import SessionLocal
 from app.main import app
 
@@ -54,6 +56,19 @@ from app.main import app
 @pytest.fixture()
 def client() -> TestClient:
     return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limits() -> None:
+    # Rate-limit buckets live in Redis and outlive each test (and each run), so a suite with
+    # many analyze calls would otherwise start returning 429 depending on order and history.
+    redis_client = Redis.from_url(settings.redis_url)
+    try:
+        keys = list(redis_client.scan_iter(match="ratelimit:*"))
+        if keys:
+            redis_client.delete(*keys)
+    finally:
+        redis_client.close()
 
 
 @pytest.fixture()
