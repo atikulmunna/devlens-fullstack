@@ -112,6 +112,8 @@ def test_parse_job_success_transitions_to_embedding(monkeypatch) -> None:
             stored['count'] = len(chunks)
 
         monkeypatch.setattr(parse_worker, 'store_chunks', fake_store)
+        signals = {}
+        monkeypatch.setattr(parse_worker, 'store_code_signals', lambda _db, _job_id, value: signals.update(value))
         observed = {'count': 0}
         monkeypatch.setattr(parse_worker, 'record_stage_duration', lambda *_args, **_kwargs: observed.__setitem__('count', observed['count'] + 1))
 
@@ -120,6 +122,7 @@ def test_parse_job_success_transitions_to_embedding(monkeypatch) -> None:
     assert stored['called'] is True
     assert stored['count'] > 0
     assert observed['count'] == 1
+    assert signals == {'long_functions': [], 'todo_files': {}}
     updates = [e for e in fake_db.events if e[0] == 'execute' and 'UPDATE analysis_jobs' in str(e[1][0])]
     statuses = [u[1][1]['status'] for u in updates]
     assert statuses == ['cloning', 'parsing', 'parsing', 'embedding']

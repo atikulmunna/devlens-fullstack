@@ -1,4 +1,3 @@
-import re
 import json
 import logging
 import time
@@ -10,6 +9,7 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from code_signals import LONG_FUNCTION_LINES, is_test_path
 from openrouter import describe_error
 from parse_worker import update_job_status
 from reliability import schedule_retry_or_dead_letter
@@ -37,6 +37,8 @@ class AnalyzeSnapshot:
     job_id: str
     full_name: str
     default_branch: str
+    # Measured by the parse stage from whole files (see code_signals.py); None for jobs parsed before that.
+    code_signals: dict | None = None
 
 
 @dataclass
@@ -55,7 +57,8 @@ def fetch_next_analyze_job(db: Session) -> AnalyzeSnapshot | None:
             SELECT j.id::text AS job_id,
                    j.repo_id::text AS repo_id,
                    r.full_name,
-                   r.default_branch
+                   r.default_branch,
+                   j.code_signals
             FROM analysis_jobs j
             JOIN repositories r ON r.id = j.repo_id
             WHERE j.status = 'analyzing'
@@ -74,6 +77,7 @@ def fetch_next_analyze_job(db: Session) -> AnalyzeSnapshot | None:
         job_id=row['job_id'],
         full_name=row['full_name'],
         default_branch=row['default_branch'] or 'main',
+        code_signals=row['code_signals'],
     )
 
 
@@ -112,42 +116,20 @@ def language_breakdown(chunks: list[ChunkRecord]) -> dict:
     return {lang: round((size / total_size) * 100, 2) for lang, size in sorted(totals.items(), key=lambda kv: kv[1], reverse=True)}
 
 
-def detect_tech_debt(chunks: list[ChunkRecord]) -> dict:
-    long_functions = []
-    todo_count = 0
-    source_files = set()
-    test_files = set()
-
-    for chunk in chunks:
-        path = chunk.file_path
-        lower_path = path.lower()
-        source_files.add(path)
-        if '/tests/' in lower_path or lower_path.startswith('tests/') or 'test_' in lower_path:
-            test_files.add(path)
-
-        span = None
-        if chunk.start_line is not None and chunk.end_line is not None:
-            span = chunk.end_line - chunk.start_line + 1
-
-        if span and span > 50:
-            long_functions.append(
-                {
-                    'file': path,
-                    'line': chunk.start_line,
-                    'length': span,
-                }
-            )
-
-        todo_count += len(re.findall(r'(?i)\b(TODO|FIXME)\b', chunk.content))
-
-    missing_tests = []
-    if not test_files:
-        missing_tests = sorted(list(source_files))[:20]
-
+def detect_tech_debt(chunks: list[ChunkRecord], code_signals: dict | None) -> dict:
+    """Code health facts for the dashboard: long functions (longest first), TODO notes, test files."""
+    signals = code_signals or {}
+    long_functions = sorted(signals.get('long_functions', []), key=lambda item: item['length'], reverse=True)
+    todo_files = signals.get('todo_files', {})
+    test_files = {chunk.file_path for chunk in chunks if is_test_path(chunk.file_path)}
     return {
+        'measured': code_signals is not None,
+        'long_function_lines': LONG_FUNCTION_LINES,
+        'long_function_count': len(long_functions),
         'long_functions': long_functions[:50],
-        'todo_count': todo_count,
-        'missing_tests': missing_tests,
+        'todo_count': sum(todo_files.values()),
+        'todo_file_count': len(todo_files),
+        'test_file_count': len(test_files),
     }
 
 
@@ -334,10 +316,10 @@ def compute_quality_score(tech_debt: dict, file_tree: dict) -> int:
     todo_penalty = min(30, int(tech_debt.get('todo_count', 0)))
     score -= todo_penalty
 
-    long_fn_penalty = min(30, len(tech_debt.get('long_functions', [])) * 2)
+    long_fn_penalty = min(30, int(tech_debt.get('long_function_count', 0)) * 2)
     score -= long_fn_penalty
 
-    if tech_debt.get('missing_tests'):
+    if not tech_debt.get('test_file_count'):
         score -= 20
 
     files = file_tree.get('files', {})
@@ -450,7 +432,7 @@ def analyze_job(db: Session, snapshot: AnalyzeSnapshot) -> None:
                 raise AnalyzeError('NO_CHUNKS', 'No chunks available for analysis')
 
             lang = language_breakdown(chunks)
-            tech_debt = detect_tech_debt(chunks)
+            tech_debt = detect_tech_debt(chunks, snapshot.code_signals)
             file_tree = build_file_tree(chunks)
             contributors = get_contributor_stats(snapshot.full_name)
             summary = generate_architecture_summary(snapshot, lang, chunks)

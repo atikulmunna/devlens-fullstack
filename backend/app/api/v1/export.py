@@ -40,7 +40,7 @@ SHARE_RESOLVE_RESPONSE_EXAMPLE = {
         "architecture_summary": "Service-oriented modules...",
         "language_breakdown": {"Python": 80, "TypeScript": 20},
         "contributor_stats": {"total": 7},
-        "tech_debt_flags": {"todo": 14, "fixme": 3},
+        "tech_debt_flags": {"measured": True, "long_function_lines": 50, "long_function_count": 2, "long_functions": [{"file": "src/app.py", "name": "handle", "line": 40, "length": 72}], "todo_count": 5, "todo_file_count": 2, "test_file_count": 12},
         "file_tree": {"type": "dir", "name": "/", "children": []},
     },
     "shared_at": "2026-02-23T12:00:00Z",

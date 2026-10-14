@@ -29,12 +29,30 @@ export type DashboardRepository = {
   size_kb: number | null;
 };
 
+export type LongFunction = {
+  file: string;
+  name: string;
+  line: number;
+  length: number;
+};
+
+// Code health measured while parsing. Analyses from before that have none of these fields.
+export type TechDebtFlags = {
+  measured?: boolean;
+  long_function_lines?: number;
+  long_function_count?: number;
+  long_functions?: LongFunction[];
+  todo_count?: number;
+  todo_file_count?: number;
+  test_file_count?: number;
+};
+
 export type DashboardAnalysis = {
   quality_score: number | null;
   architecture_summary: string | null;
   language_breakdown: Record<string, number> | null;
   contributor_stats: Record<string, unknown> | null;
-  tech_debt_flags: Record<string, unknown> | null;
+  tech_debt_flags: TechDebtFlags | null;
   file_tree: Record<string, unknown> | null;
   created_at: string;
 };
