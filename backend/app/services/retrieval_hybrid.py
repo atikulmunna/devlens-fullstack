@@ -14,6 +14,13 @@ from app.services.retrieval_lexical import lexical_search_chunks
 
 logger = logging.getLogger(__name__)
 
+# Tests restate the code they exercise, so they compete with it for the top results and won
+# too often (docs/evaluation/Retrieval_Eval.md). Unless the question is about tests, their
+# fused score is scaled down.
+TEST_FILE_WEIGHT = 0.6
+TEST_PATH_RE = re.compile(r"(^|/)(tests?|__tests__|spec)/|(^|/)test_[^/]*\.py$|_test\.(py|go)$|\.(test|spec)\.[jt]sx?$")
+TEST_QUESTION_RE = re.compile(r"\b(tests?|tested|testing|specs?|fixtures?)\b", re.IGNORECASE)
+
 
 def dense_search_qdrant(repo_id: str, query: str, limit: int) -> list[dict]:
     if not repo_id:
@@ -161,6 +168,7 @@ def hybrid_search_chunks(db: Session, repo_id: UUID, query: str, limit: int = 20
     lexical_norm = _normalize_scores({cid: row.get("lexical_score", 0.0) for cid, row in merged.items()})
 
     query_terms = _tokenize(q)
+    test_weight = 1.0 if TEST_QUESTION_RE.search(q) else TEST_FILE_WEIGHT
     for chunk_id, row in merged.items():
         file_terms = _tokenize(f"{row.get('file_path') or ''} {row.get('language') or ''}")
         overlap = 0.0
@@ -169,12 +177,10 @@ def hybrid_search_chunks(db: Session, repo_id: UUID, query: str, limit: int = 20
         # Dense is now a real semantic signal, so it and lexical carry the ranking; the
         # file-path term-overlap heuristic is a light tie-breaker. The cross-encoder reranker
         # (when enabled) re-scores the top candidates after this fusion selects them.
-        row["rerank_score"] = round(
-            0.50 * dense_norm.get(chunk_id, 0.0)
-            + 0.40 * lexical_norm.get(chunk_id, 0.0)
-            + 0.10 * overlap,
-            6,
-        )
+        fused = 0.50 * dense_norm.get(chunk_id, 0.0) + 0.40 * lexical_norm.get(chunk_id, 0.0) + 0.10 * overlap
+        if TEST_PATH_RE.search(str(row.get("file_path") or "")):
+            fused *= test_weight
+        row["rerank_score"] = round(fused, 6)
 
     ranked = sorted(merged.values(), key=lambda row: (-row["rerank_score"], row["chunk_id"]))
     if settings.reranker_enabled:

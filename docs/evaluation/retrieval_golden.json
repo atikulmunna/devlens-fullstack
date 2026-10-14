@@ -1,0 +1,42 @@
+{
+  "version": "2.0",
+  "created_at": "2026-10-15",
+  "notes": "Each question lists the implementation files that answer it. A question counts as found when a chunk from any of its files ranks in the top 5. Questions avoid naming files so path matching cannot answer them alone. DevLens is scored as indexed from main at c1cf51b.",
+  "repos": [
+    {
+      "full_name": "pallets/itsdangerous",
+      "questions": [
+        {"id": "ITS-1", "question": "How is the signing key derived from the secret key and the salt?", "relevant_files": ["src/itsdangerous/signer.py"]},
+        {"id": "ITS-2", "question": "Which hash algorithm is used for signatures by default?", "relevant_files": ["src/itsdangerous/signer.py"]},
+        {"id": "ITS-3", "question": "How does a signed value record the time it was signed?", "relevant_files": ["src/itsdangerous/timed.py"]},
+        {"id": "ITS-4", "question": "How is a signature that is too old rejected when loading?", "relevant_files": ["src/itsdangerous/timed.py", "src/itsdangerous/exc.py"]},
+        {"id": "ITS-5", "question": "How are payloads encoded so they are safe to put in a URL?", "relevant_files": ["src/itsdangerous/url_safe.py", "src/itsdangerous/encoding.py"]},
+        {"id": "ITS-6", "question": "When is the payload compressed before signing?", "relevant_files": ["src/itsdangerous/url_safe.py"]},
+        {"id": "ITS-7", "question": "How can tokens signed with an old secret key still verify after the key is rotated?", "relevant_files": ["src/itsdangerous/signer.py", "src/itsdangerous/serializer.py"]},
+        {"id": "ITS-8", "question": "How can I load a payload without verifying its signature, for debugging?", "relevant_files": ["src/itsdangerous/serializer.py"]},
+        {"id": "ITS-9", "question": "What extra information does a bad signature error carry?", "relevant_files": ["src/itsdangerous/exc.py"]},
+        {"id": "ITS-10", "question": "How is JSON serialized without extra whitespace?", "relevant_files": ["src/itsdangerous/_json.py"]},
+        {"id": "ITS-11", "question": "How are bytes turned into base64 without padding characters?", "relevant_files": ["src/itsdangerous/encoding.py"]}
+      ]
+    },
+    {
+      "full_name": "atikulmunna/devlens-fullstack",
+      "questions": [
+        {"id": "DL-1", "question": "How is the refresh token rotated and checked against CSRF?", "relevant_files": ["backend/app/api/v1/auth.py", "backend/app/services/tokens.py"]},
+        {"id": "DL-2", "question": "How are chat answers streamed from the language model?", "relevant_files": ["backend/app/services/chat_synthesizer.py", "backend/app/api/v1/chat.py"]},
+        {"id": "DL-3", "question": "What does the chat endpoint do when the language model call fails?", "relevant_files": ["backend/app/api/v1/chat.py"]},
+        {"id": "DL-4", "question": "What are the default request rate limits?", "relevant_files": ["backend/app/config.py", "backend/app/middleware/rate_limit.py"]},
+        {"id": "DL-5", "question": "How are source files split into chunks for search?", "relevant_files": ["workers/chunking.py", "workers/parse_worker.py"]},
+        {"id": "DL-6", "question": "How are embeddings computed and cached?", "relevant_files": ["workers/embeddings.py", "workers/embed_cache.py", "workers/embed_worker.py"]},
+        {"id": "DL-7", "question": "How are failed analysis jobs retried?", "relevant_files": ["workers/reliability.py"]},
+        {"id": "DL-8", "question": "How is the vector collection created and its size chosen?", "relevant_files": ["workers/embed_worker.py"]},
+        {"id": "DL-9", "question": "How are the files impacted by a commit found?", "relevant_files": ["backend/app/services/blast_radius.py", "backend/app/services/dependency_graph.py"]},
+        {"id": "DL-10", "question": "How does the frontend refresh the access token after a 401 response?", "relevant_files": ["frontend-next/lib/auth.ts", "frontend-next/lib/api.ts"]},
+        {"id": "DL-11", "question": "How does the frontend proxy pass cookies from the backend to the browser?", "relevant_files": ["frontend-next/lib/proxy.ts", "frontend-next/app/api/v1/[...path]/route.ts"]},
+        {"id": "DL-12", "question": "How are keyword and vector search results combined into one ranking?", "relevant_files": ["backend/app/services/retrieval_hybrid.py"]},
+        {"id": "DL-13", "question": "How is the diff between a commit and its parent computed?", "relevant_files": ["workers/diffing.py"]},
+        {"id": "DL-14", "question": "How is the GitHub sign-in callback handled?", "relevant_files": ["backend/app/api/v1/auth.py", "backend/app/services/github_oauth.py"]}
+      ]
+    }
+  ]
+}
