@@ -1,7 +1,25 @@
+import re
 from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+
+
+CITATION_MARKER = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
+
+
+def cited_refs(answer: str) -> set[int]:
+    """Ref numbers an answer cites, from markers like [2], [1, 3], or [1][4]."""
+    refs: set[int] = set()
+    for group in CITATION_MARKER.findall(answer or ""):
+        refs.update(int(number) for number in group.split(","))
+    return refs
+
+
+def mark_cited(citations: list[dict], answer: str) -> list[dict]:
+    """Flag each numbered citation by whether the answer cites its ref."""
+    refs = cited_refs(answer)
+    return [{**citation, "cited": citation.get("ref") in refs} for citation in citations]
 
 
 def format_citation(

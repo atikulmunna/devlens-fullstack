@@ -348,6 +348,20 @@ data: {"message_id":"uuid","citations":[...],"no_citation":false}
   - Assistant response always stores `source_citations` with either:
     - `citations: [ ... ]` and `no_citation: false`, or
     - `citations: []` and `no_citation: true`
+- Citation entries: one per context the model was given, numbered as in the prompt.
+  The answer cites them inline as `[ref]`; `cited` says whether this answer did.
+```json
+{
+  "ref": 2,
+  "cited": true,
+  "chunk_id": "uuid",
+  "file_path": "src/auth/jwt.py",
+  "line_start": 10,
+  "line_end": 30,
+  "anchor": "src/auth/jwt.py#L10-L30",
+  "score": 0.71
+}
+```
 
 ### `GET /repos/{repo_id}/status` (SSE)
 - Purpose: Stream job status updates as Server-Sent Events.

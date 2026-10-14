@@ -13,6 +13,13 @@ class ChatSynthesisError(RuntimeError):
 
 ChatIntent = Literal["general", "architecture", "setup", "debug", "security"]
 
+# How many retrieved contexts the model sees; each one is numbered and citable as [n].
+MAX_CONTEXTS = 6
+CITE_INSTRUCTION = (
+    "Cite the contexts you rely on inline by their ref number in square brackets, like [2]. "
+    "Use only the ref numbers listed."
+)
+
 
 def _system_prompt(mode: Literal["answer", "summary"], intent: ChatIntent) -> str:
     if mode == "summary":
@@ -105,10 +112,10 @@ def _iter_tokens(
 
 def _build_prompt(query: str, contexts: list[dict], mode: Literal["answer", "summary"]) -> str:
     trimmed_contexts = []
-    for idx, item in enumerate(contexts[:6], start=1):
+    for idx, item in enumerate(contexts[:MAX_CONTEXTS], start=1):
         trimmed_contexts.append(
             {
-                "rank": idx,
+                "ref": idx,
                 "file_path": item.get("file_path"),
                 "line_start": item.get("line_start"),
                 "line_end": item.get("line_end"),
@@ -127,12 +134,14 @@ def _build_prompt(query: str, contexts: list[dict], mode: Literal["answer", "sum
         prompt += (
             "Summarize this repository in 4 to 6 bullets: what it is for, its main components, "
             "how a request or run flows through them, and how it is used or run. "
-            "Ground every bullet in the provided evidence."
+            "Ground every bullet in the provided evidence. "
+            f"{CITE_INSTRUCTION}"
         )
     else:
         prompt += (
             "Write a concise answer in plain text grounded only in this evidence. "
-            "Mention uncertainty if evidence is partial. Keep under 6 sentences."
+            "Mention uncertainty if evidence is partial. Keep under 6 sentences. "
+            f"{CITE_INSTRUCTION}"
         )
     return prompt
 

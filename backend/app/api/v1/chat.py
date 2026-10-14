@@ -14,8 +14,9 @@ from app.db.models import AnalysisResult, ChatMessage, CodeChunk, ChatSession, R
 from app.db.session import SessionLocal
 from app.api.error_schema import ERROR_RESPONSE_SCHEMA
 from app.deps import get_current_user, get_db_session
-from app.services.citations import format_citation, validate_citations_for_repo
+from app.services.citations import format_citation, mark_cited, validate_citations_for_repo
 from app.services.chat_synthesizer import (
+    MAX_CONTEXTS,
     ChatIntent,
     ChatSynthesisError,
     synthesize_grounded_answer_stream,
@@ -321,23 +322,7 @@ def _plan_assistant_response(db: Session, repo_id: UUID, query: str, results: li
         }
 
     top = results[: min(3, len(results))]
-    diverse = _select_diverse_results(results, limit=min(6, len(results)))
-    formatted = [
-        format_citation(
-            chunk_id=str(item.get("chunk_id")),
-            file_path=str(item.get("file_path") or ""),
-            line_start=item.get("start_line"),
-            line_end=item.get("end_line"),
-            score=item.get("rerank_score") if item.get("rerank_score") is not None else item.get("score"),
-        )
-        for item in top
-    ]
-    valid_citations = validate_citations_for_repo(db, repo_id=repo_id, citations=formatted)
-    refs = [f"{item.get('file_path')}:{item.get('line_start') or 1}" for item in valid_citations] or ["no exact anchor"]
-    citations = {
-        "citations": valid_citations,
-        "no_citation": len(valid_citations) == 0,
-    }
+    diverse = _select_diverse_results(results, limit=min(MAX_CONTEXTS, len(results)))
 
     llm_contexts = []
     llm_candidates = diverse if diverse else top
@@ -361,6 +346,7 @@ def _plan_assistant_response(db: Session, repo_id: UUID, query: str, results: li
                 "line_end": item.get("end_line"),
                 "language": item.get("language"),
                 "content": content,
+                "score": item.get("rerank_score") if item.get("rerank_score") is not None else item.get("score"),
             }
         )
     mode = "summary" if _summary_question(query) else "answer"
@@ -368,6 +354,28 @@ def _plan_assistant_response(db: Session, repo_id: UUID, query: str, results: li
         readme = _readme_contexts(db, repo_id)
         readme_ids = {context["chunk_id"] for context in readme}
         llm_contexts = readme + [context for context in llm_contexts if context["chunk_id"] not in readme_ids]
+    llm_contexts = llm_contexts[:MAX_CONTEXTS]
+
+    # Every context the model sees is a citation, numbered as in the prompt so [n] in the answer maps back.
+    formatted = [
+        {
+            **format_citation(
+                chunk_id=context["chunk_id"],
+                file_path=str(context["file_path"] or ""),
+                line_start=context["line_start"],
+                line_end=context["line_end"],
+                score=context.get("score"),
+            ),
+            "ref": ref,
+        }
+        for ref, context in enumerate(llm_contexts, start=1)
+    ]
+    valid_citations = validate_citations_for_repo(db, repo_id=repo_id, citations=formatted)
+    refs = [f"{item.get('file_path')}:{item.get('line_start') or 1}" for item in valid_citations] or ["no exact anchor"]
+    citations = {
+        "citations": valid_citations,
+        "no_citation": len(valid_citations) == 0,
+    }
     return {
         "kind": "llm",
         "contexts": llm_contexts,
@@ -665,6 +673,7 @@ def send_chat_message(
                 for token in final_text.split(" "):
                     yield _delta(token + " ")
 
+        final_citations = {**citations, "citations": mark_cited(citations.get("citations", []), final_text)}
         message_id = uuid4()
         with SessionLocal() as stream_db:
             stream_db.add(
@@ -673,15 +682,15 @@ def send_chat_message(
                     session_id=session_id,
                     role="assistant",
                     content=final_text,
-                    source_citations=citations,
+                    source_citations=final_citations,
                 )
             )
             stream_db.commit()
 
         final = {
             "message_id": str(message_id),
-            "citations": citations.get("citations", []),
-            "no_citation": bool(citations.get("no_citation")),
+            "citations": final_citations["citations"],
+            "no_citation": bool(final_citations.get("no_citation")),
         }
         yield f"event: done\ndata: {json.dumps(final)}\n\n"
 

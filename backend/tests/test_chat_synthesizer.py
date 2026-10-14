@@ -145,3 +145,14 @@ def test_malformed_chunk_surfaces_as_chat_synthesis_error(monkeypatch) -> None:
 def test_no_contexts_raises() -> None:
     with pytest.raises(ChatSynthesisError, match="No contexts"):
         list(synthesize_grounded_answer_stream(query="q", contexts=[]))
+
+
+def test_prompt_numbers_contexts_and_asks_for_ref_citations() -> None:
+    contexts = [{**CONTEXTS[0], "file_path": f"src/m{n}.py"} for n in range(1, 9)]
+
+    prompt = chat_synthesizer._build_prompt("How does login work?", contexts, "answer")
+
+    payload = json.loads(prompt.split("Retrieved code contexts (JSON):\n", 1)[1].split("\n\n", 1)[0])
+    assert [item["ref"] for item in payload] == [1, 2, 3, 4, 5, 6]
+    assert "like [2]" in prompt
+    assert "like [2]" in chat_synthesizer._build_prompt("Summarize", contexts, "summary")

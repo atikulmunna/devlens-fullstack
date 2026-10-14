@@ -1,3 +1,4 @@
+import json
 from uuid import UUID, uuid4
 
 from sqlalchemy import select, text
@@ -510,3 +511,23 @@ def test_regular_question_does_not_add_the_readme(client, db_session: Session, m
     _ask(client, db_session, monkeypatch, "Where are tokens refreshed?", _recording_synthesizer(calls), README_CHUNKS)
 
     assert [context["file_path"] for context in calls[0]["contexts"]] == ["src/auth/jwt.py"]
+
+
+def test_every_context_is_a_numbered_citation_flagged_by_use(client, db_session: Session, monkeypatch) -> None:
+    calls: list[dict] = []
+
+    text = _ask(
+        client,
+        db_session,
+        monkeypatch,
+        "Give me an overview",
+        _recording_synthesizer(calls, "Signs tokens [2]."),
+        README_CHUNKS,
+    )
+
+    done = json.loads(text.split("event: done\ndata: ", 1)[1].split("\n", 1)[0])
+    assert [(c["ref"], c["file_path"], c["cited"]) for c in done["citations"]] == [
+        (1, "README.md", False),
+        (2, "src/auth/jwt.py", True),
+    ]
+    assert done["no_citation"] is False

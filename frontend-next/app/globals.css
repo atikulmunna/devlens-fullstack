@@ -256,9 +256,14 @@ a:hover {
 
 .citation-pill {
   font-size: var(--step--1);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--pine);
   border-radius: 999px;
   padding: 2px 8px;
+  color: var(--ink);
+}
+
+.citation-pill.unused {
+  border: 1px dashed var(--rule);
   color: var(--lichen);
 }
 

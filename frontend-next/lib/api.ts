@@ -131,6 +131,9 @@ export type ChatCitation = {
   line_start?: number;
   line_end?: number;
   score?: number;
+  // The context's number in the prompt; the answer cites it as [ref].
+  ref?: number;
+  cited?: boolean;
   [key: string]: unknown;
 };
 
