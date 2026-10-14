@@ -220,3 +220,47 @@ def test_hybrid_search_reranker_failure_falls_back_to_deterministic(db_session: 
 
     results = retrieval_hybrid.hybrid_search_chunks(db_session, repo.id, "auth token", limit=2)
     assert [row["chunk_id"] for row in results] == [c1, c2]
+
+
+def _rank_paths(monkeypatch, query: str, dense_hits: list[tuple[str, float]]) -> list[str]:
+    """Rank dense-only hits (lexical off, reranker off) and return their file paths in order."""
+    monkeypatch.setattr(retrieval_hybrid.settings, "reranker_enabled", False)
+    monkeypatch.setattr(retrieval_hybrid, "lexical_search_chunks", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        retrieval_hybrid,
+        "dense_search_qdrant",
+        lambda *_args, **_kwargs: [
+            {"chunk_id": f"c{n}", "file_path": path, "start_line": 1, "end_line": 9, "dense_score": score}
+            for n, (path, score) in enumerate(dense_hits)
+        ],
+    )
+    results = retrieval_hybrid.hybrid_search_chunks(None, repo_id=uuid4(), query=query, limit=5)
+    return [row["file_path"] for row in results]
+
+
+HITS = [
+    ("backend/tests/test_chat.py", 0.95),
+    ("src/app/chat.py", 0.90),
+    ("web/chat.test.ts", 0.88),
+    ("docs/chat.md", 0.10),
+]
+
+
+def test_test_files_rank_below_close_implementation_matches(monkeypatch) -> None:
+    paths = _rank_paths(monkeypatch, "What does the endpoint do when the model fails?", HITS)
+
+    assert paths[0] == "src/app/chat.py"
+    assert set(paths[1:3]) == {"backend/tests/test_chat.py", "web/chat.test.ts"}
+
+
+def test_questions_about_tests_keep_test_files_on_top(monkeypatch) -> None:
+    paths = _rank_paths(monkeypatch, "How is the fallback tested?", HITS)
+
+    assert paths[0] == "backend/tests/test_chat.py"
+
+
+def test_test_path_pattern() -> None:
+    for path in ("tests/a.py", "pkg/tests/b.py", "test_x.py", "a/__tests__/c.ts", "x_test.go", "y.spec.tsx"):
+        assert retrieval_hybrid.TEST_PATH_RE.search(path), path
+    for path in ("src/latest.py", "contest/main.py", "testing_utils.py", "src/attestation.ts"):
+        assert not retrieval_hybrid.TEST_PATH_RE.search(path), path

@@ -33,7 +33,8 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = 3600
     rate_limit_guest_per_window: int = 10
     rate_limit_auth_per_window: int = 50
-    reranker_enabled: bool = True
+    # Off: measured no gain worth its latency and image size (docs/evaluation/Retrieval_Eval.md).
+    reranker_enabled: bool = False
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     reranker_candidate_limit: int = 50
 

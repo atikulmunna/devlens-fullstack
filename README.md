@@ -89,7 +89,7 @@ flowchart LR
 ### AI / Retrieval
 - Dense retrieval (Qdrant) with embeddings via OpenRouter (`openai/text-embedding-3-small`)
 - Lexical retrieval (PostgreSQL FTS)
-- Cross-encoder reranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`)
+- Test files ranked lower unless the question is about tests; optional cross-encoder reranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`), off by default after measuring it
 - LLM via OpenRouter (chat answers and analysis summaries)
 
 ### Infra
@@ -115,7 +115,7 @@ flowchart LR
 5. `analyze_worker` computes architecture/quality summaries.
 6. UI streams status updates from SSE endpoint, then opens `/r/<owner>/<repo>`.
 7. Dashboard API exposes final analysis payload (the Overview tab).
-8. Chat session retrieves relevant chunks (hybrid dense + lexical + reranker) and streams a citation-grounded response.
+8. Chat session retrieves relevant chunks (hybrid dense + lexical, test files ranked lower) and streams a citation-grounded response.
 9. Diff API exposes changed files, blast radius, security flags, and a diff-grounded Q&A.
 
 ## Prerequisites
@@ -194,7 +194,7 @@ OpenRouter (the only AI provider):
 - `LLM_CHAT_TIMEOUT_SECONDS` (default `15`)
 
 Retrieval controls:
-- `RERANKER_ENABLED` (default `true`)
+- `RERANKER_ENABLED` (default `false`; see `docs/evaluation/Retrieval_Eval.md`)
 - `RERANKER_MODEL`
 - `RERANKER_CANDIDATE_LIMIT`
 
@@ -361,7 +361,7 @@ Recommended starter prompts:
 
 - API contract: `docs/api/API_Contract_v1.1.md`
 - Frontend runtime ADR: `docs/architecture/ADR-001-frontend-runtime.md`
-- Retrieval/embedder upgrade eval: `docs/evaluation/Retrieval_Embedder_Upgrade_Eval.md`
+- Retrieval quality eval (golden set, recall@5, reranker decision): `docs/evaluation/Retrieval_Eval.md`
 - Reranker delta report: `docs/evaluation/DEV-045_Reranker_Delta_Report.md`
 
 ## License
