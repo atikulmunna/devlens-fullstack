@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -64,11 +65,27 @@ def _diff_intent(question: str) -> str:
     return "general"
 
 
-def _diff_contexts(changed_files: list[dict], limit: int = 6) -> list[dict]:
+def _rank_for_question(changed_files: list[dict], question: str) -> list[dict]:
+    """Files whose path names words from the question first ("embed worker" finds embed_worker.py);
+    otherwise diff order. Only the first few files fit in the model's context."""
+    words = {word for word in re.findall(r"[a-z0-9]+", question.lower()) if len(word) >= 3}
+
+    def matches(entry: dict) -> int:
+        return len(words & set(re.findall(r"[a-z0-9]+", str(entry.get("path") or "").lower())))
+
+    return sorted(changed_files, key=matches, reverse=True)
+
+
+def _diff_contexts(changed_files: list[dict], limit: int = 6, lines_per_side: int = 60) -> list[dict]:
+    """One context per changed file, in diff notation: "+" for added lines, "-" for removed ones.
+
+    Diffs stored before removed lines were captured simply have no "-" lines.
+    """
     contexts = []
     for entry in changed_files[:limit]:
         hunks = entry.get("hunks") or []
-        added = entry.get("added_lines") or []
+        added = [f"+{line}" for line in (entry.get("added_lines") or [])[:lines_per_side]]
+        removed = [f"-{line}" for line in (entry.get("removed_lines") or [])[:lines_per_side]]
         contexts.append(
             {
                 "chunk_id": entry.get("path"),
@@ -76,7 +93,7 @@ def _diff_contexts(changed_files: list[dict], limit: int = 6) -> list[dict]:
                 "line_start": hunks[0]["start"] if hunks else None,
                 "line_end": hunks[-1]["end"] if hunks else None,
                 "language": None,
-                "content": "\n".join(added[:60]),
+                "content": "\n".join(removed + added),
             }
         )
     return contexts
@@ -141,7 +158,7 @@ def ask_about_diff(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No commit diff available for this repository")
 
     changed_files = diff.changed_files or []
-    contexts = _diff_contexts(changed_files)
+    contexts = _diff_contexts(_rank_for_question(changed_files, payload.question))
     intent = _diff_intent(payload.question)
     security_categories = sorted(
         {cat for flag in (diff.security_flags or []) for cat in (flag.get("categories") or [])}

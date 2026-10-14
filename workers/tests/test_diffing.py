@@ -80,3 +80,56 @@ def test_compute_commit_diff_logs_git_failure_reason(monkeypatch, caplog) -> Non
     assert compute_commit_diff("/tmp/repo", "head-sha") is None
     # Best-effort stays best-effort, but the reason (git's own message) is now recorded.
     assert "Commit diff for head-sha failed: git diff exited 128: fatal: bad object head-sha" in caplog.text
+
+
+REMOVED_CHECK_DIFF = """diff --git a/app/views.py b/app/views.py
+index 111..222 100644
+--- a/app/views.py
++++ b/app/views.py
+@@ -4,4 +4,3 @@ def delete_account(request):
+-    if not verify_token(request):
+-        raise Forbidden()
+     account.delete()
++    log.info("deleted")
+"""
+
+
+def test_removed_lines_are_captured() -> None:
+    by_path = {f["path"]: f for f in parse_unified_diff(SAMPLE_DIFF)}
+
+    assert by_path["app/auth.py"]["removed_lines"] == ["    old = 1"]
+    assert by_path["old.py"]["removed_lines"] == ["print(1)", "print(2)"]
+    assert by_path["README.md"]["removed_lines"] == []
+
+
+def test_removed_security_lines_are_flagged_separately() -> None:
+    flags = detect_security_touches(parse_unified_diff(REMOVED_CHECK_DIFF))
+
+    # The added line is harmless; the removed token check is the change worth a look.
+    assert flags == [{"path": "app/views.py", "categories": ["removed: token"]}]
+
+
+def test_stored_lines_are_capped_on_both_sides(monkeypatch) -> None:
+    removed = "\n".join(f"-r{n}" for n in range(250))
+    added = "\n".join(f"+a{n}" for n in range(250))
+    diff = f"diff --git a/x.py b/x.py\n--- a/x.py\n+++ b/x.py\n@@ -1,250 +1,250 @@\n{removed}\n{added}\n"
+
+    def fake_run(cmd, **_kwargs):
+        stdout = {"rev-parse": b"base-sha\n", "diff": diff.encode()}.get(cmd[1], b"")
+        return subprocess.CompletedProcess(cmd, 0, stdout=stdout, stderr=b"")
+
+    monkeypatch.setattr(diffing.subprocess, "run", fake_run)
+
+    entry = compute_commit_diff("/tmp/repo", "head-sha")["changed_files"][0]
+    assert (entry["added"], entry["removed"]) == (250, 250)
+    assert len(entry["added_lines"]) == len(entry["removed_lines"]) == diffing.MAX_STORED_LINES
+
+
+def test_security_terms_match_snake_case_names_but_not_longer_words() -> None:
+    labels = diffing._security_labels
+
+    assert labels("refresh_token = verify_token(req)") == {"token"}
+    assert labels("CLIENT_SECRET = load()") == {"secret"}
+    assert labels("user.password_hash = bcrypt(pw)") == {"password", "crypto"}
+    assert labels("is_authenticated") == {"auth"}
+    assert labels("tokenize(text); hashtag; secretary") == set()
