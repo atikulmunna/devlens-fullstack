@@ -25,6 +25,8 @@ from app.services.retrieval_hybrid import hybrid_search_chunks, load_chunk_conte
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
+# Earlier messages sent to the model with each question: three question and answer turns.
+HISTORY_MESSAGES = 6
 CHAT_CREATE_SESSION_REQUEST_EXAMPLE = {"repo_id": "cd3ce6f7-76fc-4cc2-8e34-c176f7af6f82"}
 CHAT_CREATE_SESSION_RESPONSE_EXAMPLE = {
     "session_id": "d7a2ca6c-f9d1-42ce-9de0-35e0dbdc47dc",
@@ -387,6 +389,20 @@ def _plan_assistant_response(db: Session, repo_id: UUID, query: str, results: li
     }
 
 
+def _recent_history(db: Session, session_id: UUID) -> list[dict]:
+    rows = (
+        db.execute(
+            select(ChatMessage)
+            .where(ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.created_at.desc())
+            .limit(HISTORY_MESSAGES)
+        )
+        .scalars()
+        .all()
+    )
+    return [{"role": row.role, "content": row.content} for row in reversed(rows)]
+
+
 def _snippet_fallback_text(db: Session, repo_id: UUID, top: list[dict], refs: list[str]) -> str:
     """Deterministic answer used when LLM synthesis is unavailable or empty."""
     snippets: list[str] = []
@@ -617,6 +633,8 @@ def send_chat_message(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Message content must not be empty")
 
     session_row = _ensure_owned_session(db, session_id, current_user.id)
+    # Read before saving this question, so the history holds earlier turns only.
+    history = _recent_history(db, session_row.id)
 
     user_msg = ChatMessage(
         id=uuid4(),
@@ -658,6 +676,7 @@ def send_chat_message(
                     contexts=plan["contexts"],
                     mode=plan["mode"],
                     intent=plan["intent"],
+                    history=history,
                 ):
                     parts.append(piece)
                     yield _delta(piece)

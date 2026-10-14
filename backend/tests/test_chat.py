@@ -5,7 +5,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 import app.api.v1.chat as chat_module
-from app.db.models import AnalysisResult, ChatMessage, CodeChunk, Repository, User
+from app.db.models import AnalysisResult, ChatMessage, ChatSession, CodeChunk, Repository, User
 from app.services.tokens import create_access_token
 
 
@@ -531,3 +531,43 @@ def test_every_context_is_a_numbered_citation_flagged_by_use(client, db_session:
         (2, "src/auth/jwt.py", True),
     ]
     assert done["no_citation"] is False
+
+
+def test_follow_up_question_sends_earlier_turns_as_history(client, db_session: Session, monkeypatch) -> None:
+    user, repo, chunk_id = _seed_user_and_repo(db_session)
+    headers = {"Authorization": f"Bearer {create_access_token(user.id)}"}
+    session_id = client.post("/api/v1/chat/sessions", json={"repo_id": str(repo.id)}, headers=headers).json()["session_id"]
+    hit = {"chunk_id": chunk_id, "file_path": "src/auth/jwt.py", "start_line": 10, "end_line": 30, "rerank_score": 0.7}
+    monkeypatch.setattr(chat_module, "hybrid_search_chunks", lambda *_args, **_kwargs: [hit])
+    calls: list[dict] = []
+    monkeypatch.setattr(chat_module, "synthesize_grounded_answer_stream", _recording_synthesizer(calls, "In jwt.py [1]."))
+
+    for question in ["Where are tokens refreshed?", "And how long do they last?"]:
+        client.post(f"/api/v1/chat/sessions/{session_id}/message", json={"content": question}, headers=headers)
+
+    assert calls[0]["history"] == []
+    assert calls[1]["history"] == [
+        {"role": "user", "content": "Where are tokens refreshed?"},
+        {"role": "assistant", "content": "In jwt.py [1]."},
+    ]
+
+
+def test_history_is_limited_to_the_most_recent_messages(db_session: Session) -> None:
+    user, repo, _ = _seed_user_and_repo(db_session)
+    session = ChatSession(id=uuid4(), repo_id=repo.id, user_id=user.id)
+    db_session.add(session)
+    db_session.flush()
+    for n in range(10):
+        db_session.add(
+            ChatMessage(id=uuid4(), session_id=session.id, role="user" if n % 2 == 0 else "assistant", content=f"m{n}")
+        )
+        db_session.flush()
+        db_session.execute(
+            text("UPDATE chat_messages SET created_at = now() + make_interval(secs => :n) WHERE content = :c"),
+            {"n": n, "c": f"m{n}"},
+        )
+    db_session.commit()
+
+    history = chat_module._recent_history(db_session, session.id)
+
+    assert [turn["content"] for turn in history] == ["m4", "m5", "m6", "m7", "m8", "m9"]

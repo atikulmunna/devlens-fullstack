@@ -4,6 +4,7 @@ from typing import Literal
 import httpx
 
 from app.config import settings
+from app.services.citations import CITATION_MARKER
 from app.services.openrouter import describe_error
 
 
@@ -15,6 +16,8 @@ ChatIntent = Literal["general", "architecture", "setup", "debug", "security"]
 
 # How many retrieved contexts the model sees; each one is numbered and citable as [n].
 MAX_CONTEXTS = 6
+# Earlier turns sent with a follow-up question, each capped so a long answer cannot crowd out the code.
+HISTORY_CHARS = 1500
 CITE_INSTRUCTION = (
     "Cite the contexts you rely on inline by their ref number in square brackets, like [2]. "
     "Use only the ref numbers listed."
@@ -31,7 +34,9 @@ def _system_prompt(mode: Literal["answer", "summary"], intent: ChatIntent) -> st
         )
     system_prompt = (
         "You answer developer questions strictly from retrieved repository code context. "
-        "Do not invent facts. If evidence is weak, say so briefly."
+        "Do not invent facts. If evidence is weak, say so briefly. "
+        "Earlier turns of the conversation are there to resolve follow-up questions; "
+        "ground the answer in the retrieved contexts."
     )
     if intent == "architecture":
         system_prompt += " Focus on components, boundaries, and data/control flow between modules."
@@ -55,10 +60,22 @@ def _max_tokens(mode: Literal["answer", "summary"], intent: ChatIntent) -> int:
     return 260
 
 
+def _history_messages(history: list[dict]) -> list[dict]:
+    """Earlier turns as chat messages. Their [n] markers pointed at that turn's contexts, so they
+    are removed rather than left to clash with this turn's numbering."""
+    messages = []
+    for turn in history:
+        content = CITATION_MARKER.sub("", str(turn.get("content") or "")).strip()
+        if turn.get("role") in ("user", "assistant") and content:
+            messages.append({"role": turn["role"], "content": content[:HISTORY_CHARS]})
+    return messages
+
+
 def _build_request(
     prompt: str,
     mode: Literal["answer", "summary"],
     intent: ChatIntent,
+    history: list[dict],
 ) -> tuple[str, dict, dict]:
     if not settings.openrouter_api_key:
         raise ChatSynthesisError("OPENROUTER_API_KEY is not set")
@@ -67,6 +84,7 @@ def _build_request(
         "model": settings.llm_chat_model,
         "messages": [
             {"role": "system", "content": _system_prompt(mode, intent)},
+            *_history_messages(history),
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.1,
@@ -81,9 +99,10 @@ def _iter_tokens(
     prompt: str,
     mode: Literal["answer", "summary"],
     intent: ChatIntent,
+    history: list[dict],
 ):
     """Yield content tokens from OpenRouter's streaming chat completion (SSE)."""
-    url, headers, body = _build_request(prompt, mode, intent)
+    url, headers, body = _build_request(prompt, mode, intent, history)
     try:
         with httpx.Client(timeout=float(settings.llm_chat_timeout_seconds)) as client:
             with client.stream("POST", url, headers=headers, json=body) as response:
@@ -151,8 +170,11 @@ def synthesize_grounded_answer_stream(
     contexts: list[dict],
     mode: Literal["answer", "summary"] = "answer",
     intent: ChatIntent = "general",
+    history: list[dict] | None = None,
 ):
     """Stream grounded-answer tokens from OpenRouter as they arrive.
+
+    `history` is the session's earlier turns, oldest first, as {"role", "content"} dicts.
 
     Every failure surfaces as ChatSynthesisError, so callers handle one error type: tokens
     already yielded stay delivered, and callers fall back to deterministic text when nothing
@@ -164,7 +186,7 @@ def synthesize_grounded_answer_stream(
     prompt = _build_prompt(query, contexts, mode)
     emitted = False
     try:
-        for piece in _iter_tokens(prompt, mode=mode, intent=intent):
+        for piece in _iter_tokens(prompt, mode=mode, intent=intent, history=history or []):
             emitted = True
             yield piece
     except ChatSynthesisError:
