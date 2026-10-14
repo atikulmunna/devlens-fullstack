@@ -14,9 +14,29 @@ type ChatBubble = {
 };
 
 function citationLabel(citation: ChatCitation): string {
+  const ref = citation.ref ? `[${citation.ref}] ` : "";
   const path = citation.file_path || "source";
   const line = citation.line_start ? `:${citation.line_start}` : "";
-  return `${path}${line}`;
+  return `${ref}${path}${line}`;
+}
+
+// Every source the model was given. When the answer cites some by [n], the rest are drawn
+// muted and dashed, like the unwalked trail in the progress steps.
+function Citations({ citations }: { citations: ChatCitation[] }) {
+  const anyCited = citations.some((citation) => citation.cited);
+  return (
+    <div className="citations">
+      {citations.map((citation, index) => {
+        const unused = anyCited && !citation.cited;
+        return (
+          <span key={index} className={`citation-pill mono${unused ? " unused" : ""}`}>
+            {citationLabel(citation)}
+            {unused && <span className="visually-hidden"> (given to the model, not cited)</span>}
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 export function RepoChat() {
@@ -146,13 +166,7 @@ export function RepoChat() {
               <div className="role">{bubble.role === "user" ? "You" : "DevLens"}</div>
               <div className={bubble.streaming ? "blink" : undefined}>{bubble.content}</div>
               {bubble.role === "assistant" && bubble.citations && bubble.citations.length > 0 && (
-                <div className="citations">
-                  {bubble.citations.map((citation, cIndex) => (
-                    <span key={cIndex} className="citation-pill mono">
-                      {citationLabel(citation)}
-                    </span>
-                  ))}
-                </div>
+                <Citations citations={bubble.citations} />
               )}
               {bubble.role === "assistant" && !bubble.streaming && bubble.noCitation && (
                 <div className="no-citation">No source lines matched this answer.</div>
