@@ -210,7 +210,7 @@ OpenRouter (the only AI provider):
 - `OPENROUTER_API_KEY`
 - `EMBED_MODEL` (default `openai/text-embedding-3-small`, must match the backend)
 - The Qdrant collection is sized from the model's output; switching to a model with a different size recreates it (re-analyze every repo after)
-- `LLM_SUMMARY_MODEL` (default `openai/gpt-4o-mini`)
+- `LLM_SUMMARY_MODEL` (default `openai/gpt-4.1-mini`; see `docs/evaluation/Model_Selection.md`)
 
 Pipeline tuning:
 - `PARSE_MAX_FILES`
@@ -362,6 +362,7 @@ Recommended starter prompts:
 - API contract: `docs/api/API_Contract_v1.1.md`
 - Frontend runtime ADR: `docs/architecture/ADR-001-frontend-runtime.md`
 - Retrieval quality eval (golden set, recall@5, reranker decision): `docs/evaluation/Retrieval_Eval.md`
+- Model selection (chat and summary, blind-graded rounds): `docs/evaluation/Model_Selection.md`
 - Reranker delta report: `docs/evaluation/DEV-045_Reranker_Delta_Report.md`
 
 ## License

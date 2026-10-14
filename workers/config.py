@@ -31,7 +31,7 @@ class WorkerSettings(BaseSettings):
     # summary LLM (if only that call fails, the summary falls back to a structural one).
     openrouter_api_key: str | None = None
     openrouter_base_url: AnyHttpUrl = "https://openrouter.ai/api/v1"
-    llm_summary_model: str = "openai/gpt-4o-mini"
+    llm_summary_model: str = "openai/gpt-4.1-mini"
     llm_summary_timeout_seconds: int = 15
 
     # Ignore unknown keys so env files that still carry removed settings keep working.
