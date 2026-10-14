@@ -17,9 +17,10 @@ ChatIntent = Literal["general", "architecture", "setup", "debug", "security"]
 def _system_prompt(mode: Literal["answer", "summary"], intent: ChatIntent) -> str:
     if mode == "summary":
         return (
-            "You are a repository analyst. Use only retrieved context. "
-            "Return exactly 4-6 concise bullets that cover: purpose, core modules, runtime flow, output formats. "
-            "Do not include a 'Based on indexed code context' preface."
+            "You are a repository analyst. Use only the retrieved context. "
+            "Return 4 to 6 concise bullets that cover: what the project is for, its main components, "
+            "how a request or run flows through them, and how it is used or run. "
+            "Skip any point the context does not support instead of guessing."
         )
     system_prompt = (
         "You answer developer questions strictly from retrieved repository code context. "
@@ -124,8 +125,8 @@ def _build_prompt(query: str, contexts: list[dict], mode: Literal["answer", "sum
     )
     if mode == "summary":
         prompt += (
-            "Provide a high-level repository summary in 4-6 bullets covering: "
-            "purpose, core modules, runtime flow, and output formats. "
+            "Summarize this repository in 4 to 6 bullets: what it is for, its main components, "
+            "how a request or run flows through them, and how it is used or run. "
             "Ground every bullet in the provided evidence."
         )
     else:

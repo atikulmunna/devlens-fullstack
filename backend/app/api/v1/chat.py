@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import AnalysisResult, ChatMessage, CodeChunk, ChatSession, Repository, User
@@ -124,6 +124,9 @@ def _normalize_language(raw: str | None) -> str | None:
         "bash": "Shell",
         "sql": "SQL",
         "md": "Markdown",
+        "rst": "reStructuredText",
+        "toml": "TOML",
+        "makefile": "Makefile",
         "yml": "YAML",
         "yaml": "YAML",
         "json": "JSON",
@@ -131,15 +134,45 @@ def _normalize_language(raw: str | None) -> str | None:
     return aliases.get(key, raw.strip())
 
 
+# Documentation and configuration formats: present in most repos, but not what a project is "written in".
+NON_CODE_LANGUAGES = {"Markdown", "reStructuredText", "YAML", "JSON", "TOML", "txt", "unknown"}
+
+
+def _language_answer(breakdown: dict | None) -> str | None:
+    """Describe the repo's code languages from the analysis breakdown (percent of indexed size)."""
+    shares: dict[str, float] = {}
+    for key, share in (breakdown or {}).items():
+        name = _normalize_language(key)
+        if name and name not in NON_CODE_LANGUAGES:
+            shares[name] = shares.get(name, 0.0) + float(share or 0)
+    total = sum(shares.values())
+    if total <= 0:
+        return None
+
+    ranked = sorted(shares.items(), key=lambda kv: kv[1], reverse=True)
+
+    def _describe(name: str, share: float) -> str:
+        percent = share / total * 100
+        return f"{name} ({'under 1' if percent < 1 else round(percent)}%)"
+
+    lead_name, lead_share = ranked[0]
+    if len(ranked) == 1:
+        return f"The code is written in {lead_name}."
+    rest = ", ".join(_describe(name, share) for name, share in ranked[1:4])
+    return f"The code is mostly {_describe(lead_name, lead_share)}, with {rest}. Shares are by size of the indexed code."
+
+
 def _language_question(query: str) -> bool:
+    # Phrases only: a bare "stack" or "language" also matches "stack trace" or "language model".
     q = query.lower()
     patterns = (
-        "language",
+        "what language",
+        "which language",
+        "programming language",
         "languages",
         "tech stack",
-        "stack",
-        "what is this built with",
-        "what is this written in",
+        "built with",
+        "written in",
     )
     return any(token in q for token in patterns)
 
@@ -232,154 +265,54 @@ def _select_diverse_results(results: list[dict], limit: int = 6) -> list[dict]:
     return selected
 
 
-def _fallback_repo_summary(
-    repo: Repository | None,
-    analysis: AnalysisResult | None,
-    languages: list[str],
-    top_paths: list[str],
-) -> str:
-    repo_name = repo.full_name if repo else "this repository"
-    purpose = analysis.architecture_summary.strip() if analysis and analysis.architecture_summary else ""
-    if purpose:
-        purpose = re.sub(r"\s+", " ", purpose)[:180]
-    else:
-        purpose = f"Codebase for {repo_name}."
-
-    modules = []
-    common_roots = {"src", "app", "lib", "packages"}
-    for path in top_paths:
-        parts = [p for p in path.split("/") if p]
-        if not parts:
-            continue
-        root = parts[0].strip()
-        candidate = root
-        if root in common_roots and len(parts) > 1:
-            candidate = f"{root}/{parts[1].strip()}"
-        if candidate and candidate not in modules:
-            modules.append(candidate)
-        if len(modules) >= 5:
-            break
-    module_text = ", ".join(modules) if modules else "main source and support modules"
-
-    language_text = ", ".join(languages[:6]) if languages else (repo.language or "not clearly identified")
-
-    output_hints = []
-    for path in top_paths:
-        lower = path.lower()
-        if "gif" in lower and "GIF" not in output_hints:
-            output_hints.append("GIF")
-        if "webp" in lower and "WebP" not in output_hints:
-            output_hints.append("WebP")
-        if "dataurl" in lower and "data URL" not in output_hints:
-            output_hints.append("data URL")
-    if any(path.lower().endswith((".html", ".tsx", ".jsx", ".vue", ".svelte")) for path in top_paths):
-        output_hints.append("web UI views")
-    if any(path.lower().endswith((".json", ".yaml", ".yml")) for path in top_paths):
-        output_hints.append("structured config/data")
-    output_text = ", ".join(dict.fromkeys(output_hints)) if output_hints else "runtime artifacts inferred from code paths"
-
-    flow_hints: list[str] = []
-    lower_paths = [p.lower() for p in top_paths]
-    if any("cli" in p or "argparse" in p or "typer" in p for p in lower_paths):
-        flow_hints.append("CLI entrypoint receives arguments")
-    if any("api" in p or "route" in p or "controller" in p for p in lower_paths):
-        flow_hints.append("request handlers call service modules")
-    if any("component" in p or "react" in p or p.endswith(".tsx") for p in lower_paths):
-        flow_hints.append("UI components render feature views")
-    if any("service" in p or "core" in p or "engine" in p for p in lower_paths):
-        flow_hints.append("core modules execute main business logic")
-    runtime_flow = (
-        "; ".join(flow_hints[:3]) + "."
-        if flow_hints
-        else "entrypoint initializes modules, then feature components/services process the main workflow."
+def _readme_contexts(db: Session, repo_id: UUID, limit: int = 2) -> list[dict]:
+    """The opening of the root README: the best single source for what a project is, and one
+    a "summarize this" query rarely retrieves on its own."""
+    rows = (
+        db.execute(
+            select(CodeChunk)
+            .where(CodeChunk.repo_id == repo_id, func.lower(CodeChunk.file_path).like("readme%"))
+            .order_by(CodeChunk.file_path.asc(), CodeChunk.start_line.asc())
+            .limit(limit)
+        )
+        .scalars()
+        .all()
     )
-
-    bullets = [
-        f"- Purpose: {purpose}",
-        f"- Core modules: {module_text}.",
-        f"- Runtime flow: {runtime_flow}",
-        f"- Output formats: {output_text}.",
-        f"- Primary languages: {language_text}.",
+    return [
+        {
+            "chunk_id": str(row.id),
+            "file_path": row.file_path,
+            "line_start": row.start_line,
+            "line_end": row.end_line,
+            "language": row.language,
+            "content": row.content,
+        }
+        for row in rows
+        if row.content.strip()
     ]
-    return "\n".join(bullets)
-
-
-def _normalize_summary_text(raw: str) -> str:
-    text = (raw or "").replace("\r", "\n").strip()
-    if not text:
-        return text
-
-    # Remove ingestion/pipeline noise globally before formatting.
-    text = re.sub(
-        r"\s*The parse/index stage identified[^.\n]*(?:[.\n]|$)",
-        " ",
-        text,
-        flags=re.IGNORECASE,
-    )
-    text = re.sub(
-        r"\s*Representative paths include:[^.\n]*(?:[.\n]|$)",
-        " ",
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    # Force known summary sections onto their own bullet lines.
-    text = re.sub(
-        r"\s-\s(?=(Purpose|Core modules|Runtime flow|Output formats|Primary languages):)",
-        "\n- ",
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    # Convert remaining inline " - Section: ..." segments to line bullets.
-    text = re.sub(r"\s-\s(?=[A-Z][^:]{1,40}:)", "\n- ", text)
-
-    lines: list[str] = []
-    for line in text.split("\n"):
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("- "):
-            lines.append(stripped)
-            continue
-        if stripped.startswith("-"):
-            lines.append(f"- {stripped[1:].strip()}")
-            continue
-        if re.match(r"^[A-Z][^:]{1,40}:", stripped):
-            lines.append(f"- {stripped}")
-            continue
-        if lines:
-            lines[-1] = f"{lines[-1]} {stripped}"
-        else:
-            lines.append(f"- {stripped}")
-
-    def _clean_purpose_bullet(line: str) -> str:
-        if not line.lower().startswith("- purpose:"):
-            return line
-        text = line[len("- Purpose:"):].strip()
-        text = re.sub(r"\s*The parse/index stage identified[^.]*\.?", "", text, flags=re.IGNORECASE)
-        text = re.sub(r"\s*Representative paths include:[^.]*\.?", "", text, flags=re.IGNORECASE)
-        text = re.sub(r"\s+", " ", text).strip(" .")
-        if not text:
-            text = "This repository appears to implement its main product features."
-        if len(text) > 170:
-            cut = text.rfind(" ", 0, 170)
-            text = text[:cut if cut > 0 else 170].rstrip()
-        return f"- Purpose: {text}."
-
-    lines = [_clean_purpose_bullet(line) for line in lines]
-
-    # Cap verbosity while preserving requested format.
-    return "\n".join(lines[:6])
 
 
 def _plan_assistant_response(db: Session, repo_id: UUID, query: str, results: list[dict]) -> dict:
     """Decide how to answer: a deterministic final string, or an LLM synthesis plan.
 
-    Returns {"kind": "final", "text", "citations"} for the no-result / language / summary
-    branches, or {"kind": "llm", "contexts", "intent", "citations", "top", "refs"} when the
-    answer should be synthesized (and streamed) from the model.
+    Returns {"kind": "final", "text", "citations"} for the no-result and language branches, or
+    {"kind": "llm", "contexts", "mode", "intent", "citations", "top", "refs"} when the answer
+    should be synthesized (and streamed) from the model. Summary questions use the model's
+    summary mode.
     """
+    if _language_question(query):
+        analysis = (
+            db.execute(
+                select(AnalysisResult).where(AnalysisResult.repo_id == repo_id).order_by(AnalysisResult.created_at.desc())
+            )
+            .scalars()
+            .first()
+        )
+        answer = _language_answer(analysis.language_breakdown if analysis else None)
+        if answer:
+            # Whole-repository statistics, so there are no specific lines to cite.
+            return {"kind": "final", "text": answer, "citations": {"citations": [], "no_citation": True}}
+
     if not results:
         return {
             "kind": "final",
@@ -406,41 +339,6 @@ def _plan_assistant_response(db: Session, repo_id: UUID, query: str, results: li
         "no_citation": len(valid_citations) == 0,
     }
 
-    if _language_question(query):
-        languages: list[str] = []
-        for item in results:
-            normalized = _normalize_language(item.get("language"))
-            if normalized and normalized not in languages:
-                languages.append(normalized)
-            if len(languages) >= 8:
-                break
-        if languages:
-            if len(languages) == 1:
-                content = f"The indexed code appears to be primarily {languages[0]}."
-            else:
-                content = "The indexed code appears to use: " + ", ".join(languages) + "."
-            if refs:
-                content += " Evidence from: " + ", ".join(refs) + "."
-            return {"kind": "final", "text": content, "citations": citations}
-
-    if _summary_question(query):
-        repo = db.execute(select(Repository).where(Repository.id == repo_id)).scalar_one_or_none()
-        analysis = (
-            db.execute(select(AnalysisResult).where(AnalysisResult.repo_id == repo_id).order_by(AnalysisResult.created_at.desc()))
-            .scalars()
-            .first()
-        )
-
-        langs: list[str] = []
-        for item in results:
-            normalized = _normalize_language(item.get("language"))
-            if normalized and normalized not in langs:
-                langs.append(normalized)
-
-        top_paths = [str(item.get("file_path") or "") for item in results[:8] if item.get("file_path")]
-        summary = _fallback_repo_summary(repo=repo, analysis=analysis, languages=langs, top_paths=top_paths)
-        return {"kind": "final", "text": _normalize_summary_text(summary), "citations": citations}
-
     llm_contexts = []
     llm_candidates = diverse if diverse else top
     # Retrieval results carry only metadata, so load the chunk code the LLM must ground on.
@@ -451,6 +349,10 @@ def _plan_assistant_response(db: Session, repo_id: UUID, query: str, results: li
     )
     for item in llm_candidates:
         chunk_id = str(item.get("chunk_id") or "")
+        content = str(item.get("content") or content_by_chunk.get(chunk_id) or "")
+        # A vector hit whose chunk row is gone (stale index) has no code to ground on.
+        if not content.strip():
+            continue
         llm_contexts.append(
             {
                 "chunk_id": chunk_id,
@@ -458,12 +360,18 @@ def _plan_assistant_response(db: Session, repo_id: UUID, query: str, results: li
                 "line_start": item.get("start_line"),
                 "line_end": item.get("end_line"),
                 "language": item.get("language"),
-                "content": str(item.get("content") or content_by_chunk.get(chunk_id) or ""),
+                "content": content,
             }
         )
+    mode = "summary" if _summary_question(query) else "answer"
+    if mode == "summary":
+        readme = _readme_contexts(db, repo_id)
+        readme_ids = {context["chunk_id"] for context in readme}
+        llm_contexts = readme + [context for context in llm_contexts if context["chunk_id"] not in readme_ids]
     return {
         "kind": "llm",
         "contexts": llm_contexts,
+        "mode": mode,
         "intent": _detect_chat_intent(query),
         "citations": citations,
         "top": top,
@@ -728,7 +636,7 @@ def send_chat_message(
     # LLM HTTP stream never stalls the event loop. The request's `db` is closed by the time
     # this runs, so any DB work here uses its own session.
     def event_stream():
-        # Deterministic branches (no results / language / summary) emit their fixed text.
+        # Deterministic branches (no results / language) emit their fixed text.
         if plan["kind"] == "final":
             final_text = plan["text"]
             for token in final_text.split(" "):
@@ -740,6 +648,7 @@ def send_chat_message(
                 for piece in synthesize_grounded_answer_stream(
                     query=payload.content,
                     contexts=plan["contexts"],
+                    mode=plan["mode"],
                     intent=plan["intent"],
                 ):
                     parts.append(piece)
