@@ -156,3 +156,28 @@ def test_prompt_numbers_contexts_and_asks_for_ref_citations() -> None:
     assert [item["ref"] for item in payload] == [1, 2, 3, 4, 5, 6]
     assert "like [2]" in prompt
     assert "like [2]" in chat_synthesizer._build_prompt("Summarize", contexts, "summary")
+
+
+def test_history_goes_between_the_system_prompt_and_the_question(monkeypatch) -> None:
+    captured = _fake_openrouter(monkeypatch, lines=_sse("It is cached."))
+    history = [
+        {"role": "user", "content": "Where is login?"},
+        {"role": "assistant", "content": "In src/auth.py [1], via login() [1, 2]."},
+        {"role": "system", "content": "not a chat turn"},
+        {"role": "assistant", "content": "   "},
+    ]
+
+    list(synthesize_grounded_answer_stream(query="Is it cached?", contexts=CONTEXTS, history=history))
+
+    messages = captured["body"]["messages"]
+    assert [m["role"] for m in messages] == ["system", "user", "assistant", "user"]
+    assert messages[1]["content"] == "Where is login?"
+    # Old ref markers pointed at the earlier turn's contexts.
+    assert messages[2]["content"] == "In src/auth.py , via login() ."
+    assert "Is it cached?" in messages[3]["content"]
+
+
+def test_history_turns_are_capped_in_length() -> None:
+    long_turn = {"role": "assistant", "content": "x" * (chat_synthesizer.HISTORY_CHARS + 500)}
+
+    assert len(chat_synthesizer._history_messages([long_turn])[0]["content"]) == chat_synthesizer.HISTORY_CHARS
