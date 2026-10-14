@@ -88,7 +88,13 @@ export default function RepoLayout({ children, params }: Props) {
         >
           Analyze {requestedName}
         </button>
-        <AnalyzeStatus job={analysis.job} stage={analysis.stage} progress={analysis.progress} error={analysis.error} />
+        <AnalyzeStatus
+          job={analysis.job}
+          stage={analysis.stage}
+          failedStage={analysis.failedStage}
+          counts={analysis.counts}
+          error={analysis.error}
+        />
       </section>
     );
   }

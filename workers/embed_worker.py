@@ -233,8 +233,6 @@ def embed_job(db: Session, snapshot: EmbedSnapshot) -> None:
             update_job_status(db, snapshot.job_id, 'embedding', 40)
             db.commit()
 
-            qdrant_ids: list[str] = []
-            chunk_ids: list[str] = []
             batch_size = max(1, settings.embed_batch_size)
 
             for idx in range(0, len(chunks), batch_size):
@@ -248,15 +246,13 @@ def embed_job(db: Session, snapshot: EmbedSnapshot) -> None:
                 if idx == 0:
                     prepare_collection(snapshot.repo_id, vectors)
                 batch_qdrant_ids = upsert_chunk_vectors(snapshot.repo_id, batch, vectors)
-
-                chunk_ids.extend([chunk.id for chunk in batch])
-                qdrant_ids.extend(batch_qdrant_ids)
+                # Stored per batch so the status stream can count indexed chunks while this runs.
+                store_qdrant_point_ids(db, [chunk.id for chunk in batch], batch_qdrant_ids)
 
                 progress = 40 + int(((idx + len(batch)) / len(chunks)) * 50)
                 update_job_status(db, snapshot.job_id, 'embedding', min(progress, 95))
                 db.commit()
 
-            store_qdrant_point_ids(db, chunk_ids, qdrant_ids)
             update_job_status(db, snapshot.job_id, 'analyzing', 100)
             db.commit()
             record_stage_duration("embedding", "success", time.perf_counter() - started)

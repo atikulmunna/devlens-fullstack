@@ -15,7 +15,7 @@ export default function HomePage() {
   const router = useRouter();
   const [url, setUrl] = useState("");
   const [recent, setRecent] = useState<RepoSummary[]>([]);
-  const { start, pending, error, job, stage, progress } = useAnalyzeJob();
+  const { start, pending, error, job, stage, failedStage, counts } = useAnalyzeJob();
 
   // The recent list is a convenience; the page works the same without it.
   useEffect(() => {
@@ -69,7 +69,7 @@ export default function HomePage() {
             ))}
             .
           </p>
-          <AnalyzeStatus job={job} stage={stage} progress={progress} error={error} />
+          <AnalyzeStatus job={job} stage={stage} failedStage={failedStage} counts={counts} error={error} />
         </div>
         <ContourMap />
       </section>

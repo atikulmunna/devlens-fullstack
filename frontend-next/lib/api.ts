@@ -51,6 +51,10 @@ export type RepoStatusSnapshot = {
   progress: number;
   code?: string;
   message?: string;
+  // Present once parsing has finished.
+  files?: number;
+  chunks?: number;
+  indexed_chunks?: number;
 };
 
 const defaultApiBase = "http://localhost:8000";

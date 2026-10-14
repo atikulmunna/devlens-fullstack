@@ -24,6 +24,8 @@ from app.observability import observe_sse_startup, trace_span
 router = APIRouter(prefix="/repos", tags=["repos"])
 
 ACTIVE_STATUSES = {"queued", "cloning", "parsing", "embedding", "analyzing"}
+# Parsing replaces a repo's chunk rows only when it ends; before that they describe the previous analysis.
+COUNTED_STATUSES = {"embedding", "analyzing", "done"}
 ANALYZE_REQUEST_EXAMPLE = {
     "github_url": "https://github.com/owner/repo",
     "force_reanalyze": False,
@@ -40,7 +42,7 @@ SSE_SAMPLE_RESPONSE = (
     "event: progress\n"
     'data: {"job_id":"d7a2ca6c-f9d1-42ce-9de0-35e0dbdc47dc","stage":"parsing","progress":35,"message":"parsing in progress","eta_seconds":null}\n\n'
     "event: done\n"
-    'data: {"job_id":"d7a2ca6c-f9d1-42ce-9de0-35e0dbdc47dc","stage":"done","progress":100}\n\n'
+    'data: {"job_id":"d7a2ca6c-f9d1-42ce-9de0-35e0dbdc47dc","stage":"done","progress":100,"files":42,"chunks":310,"indexed_chunks":310}\n\n'
 )
 
 
@@ -176,7 +178,24 @@ def _fetch_latest_job(db: Session, repo_id: UUID) -> AnalysisJob | None:
     )
 
 
-def _build_event_payload(job: AnalysisJob) -> tuple[str, dict]:
+def _chunk_counts(db: Session, repo_id: UUID) -> dict[str, int]:
+    files, chunks, indexed = db.execute(
+        select(
+            func.count(func.distinct(CodeChunk.file_path)),
+            func.count(CodeChunk.id),
+            func.count(CodeChunk.qdrant_point_id),
+        ).where(CodeChunk.repo_id == repo_id)
+    ).one()
+    return {"files": files, "chunks": chunks, "indexed_chunks": indexed}
+
+
+def _load_status(db: Session, repo_id: UUID) -> tuple[AnalysisJob | None, dict[str, int]]:
+    job = _fetch_latest_job(db, repo_id)
+    counts = _chunk_counts(db, repo_id) if job is not None and job.status in COUNTED_STATUSES else {}
+    return job, counts
+
+
+def _build_event_payload(job: AnalysisJob, counts: dict[str, int]) -> tuple[str, dict]:
     if job.status == "failed":
         code = "UNKNOWN"
         message = job.error_message or "Job failed"
@@ -196,6 +215,7 @@ def _build_event_payload(job: AnalysisJob) -> tuple[str, dict]:
             "job_id": str(job.id),
             "stage": "done",
             "progress": 100,
+            **counts,
         }
 
     return "progress", {
@@ -204,6 +224,7 @@ def _build_event_payload(job: AnalysisJob) -> tuple[str, dict]:
         "progress": int(job.progress or 0),
         "message": f"{job.status} in progress",
         "eta_seconds": None,
+        **counts,
     }
 
 
@@ -570,31 +591,31 @@ async def stream_repo_status(repo_id: UUID, once: bool = False):
 
     if once:
         with SessionLocal() as db:
-            job = _fetch_latest_job(db, repo_id)
+            job, counts = _load_status(db, repo_id)
         if job is None:
             payload = {"repo_id": str(repo_id), "code": "NO_JOB", "message": "No analysis job found for repository"}
             body = f"event: error\ndata: {json.dumps(payload)}\n\n"
             return PlainTextResponse(body, media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
-        event, payload = _build_event_payload(job)
+        event, payload = _build_event_payload(job, counts)
         body = f"event: {event}\ndata: {json.dumps(payload)}\n\n"
         return PlainTextResponse(body, media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
     async def event_stream():
         stream_started = time.perf_counter()
         sent_first_event = False
-        last_signature: tuple[str, int, str | None] | None = None
+        last_signature: tuple | None = None
         while True:
             with SessionLocal() as db:
-                job = _fetch_latest_job(db, repo_id)
+                job, counts = _load_status(db, repo_id)
             if job is None:
                 payload = {"repo_id": str(repo_id), "code": "NO_JOB", "message": "No analysis job found for repository"}
                 yield f"event: error\ndata: {json.dumps(payload)}\n\n"
                 return
 
-            signature = (job.status, int(job.progress or 0), job.error_message)
+            signature = (job.status, int(job.progress or 0), job.error_message, tuple(counts.values()))
             if signature != last_signature or once:
-                event, payload = _build_event_payload(job)
+                event, payload = _build_event_payload(job, counts)
                 if not sent_first_event:
                     observe_sse_startup("/api/v1/repos/{repo_id}/status", time.perf_counter() - stream_started)
                     sent_first_event = True

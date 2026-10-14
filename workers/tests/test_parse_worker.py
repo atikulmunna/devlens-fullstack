@@ -121,7 +121,18 @@ def test_parse_job_success_transitions_to_embedding(monkeypatch) -> None:
     assert stored['count'] > 0
     assert observed['count'] == 1
     updates = [e for e in fake_db.events if e[0] == 'execute' and 'UPDATE analysis_jobs' in str(e[1][0])]
-    assert any("'embedding'" in str(u) or 'embedding' in str(u) for u in updates)
+    statuses = [u[1][1]['status'] for u in updates]
+    assert statuses == ['cloning', 'parsing', 'parsing', 'embedding']
+
+
+def test_fetch_next_parse_job_resumes_a_job_interrupted_while_cloning() -> None:
+    fake_db = FakeSession()
+    fake_db.first = lambda: None
+
+    parse_worker.fetch_next_parse_job(fake_db)
+
+    query = str(fake_db.events[0][1][0])
+    assert "IN ('queued', 'cloning', 'parsing')" in query
 
 
 def test_parse_job_retriable_failure_schedules_retry(monkeypatch) -> None:
