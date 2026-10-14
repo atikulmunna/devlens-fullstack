@@ -30,8 +30,9 @@ ALLOWED_EXTENSIONS = {
     # Config / IaC / data / docs (feed the chat "setup" intent)
     '.md', '.rst', '.sql', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.env', '.sh', '.tf',
 }
-# Important extensionless files worth indexing for setup/deploy questions.
-ALLOWED_FILENAMES = {'dockerfile', 'makefile', 'procfile'}
+# Files indexed by name: extensionless setup files, and the JSON manifests and TS configs
+# that summaries and import resolution read.
+ALLOWED_FILENAMES = {'dockerfile', 'makefile', 'procfile', 'package.json', 'tsconfig.json', 'jsconfig.json'}
 
 
 class ParseError(RuntimeError):
