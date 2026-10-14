@@ -116,7 +116,9 @@ def test_generate_architecture_summary_falls_back_without_api_key(monkeypatch) -
     ]
     monkeypatch.setattr(analyze_worker.settings, 'openrouter_api_key', None)
     summary = analyze_worker.generate_architecture_summary(snapshot, {'py': 100.0}, chunks)
-    assert 'Repository test-owner/repo' in summary
+    assert summary == 'test-owner/repo has 1 indexed file across src and the repository root. ' \
+        'A written summary was not generated for this analysis.'
+    assert 'later stages' not in summary
 
 
 def test_generate_architecture_summary_uses_llm_response(monkeypatch) -> None:
@@ -216,7 +218,7 @@ def test_generate_architecture_summary_falls_back_when_openrouter_fails(monkeypa
     monkeypatch.setattr(analyze_worker.httpx, 'Client', DummyClient)
     summary = analyze_worker.generate_architecture_summary(snapshot, {'py': 100.0}, chunks)
 
-    assert 'Repository test-owner/repo' in summary
+    assert summary.startswith('test-owner/repo has 1 indexed file')
     assert provider_attempts == [
         ('openrouter', 'error', error_code),
         ('fallback_summary', 'success', error_code),
@@ -292,7 +294,7 @@ def test_summary_failure_logs_openrouter_reason(monkeypatch, caplog) -> None:
 
     summary = analyze_worker.generate_architecture_summary(snapshot, {'py': 100.0}, chunks)
 
-    assert 'Repository test-owner/repo' in summary
+    assert summary.startswith('test-owner/repo has 1 indexed file')
     # This exact failure (a retired free model) was invisible before: only "llm_provider_http_error" was recorded.
     assert 'LLM_PROVIDER_HTTP_ERROR' in caplog.text
     assert 'status 404: This model is unavailable for free' in caplog.text
@@ -309,3 +311,68 @@ def test_contributor_stats_failures_are_logged(monkeypatch, caplog) -> None:
     assert rate_limited == {'top_contributors': [], 'error': 'github_status_403'}
     assert 'dns failure' in caplog.text
     assert 'returned status 403' in caplog.text
+
+
+def _chunk(path: str, start: int = 1, content: str = 'x = 1') -> ChunkRecord:
+    return ChunkRecord(file_path=path, start_line=start, end_line=start + 9, content=content, language='py')
+
+
+def test_summary_sources_rank_readme_manifest_entrypoints_and_skip_tests() -> None:
+    chunks = [
+        _chunk('src/pkg/core.py'),
+        _chunk('tests/main.py'),
+        _chunk('docs/README.md'),
+        _chunk('src/pkg/__init__.py'),
+        _chunk('pyproject.toml'),
+        _chunk('README.md', start=40, content='later part'),
+        _chunk('README.md', start=1, content='# pkg'),
+        _chunk('src/pkg/__main__.py'),
+        _chunk('app.py', content='   '),
+    ]
+
+    sources = analyze_worker.select_summary_sources(chunks)
+
+    assert [(c.file_path, c.start_line) for c in sources] == [
+        ('README.md', 1),
+        ('pyproject.toml', 1),
+        ('src/pkg/__main__.py', 1),
+        ('src/pkg/__init__.py', 1),
+    ]
+
+
+def test_summary_sources_are_capped() -> None:
+    chunks = [_chunk(f'pkg{n}/__init__.py') for n in range(10)]
+
+    assert len(analyze_worker.select_summary_sources(chunks)) == analyze_worker.SUMMARY_SOURCE_LIMIT
+
+
+def test_summary_prompt_carries_readme_and_entrypoint_code(monkeypatch) -> None:
+    snapshot = AnalyzeSnapshot(repo_id='r', job_id='j', full_name='test-owner/repo', default_branch='main')
+    chunks = [
+        _chunk('README.md', content='# repo Signs data so it can travel safely.'),
+        _chunk('src/repo/__init__.py', content='from .signer import Signer'),
+        _chunk('src/repo/signer.py', content='class Signer: ...'),
+    ]
+    monkeypatch.setattr(analyze_worker.settings, 'openrouter_api_key', 'test-key')
+    captured = {}
+
+    class CapturingClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def post(self, _url, headers=None, json=None):
+            captured['prompt'] = json['messages'][1]['content']
+            return _JsonResponse(200, {'choices': [{'message': {'content': 'A signing library.'}}]})
+
+    monkeypatch.setattr(analyze_worker.httpx, 'Client', CapturingClient)
+
+    assert analyze_worker.generate_architecture_summary(snapshot, {'py': 100.0}, chunks) == 'A signing library.'
+    assert 'Signs data so it can travel safely.' in captured['prompt']
+    assert 'from .signer import Signer' in captured['prompt']
+    assert 'src/repo/signer.py' in captured['prompt']
