@@ -193,17 +193,58 @@ def get_contributor_stats(full_name: str) -> dict:
         return {'top_contributors': [], 'error': 'github_unreachable'}
 
 
-def build_architecture_summary(snapshot: AnalyzeSnapshot, lang_breakdown: dict, chunks: list[ChunkRecord]) -> str:
-    top_lang = next(iter(lang_breakdown.keys()), 'unknown')
+def build_architecture_summary(snapshot: AnalyzeSnapshot, chunks: list[ChunkRecord]) -> str:
+    """Shown on the dashboard when the model is unavailable: plain facts, no pipeline wording."""
     unique_paths = sorted({chunk.file_path for chunk in chunks})
-    sample_paths = ', '.join(unique_paths[:5]) if unique_paths else 'no source files discovered'
+    top_dirs = sorted({path.split('/', 1)[0] for path in unique_paths if '/' in path})[:6]
+    files = f"{len(unique_paths)} indexed file{'' if len(unique_paths) == 1 else 's'}"
+    where = f" across {', '.join(top_dirs)} and the repository root" if top_dirs else ""
+    return f"{snapshot.full_name} has {files}{where}. A written summary was not generated for this analysis."
 
-    return (
-        f"Repository {snapshot.full_name} (branch {snapshot.default_branch}) is primarily {top_lang}. "
-        f"The parse/index stage identified {len(unique_paths)} source files and {len(chunks)} chunks. "
-        f"Representative paths include: {sample_paths}. "
-        "This summary is generated from structural chunk metadata and should be refined with LLM synthesis in later stages."
-    )
+
+# Files that say what a project is and how it starts, in the order the summary prompt lists them.
+SUMMARY_MANIFESTS = {
+    'pyproject.toml', 'setup.py', 'package.json', 'go.mod', 'cargo.toml', 'pom.xml', 'build.gradle', 'gemfile',
+    'composer.json',
+}
+SUMMARY_ENTRYPOINTS = {
+    '__main__.py', 'main.py', 'app.py', 'server.py', 'cli.py', 'manage.py', 'wsgi.py', 'asgi.py',
+    'main.go', 'main.rs', 'lib.rs', 'index.ts', 'index.js', 'main.ts', 'main.js', 'server.ts', 'server.js',
+    'app.ts', 'app.js',
+}
+SUMMARY_SOURCE_LIMIT = 6
+SUMMARY_SOURCE_CHARS = 1500
+
+
+def _summary_source_rank(path: str) -> int | None:
+    """Lower is earlier: README, then manifests, then entrypoints and top-level packages. None skips."""
+    lower = path.lower()
+    parts = lower.split('/')
+    name, depth = parts[-1], len(parts) - 1
+    if any(part in ('test', 'tests', 'docs', 'examples', 'node_modules') for part in parts[:-1]):
+        return None
+    if depth == 0 and name.startswith('readme'):
+        return 0
+    if depth == 0 and name in SUMMARY_MANIFESTS:
+        return 1
+    if depth <= 2 and name in SUMMARY_ENTRYPOINTS:
+        return 2 + depth
+    if 1 <= depth <= 2 and name == '__init__.py':
+        return 4 + depth
+    return None
+
+
+def select_summary_sources(chunks: list[ChunkRecord]) -> list[ChunkRecord]:
+    """The opening chunk of the files that best explain the project, best first."""
+    first_chunks: dict[str, ChunkRecord] = {}
+    for chunk in chunks:
+        if _summary_source_rank(chunk.file_path) is None or not chunk.content.strip():
+            continue
+        current = first_chunks.get(chunk.file_path)
+        if current is None or (chunk.start_line or 0) < (current.start_line or 0):
+            first_chunks[chunk.file_path] = chunk
+    ranked = sorted(first_chunks.values(), key=lambda c: (_summary_source_rank(c.file_path), c.file_path))
+    return ranked[:SUMMARY_SOURCE_LIMIT]
 
 
 def _request_summary(prompt: str) -> str:
@@ -223,7 +264,7 @@ def _request_summary(prompt: str) -> str:
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.2,
-        "max_tokens": 220,
+        "max_tokens": 320,
     }
 
     try:
@@ -253,18 +294,21 @@ def _request_summary(prompt: str) -> str:
 
 
 def generate_architecture_summary(snapshot: AnalyzeSnapshot, lang_breakdown: dict, chunks: list[ChunkRecord]) -> str:
-    fallback = build_architecture_summary(snapshot, lang_breakdown, chunks)
+    fallback = build_architecture_summary(snapshot, chunks)
 
-    top_paths = sorted({chunk.file_path for chunk in chunks})[:25]
+    all_paths = sorted({chunk.file_path for chunk in chunks})
+    sources = "\n\n".join(
+        f"--- {chunk.file_path} (from line {chunk.start_line or 1}) ---\n{chunk.content[:SUMMARY_SOURCE_CHARS]}"
+        for chunk in select_summary_sources(chunks)
+    )
     prompt = (
         f"Repository: {snapshot.full_name}\n"
-        f"Branch: {snapshot.default_branch}\n"
-        f"Files discovered: {len(top_paths)} sampled from {len(chunks)} chunks\n"
-        f"Language breakdown: {json.dumps(lang_breakdown)}\n"
-        f"Representative files: {', '.join(top_paths) if top_paths else 'none'}\n\n"
-        "Write a concise architecture summary (3-5 sentences) for an engineering dashboard. "
-        "Mention major layers/modules and likely responsibilities. "
-        "Do not invent files or technologies not reflected in the provided metadata."
+        f"Language breakdown (percent of indexed size): {json.dumps(lang_breakdown)}\n"
+        f"Files ({len(all_paths)}): {', '.join(all_paths[:60]) if all_paths else 'none'}\n\n"
+        f"Key files (README, manifest, entry points):\n{sources or 'none found'}\n\n"
+        "Write an architecture summary of 3 to 5 sentences for a developer new to this repository: "
+        "what it does, its main modules and what each is responsible for, and how it is run or used. "
+        "Use only what the files above show; do not invent files or technologies."
     )
 
     try:
