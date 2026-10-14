@@ -74,6 +74,18 @@ def test_iter_source_files_filters_extensions_and_dirs() -> None:
         assert 'node_modules/x.js' not in rel
 
 
+def test_iter_source_files_indexes_manifests_and_ts_configs_by_name() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / 'web').mkdir()
+        for name in ('package.json', 'tsconfig.json', 'data.json'):
+            (root / 'web' / name).write_text('{}')
+
+        rel = {str(p.relative_to(tmp)).replace('\\', '/') for p in iter_source_files(tmp)}
+
+        assert rel == {'web/package.json', 'web/tsconfig.json'}
+
+
 def test_parse_job_fails_when_file_limit_exceeded(monkeypatch) -> None:
     fake_db = FakeSession()
     snapshot = RepoSnapshot('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 'https://github.com/x/y', 'abc')
