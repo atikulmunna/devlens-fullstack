@@ -35,11 +35,7 @@ def test_language_breakdown_percentages_sum_close_to_100() -> None:
 
 
 def test_compute_quality_score_is_bounded() -> None:
-    tech_debt = {
-        'todo_count': 500,
-        'long_functions': [{'file': 'a.py', 'line': 1, 'length': 500}] * 100,
-        'missing_tests': ['a.py'],
-    }
+    tech_debt = {'todo_count': 500, 'long_function_count': 100, 'test_file_count': 0}
     score = analyze_worker.compute_quality_score(tech_debt, {'files': {'a.py': {}, 'README.md': {}}})
     assert 0 <= score <= 100
 
@@ -376,3 +372,33 @@ def test_summary_prompt_carries_readme_and_entrypoint_code(monkeypatch) -> None:
     assert 'Signs data so it can travel safely.' in captured['prompt']
     assert 'from .signer import Signer' in captured['prompt']
     assert 'src/repo/signer.py' in captured['prompt']
+
+
+def test_tech_debt_reports_parse_time_signals_longest_first() -> None:
+    chunks = [
+        ChunkRecord(file_path='src/app.py', start_line=1, end_line=9, content='x', language='py'),
+        ChunkRecord(file_path='tests/test_app.py', start_line=1, end_line=9, content='x', language='py'),
+    ]
+    signals = {
+        'long_functions': [
+            {'file': 'src/app.py', 'name': 'short_one', 'line': 10, 'length': 55},
+            {'file': 'src/app.py', 'name': 'long_one', 'line': 90, 'length': 120},
+        ],
+        'todo_files': {'src/app.py': 3, 'src/db.py': 1},
+    }
+
+    debt = analyze_worker.detect_tech_debt(chunks, signals)
+
+    assert [f['name'] for f in debt['long_functions']] == ['long_one', 'short_one']
+    assert debt['long_function_count'] == 2
+    assert (debt['todo_count'], debt['todo_file_count'], debt['test_file_count']) == (4, 2, 1)
+    assert debt['measured'] is True
+
+
+def test_tech_debt_for_a_job_parsed_before_signals_existed() -> None:
+    chunks = [ChunkRecord(file_path='src/app.py', start_line=1, end_line=90, content='x', language='py')]
+
+    debt = analyze_worker.detect_tech_debt(chunks, None)
+
+    assert debt['measured'] is False
+    assert debt['long_function_count'] == 0

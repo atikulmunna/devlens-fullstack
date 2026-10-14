@@ -14,6 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from chunking import ChunkingUnavailable, chunk_code, ts_language_for
+from code_signals import count_todos, find_long_functions
 from config import settings
 from diffing import compute_commit_diff
 from reliability import schedule_retry_or_dead_letter
@@ -161,6 +162,13 @@ def fetch_next_parse_job(db: Session) -> RepoSnapshot | None:
     )
 
 
+def store_code_signals(db: Session, job_id: str, signals: dict) -> None:
+    db.execute(
+        text('UPDATE analysis_jobs SET code_signals = CAST(:signals AS jsonb) WHERE id = CAST(:job_id AS uuid)'),
+        {'job_id': job_id, 'signals': json.dumps(signals)},
+    )
+
+
 def store_chunks(db: Session, repo_id: str, chunks: list[dict]) -> None:
     db.execute(text('DELETE FROM code_chunks WHERE repo_id = CAST(:repo_id AS uuid)'), {'repo_id': repo_id})
 
@@ -241,6 +249,8 @@ def parse_job(db: Session, snapshot: RepoSnapshot) -> None:
                 raise ParseError('FILE_LIMIT_EXCEEDED', f'Repo has {len(files)} source files; limit is {settings.parse_max_files}')
 
             chunks: list[dict] = []
+            long_functions: list[dict] = []
+            todo_files: dict[str, int] = {}
             for file_path in files:
                 rel = str(file_path.relative_to(repo_path)).replace('\\', '/')
                 suffix = file_path.suffix.lstrip('.').lower()
@@ -248,6 +258,11 @@ def parse_job(db: Session, snapshot: RepoSnapshot) -> None:
 
                 with file_path.open('r', encoding='utf-8', errors='ignore') as fh:
                     content = fh.read()
+
+                long_functions.extend({'file': rel, **found} for found in find_long_functions(content, language))
+                todos = count_todos(content, language)
+                if todos:
+                    todo_files[rel] = todos
 
                 for start_line, end_line, chunk_content in chunk_file(
                     content,
@@ -271,6 +286,7 @@ def parse_job(db: Session, snapshot: RepoSnapshot) -> None:
 
             update_job_status(db, snapshot.job_id, 'parsing', 80)
             store_chunks(db, snapshot.repo_id, chunks)
+            store_code_signals(db, snapshot.job_id, {'long_functions': long_functions, 'todo_files': todo_files})
             update_job_status(db, snapshot.job_id, 'embedding', 100)
             db.commit()
             record_stage_duration("parsing", "success", time.perf_counter() - started)
