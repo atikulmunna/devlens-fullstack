@@ -142,7 +142,7 @@ def fetch_next_parse_job(db: Session) -> RepoSnapshot | None:
                    r.github_url
             FROM analysis_jobs j
             JOIN repositories r ON r.id = j.repo_id
-            WHERE j.status IN ('queued', 'parsing')
+            WHERE j.status IN ('queued', 'cloning', 'parsing')
               AND (j.next_retry_at IS NULL OR j.next_retry_at <= NOW())
             ORDER BY j.created_at ASC
             LIMIT 1
@@ -226,7 +226,7 @@ def maybe_store_commit_diff(db: Session, repo_path: str, repo_id: str, head_sha:
 
 def parse_job(db: Session, snapshot: RepoSnapshot) -> None:
     started = time.perf_counter()
-    update_job_status(db, snapshot.job_id, 'parsing', 10)
+    update_job_status(db, snapshot.job_id, 'cloning', 10)
     db.commit()
 
     repo_path = None

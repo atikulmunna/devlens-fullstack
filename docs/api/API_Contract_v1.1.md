@@ -365,9 +365,17 @@ data: {"message_id":"uuid","citations":[...],"no_citation":false}
   "stage": "queued|cloning|parsing|embedding|analyzing",
   "progress": 0,
   "message": "stage in progress",
-  "eta_seconds": null
+  "eta_seconds": null,
+  "files": 42,
+  "chunks": 310,
+  "indexed_chunks": 128
 }
 ```
+
+- `progress` is per stage, not overall: each stage counts up on its own.
+- `files`, `chunks`, and `indexed_chunks` are present only from `embedding` on (and on `done`).
+  Before that the chunk rows still belong to the previous analysis, so they are omitted.
+  `indexed_chunks` grows batch by batch while embedding runs.
 
 ### `GET /repos/{repo_id}/dependency-graph`
 - Purpose: Return module dependency graph inferred from analyzed code chunks.
@@ -395,7 +403,10 @@ data: {"message_id":"uuid","citations":[...],"no_citation":false}
 {
   "job_id": "uuid",
   "stage": "done",
-  "progress": 100
+  "progress": 100,
+  "files": 42,
+  "chunks": 310,
+  "indexed_chunks": 310
 }
 ```
 

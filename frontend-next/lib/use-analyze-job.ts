@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getRepoStatusOnce, postAnalyze, RepoStatusSnapshot } from "@/lib/api";
+import { AnalyzeCounts } from "@/lib/analyze-steps";
 
 export type AnalyzeJob = {
   jobId: string;
@@ -21,7 +22,8 @@ export function useAnalyzeJob() {
   const [error, setError] = useState<string | null>(null);
   const [job, setJob] = useState<AnalyzeJob | null>(null);
   const [stage, setStage] = useState("queued");
-  const [progress, setProgress] = useState(0);
+  const [failedStage, setFailedStage] = useState<string | null>(null);
+  const [counts, setCounts] = useState<AnalyzeCounts | null>(null);
   const streamRef = useRef<EventSource | null>(null);
   const reconnectRef = useRef(0);
   const stageRef = useRef(stage);
@@ -46,9 +48,12 @@ export function useAnalyzeJob() {
 
   function applySnapshot(snapshot: RepoStatusSnapshot): void {
     const nextStage = snapshot.stage || "processing";
+    if (nextStage === "failed" && stageRef.current !== "failed") {
+      setFailedStage(stageRef.current);
+    }
     setStage(nextStage);
-    if (typeof snapshot.progress === "number") {
-      setProgress(snapshot.progress);
+    if (typeof snapshot.chunks === "number") {
+      setCounts({ files: snapshot.files ?? 0, chunks: snapshot.chunks, indexedChunks: snapshot.indexed_chunks ?? 0 });
     }
     if (nextStage === "failed") {
       setError(snapshot.message || "Analysis failed.");
@@ -78,7 +83,6 @@ export function useAnalyzeJob() {
 
     stream.addEventListener("done", (event) => {
       applySnapshot(JSON.parse(event.data) as RepoStatusSnapshot);
-      setProgress(100);
     });
 
     stream.addEventListener("error", async () => {
@@ -106,7 +110,8 @@ export function useAnalyzeJob() {
     setError(null);
     setJob(null);
     setStage("queued");
-    setProgress(0);
+    setFailedStage(null);
+    setCounts(null);
     try {
       const payload = await postAnalyze({ github_url: githubUrl.trim() });
       setJob({ jobId: payload.job_id, repoId: payload.repo_id, fullName: payload.full_name, cacheHit: payload.cache_hit });
@@ -119,5 +124,5 @@ export function useAnalyzeJob() {
     }
   }
 
-  return { start, pending, error, job, stage, progress };
+  return { start, pending, error, job, stage, failedStage, counts };
 }

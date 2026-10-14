@@ -4,10 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { SignInLink, useAuth } from "@/components/auth";
 import { useRepo } from "@/components/repo-context";
 import { askAboutDiffStream, CommitDiffSummary, getCommitDiff } from "@/lib/api";
-
-function plural(count: number, word: string): string {
-  return `${count} ${word}${count === 1 ? "" : "s"}`;
-}
+import { plural } from "@/lib/format";
 
 // The latest commit's changes, what they affect, and a question box about them.
 export function RepoChanges() {

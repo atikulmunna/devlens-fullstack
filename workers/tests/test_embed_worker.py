@@ -139,10 +139,12 @@ def test_embed_job_success_transitions_to_analyzing(monkeypatch) -> None:
     monkeypatch.setattr(embed_worker, 'embed_texts', lambda contents, size=None: [[0.0] * 4 for _ in contents])
     monkeypatch.setattr(embed_worker, 'upsert_chunk_vectors', lambda _repo_id, batch, _vectors: [f'id-{c.id}' for c in batch])
 
-    stored = {'count': 0}
+    monkeypatch.setattr(embed_worker.settings, 'embed_batch_size', 1)
 
-    def fake_store(_db, _chunk_ids, _qdrant_ids):
-        stored['count'] = len(_chunk_ids)
+    stored_batches = []
+
+    def fake_store(_db, chunk_ids, qdrant_ids):
+        stored_batches.append((chunk_ids, qdrant_ids))
 
     monkeypatch.setattr(embed_worker, 'store_qdrant_point_ids', fake_store)
     observed = {'count': 0}
@@ -150,7 +152,11 @@ def test_embed_job_success_transitions_to_analyzing(monkeypatch) -> None:
 
     embed_worker.embed_job(fake_db, snapshot)
 
-    assert stored['count'] == 2
+    # One store per batch, so the status stream can count indexed chunks mid-run.
+    assert stored_batches == [
+        (['00000000-0000-0000-0000-000000000101'], ['id-00000000-0000-0000-0000-000000000101']),
+        (['00000000-0000-0000-0000-000000000102'], ['id-00000000-0000-0000-0000-000000000102']),
+    ]
     assert observed['count'] == 1
     updates = [e for e in fake_db.events if e[0] == 'execute' and 'UPDATE analysis_jobs' in str(e[1][0])]
     assert any('analyzing' in str(ev) for ev in updates)
