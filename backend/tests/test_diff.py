@@ -172,3 +172,36 @@ def test_diff_ask_rejects_blank_question_and_missing_diff(client, db_session: Se
 
     assert blank.status_code == 400
     assert no_diff.status_code == 404
+
+
+def test_diff_contexts_show_removed_and_added_lines_in_diff_notation() -> None:
+    entry = {
+        "path": "app/views.py",
+        "hunks": [{"start": 4, "end": 6}],
+        "added_lines": ['    log.info("deleted")'],
+        "removed_lines": ["    if not verify_token(request):", "        raise Forbidden()"],
+    }
+
+    context = diff_module._diff_contexts([entry])[0]
+
+    assert context["content"].splitlines() == [
+        "-    if not verify_token(request):",
+        "-        raise Forbidden()",
+        '+    log.info("deleted")',
+    ]
+
+
+def test_diff_contexts_accept_diffs_stored_before_removed_lines() -> None:
+    entry = {"path": "a.py", "hunks": [], "added_lines": ["x = 1"]}
+
+    assert diff_module._diff_contexts([entry])[0]["content"] == "+x = 1"
+
+
+def test_files_named_in_the_question_come_first() -> None:
+    files = [{"path": f"backend/app/m{n}.py"} for n in range(8)] + [{"path": "workers/embed_worker.py"}]
+
+    ranked = diff_module._rank_for_question(files, "What did this commit remove from the embed worker?")
+
+    assert ranked[0]["path"] == "workers/embed_worker.py"
+    # Everything else keeps diff order.
+    assert [f["path"] for f in ranked[1:]] == [f"backend/app/m{n}.py" for n in range(8)]

@@ -13,19 +13,28 @@ logger = logging.getLogger(__name__)
 
 _DIFF_GIT_RE = re.compile(r"^diff --git a/(.+?) b/(.+)$")
 _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+# Stored line content per file and side, to keep rows bounded.
+MAX_STORED_LINES = 200
+
+
+def _term(body: str, whole: bool = True) -> re.Pattern:
+    """A case-insensitive term bounded by non-alphanumerics. Unlike \\b, an underscore counts as a
+    boundary, so snake_case names like verify_token or client_secret match."""
+    return re.compile(rf"(?<![a-z0-9]){body}" + (r"(?![a-z0-9])" if whole else ""), re.IGNORECASE)
+
 
 # Patterns that suggest a change touches security-sensitive surface area.
 _SECURITY_PATTERNS = [
-    ("auth", re.compile(r"\bauth(?:enticat|oriz)?", re.IGNORECASE)),
-    ("token", re.compile(r"\btokens?\b", re.IGNORECASE)),
-    ("jwt", re.compile(r"\bjwt\b", re.IGNORECASE)),
-    ("oauth", re.compile(r"\boauth\b", re.IGNORECASE)),
-    ("password", re.compile(r"\bpass(?:word|wd)\b", re.IGNORECASE)),
-    ("secret", re.compile(r"\bsecret\b", re.IGNORECASE)),
-    ("credential", re.compile(r"\bcredential", re.IGNORECASE)),
-    ("api_key", re.compile(r"\bapi[_-]?key\b", re.IGNORECASE)),
+    ("auth", _term(r"auth(?:enticat|oriz)?", whole=False)),
+    ("token", _term(r"tokens?")),
+    ("jwt", _term(r"jwt")),
+    ("oauth", _term(r"oauth")),
+    ("password", _term(r"pass(?:word|wd)s?")),
+    ("secret", _term(r"secrets?")),
+    ("credential", _term(r"credential", whole=False)),
+    ("api_key", _term(r"api[_-]?keys?")),
     ("env", re.compile(r"\.env\b|\bENV\[|os\.environ", re.IGNORECASE)),
-    ("crypto", re.compile(r"\b(?:encrypt|decrypt|hash|hmac|bcrypt|sha256)\b", re.IGNORECASE)),
+    ("crypto", _term(r"(?:encrypt|decrypt|hash|hmac|bcrypt|sha256)")),
 ]
 
 
@@ -50,6 +59,7 @@ def parse_unified_diff(diff_text: str) -> list[dict]:
                 "removed": 0,
                 "hunks": [],
                 "added_lines": [],
+                "removed_lines": [],
             }
             continue
         if current is None:
@@ -75,19 +85,28 @@ def parse_unified_diff(diff_text: str) -> list[dict]:
             current["added_lines"].append(line[1:])
         elif line.startswith("-") and not line.startswith("---"):
             current["removed"] += 1
+            current["removed_lines"].append(line[1:])
 
     flush()
     return files
 
 
+def _security_labels(text: str) -> set[str]:
+    return {label for label, pattern in _SECURITY_PATTERNS if pattern.search(text)}
+
+
 def detect_security_touches(changed_files: list[dict]) -> list[dict]:
-    """Flag changed files whose added content matches security-sensitive patterns."""
+    """Flag changed files whose path or changed lines match security-sensitive patterns.
+
+    Removed lines are flagged separately ("removed: auth"): deleting a check is as worth a look
+    as adding one.
+    """
     flags: list[dict] = []
     for entry in changed_files:
         path = entry.get("path") or ""
-        haystack = "\n".join(entry.get("added_lines") or [])
-        combined = f"{path}\n{haystack}"
-        matched = sorted({label for label, pattern in _SECURITY_PATTERNS if pattern.search(combined)})
+        added = _security_labels(path + "\n" + "\n".join(entry.get("added_lines") or []))
+        removed = _security_labels("\n".join(entry.get("removed_lines") or []))
+        matched = sorted(added) + [f"removed: {label}" for label in sorted(removed)]
         if matched:
             flags.append({"path": path, "categories": matched})
     return flags
@@ -135,9 +154,9 @@ def compute_commit_diff(repo_path: str, head_sha: str, timeout: int = 60) -> dic
     if not changed_files:
         return None
 
-    # Cap stored added-line content to keep rows bounded.
     for entry in changed_files:
-        entry["added_lines"] = entry.get("added_lines", [])[:200]
+        entry["added_lines"] = entry.get("added_lines", [])[:MAX_STORED_LINES]
+        entry["removed_lines"] = entry.get("removed_lines", [])[:MAX_STORED_LINES]
 
     return {
         "base_sha": base_sha,
