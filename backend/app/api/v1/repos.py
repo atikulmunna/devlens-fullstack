@@ -1,5 +1,4 @@
 import asyncio
-import json
 import time
 from datetime import datetime
 from uuid import UUID, uuid4
@@ -11,9 +10,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.error_schema import ERROR_RESPONSE_SCHEMA
+from app.api.sse import SSE_HEADERS, sse_event
 from app.db.models import AnalysisJob, AnalysisResult, CodeChunk, Repository
 from app.db.session import SessionLocal
-from app.deps import get_db_session
+from app.deps import get_db_session, get_repo_or_404
 from app.observability import observe_sse_startup, trace_span
 from app.services.dependency_graph import build_dependency_graph
 from app.services.github_repos import resolve_public_repo_snapshot
@@ -391,9 +391,7 @@ def analyze_repo(
 def search_repo_lexical(
     repo_id: UUID, q: str, limit: int = 20, db: Session = Depends(get_db_session)
 ) -> LexicalSearchResponse:
-    repo = db.execute(select(Repository).where(Repository.id == repo_id)).scalar_one_or_none()
-    if repo is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+    get_repo_or_404(db, repo_id)
 
     results = lexical_search_chunks(db, repo_id=repo_id, query=q, limit=limit)
     return LexicalSearchResponse(repo_id=str(repo_id), query=q, total=len(results), results=results)
@@ -425,9 +423,7 @@ def search_repo_lexical(
 def search_repo_hybrid(
     repo_id: UUID, q: str, limit: int = 20, db: Session = Depends(get_db_session)
 ) -> HybridSearchResponse:
-    repo = db.execute(select(Repository).where(Repository.id == repo_id)).scalar_one_or_none()
-    if repo is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+    get_repo_or_404(db, repo_id)
 
     results = hybrid_search_chunks(db, repo_id=repo_id, query=q, limit=limit)
     return HybridSearchResponse(repo_id=str(repo_id), query=q, total=len(results), results=results)
@@ -449,9 +445,7 @@ def search_repo_hybrid(
     },
 )
 def get_repo_dashboard(repo_id: UUID, db: Session = Depends(get_db_session)) -> DashboardResponse:
-    repo = db.execute(select(Repository).where(Repository.id == repo_id)).scalar_one_or_none()
-    if repo is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+    repo = get_repo_or_404(db, repo_id)
 
     result = (
         db.execute(
@@ -559,9 +553,7 @@ def get_repo_by_name(owner: str, name: str, db: Session = Depends(get_db_session
     },
 )
 def get_dependency_graph(repo_id: UUID, db: Session = Depends(get_db_session)) -> DependencyGraphResponse:
-    repo = db.execute(select(Repository).where(Repository.id == repo_id)).scalar_one_or_none()
-    if repo is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+    get_repo_or_404(db, repo_id)
 
     rows = db.execute(
         select(CodeChunk.file_path, CodeChunk.content)
@@ -603,20 +595,18 @@ def get_dependency_graph(repo_id: UUID, db: Session = Depends(get_db_session)) -
 )
 async def stream_repo_status(repo_id: UUID, once: bool = False):
     with SessionLocal() as db:
-        repo = db.execute(select(Repository).where(Repository.id == repo_id)).scalar_one_or_none()
-        if repo is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+        get_repo_or_404(db, repo_id)
 
     if once:
         with SessionLocal() as db:
             job, counts = _load_status(db, repo_id)
         if job is None:
             payload = {"repo_id": str(repo_id), "code": "NO_JOB", "message": "No analysis job found for repository"}
-            body = f"event: error\ndata: {json.dumps(payload)}\n\n"
+            body = sse_event("error", payload)
             return PlainTextResponse(body, media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
         event, payload = _build_event_payload(job, counts)
-        body = f"event: {event}\ndata: {json.dumps(payload)}\n\n"
+        body = sse_event(event, payload)
         return PlainTextResponse(body, media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
     async def event_stream():
@@ -628,7 +618,7 @@ async def stream_repo_status(repo_id: UUID, once: bool = False):
                 job, counts = _load_status(db, repo_id)
             if job is None:
                 payload = {"repo_id": str(repo_id), "code": "NO_JOB", "message": "No analysis job found for repository"}
-                yield f"event: error\ndata: {json.dumps(payload)}\n\n"
+                yield sse_event("error", payload)
                 return
 
             signature = (job.status, int(job.progress or 0), job.error_message, tuple(counts.values()))
@@ -637,7 +627,7 @@ async def stream_repo_status(repo_id: UUID, once: bool = False):
                 if not sent_first_event:
                     observe_sse_startup("/api/v1/repos/{repo_id}/status", time.perf_counter() - stream_started)
                     sent_first_event = True
-                yield f"event: {event}\ndata: {json.dumps(payload)}\n\n"
+                yield sse_event(event, payload)
                 last_signature = signature
 
                 if once or event in {"done", "error"}:
@@ -648,5 +638,5 @@ async def stream_repo_status(repo_id: UUID, once: bool = False):
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        headers=SSE_HEADERS,
     )

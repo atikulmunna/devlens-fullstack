@@ -81,10 +81,6 @@ export function getBackendBase(): string {
   return (process.env.NEXT_PUBLIC_API_URL || defaultApiBase).replace(/\/+$/, "");
 }
 
-export function getApiBase(): string {
-  return getBackendBase();
-}
-
 async function assertJson<T>(response: Response, fallbackMessage: string): Promise<T> {
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
@@ -182,35 +178,22 @@ export async function getSuggestions(repoId: string): Promise<string[]> {
   return payload.suggestions || [];
 }
 
-export type ChatStreamHandlers = {
+// --- Streaming answers (chat and diff questions) ------------------------------
+
+export type StreamHandlers<TDone> = {
   onToken: (token: string) => void;
-  onDone: (meta: ChatDoneMeta) => void;
+  onDone: (meta: TDone) => void;
 };
 
-export async function sendChatMessageStream(
-  sessionId: string,
-  content: string,
-  topK: number,
-  handlers: ChatStreamHandlers
+// Reads `delta` and `done` events from an SSE body, keeping a trailing partial line buffered
+// until the next chunk completes it. Malformed events are skipped.
+export async function readSseStream<TDone>(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  handlers: StreamHandlers<TDone>
 ): Promise<void> {
-  const response = await authFetch(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/message`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify({ content, top_k: topK })
-  });
-  if (!response.ok || !response.body) {
-    const payload = await response.json().catch(() => null);
-    const message =
-      payload?.error?.message || payload?.detail || `Chat request failed (status ${response.status})`;
-    throw new Error(message);
-  }
-
-  const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let eventName = "";
-
-  // Parse the SSE stream line by line, keeping any trailing partial line buffered.
   for (;;) {
     const { value, done } = await reader.read();
     if (done) {
@@ -223,24 +206,52 @@ export async function sendChatMessageStream(
       const line = raw.trimEnd();
       if (line.startsWith("event:")) {
         eventName = line.slice(6).trim();
-      } else if (line.startsWith("data:")) {
-        const data = line.slice(5).trim();
-        if (!data) {
-          continue;
+        continue;
+      }
+      const data = line.startsWith("data:") ? line.slice(5).trim() : "";
+      if (!data) {
+        continue;
+      }
+      try {
+        const payload = JSON.parse(data);
+        if (eventName === "delta" && typeof payload.token === "string") {
+          handlers.onToken(payload.token);
+        } else if (eventName === "done") {
+          handlers.onDone(payload as TDone);
         }
-        try {
-          const payload = JSON.parse(data);
-          if (eventName === "delta" && typeof payload.token === "string") {
-            handlers.onToken(payload.token);
-          } else if (eventName === "done") {
-            handlers.onDone(payload as ChatDoneMeta);
-          }
-        } catch {
-          // ignore malformed SSE chunk
-        }
+      } catch {
+        // A malformed event is skipped; the rest of the stream still renders.
       }
     }
   }
+}
+
+async function postSseStream<TDone>(
+  url: string,
+  body: unknown,
+  failureLabel: string,
+  handlers: StreamHandlers<TDone>
+): Promise<void> {
+  const response = await authFetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok || !response.body) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.error?.message || payload?.detail || `${failureLabel} (status ${response.status})`);
+  }
+  await readSseStream(response.body.getReader(), handlers);
+}
+
+export function sendChatMessageStream(
+  sessionId: string,
+  content: string,
+  topK: number,
+  handlers: StreamHandlers<ChatDoneMeta>
+): Promise<void> {
+  const url = `/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/message`;
+  return postSseStream(url, { content, top_k: topK }, "Chat request failed", handlers);
 }
 
 // --- Commit-diff intelligence ------------------------------------------------
@@ -277,62 +288,19 @@ export async function getCommitDiff(repoId: string, head?: string): Promise<Comm
   return assertJson<CommitDiffSummary>(response, "Could not load commit diff");
 }
 
-export async function askAboutDiffStream(
+export type DiffDoneMeta = {
+  head_sha: string;
+  base_sha: string | null;
+  security_categories: string[];
+};
+
+export function askAboutDiffStream(
   repoId: string,
   question: string,
-  handlers: ChatStreamHandlers
+  handlers: StreamHandlers<DiffDoneMeta>
 ): Promise<void> {
-  const response = await authFetch(`/api/v1/repos/${encodeURIComponent(repoId)}/diff/ask`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify({ question })
-  });
-  if (!response.ok || !response.body) {
-    const payload = await response.json().catch(() => null);
-    const message =
-      payload?.error?.message || payload?.detail || `Diff question failed (status ${response.status})`;
-    throw new Error(message);
-  }
-  await readSseStream(response.body.getReader(), handlers);
-}
-
-async function readSseStream(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  handlers: ChatStreamHandlers
-): Promise<void> {
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let eventName = "";
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) {
-      break;
-    }
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split(/\r?\n/);
-    buffer = lines.pop() ?? "";
-    for (const raw of lines) {
-      const line = raw.trimEnd();
-      if (line.startsWith("event:")) {
-        eventName = line.slice(6).trim();
-      } else if (line.startsWith("data:")) {
-        const data = line.slice(5).trim();
-        if (!data) {
-          continue;
-        }
-        try {
-          const payload = JSON.parse(data);
-          if (eventName === "delta" && typeof payload.token === "string") {
-            handlers.onToken(payload.token);
-          } else if (eventName === "done") {
-            handlers.onDone(payload as ChatDoneMeta);
-          }
-        } catch {
-          // ignore malformed SSE chunk
-        }
-      }
-    }
-  }
+  const url = `/api/v1/repos/${encodeURIComponent(repoId)}/diff/ask`;
+  return postSseStream(url, { question }, "Diff question failed", handlers);
 }
 
 export async function getRepoStatusOnce(repoId: string): Promise<RepoStatusSnapshot | null> {

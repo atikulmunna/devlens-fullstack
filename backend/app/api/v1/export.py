@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.error_schema import ERROR_RESPONSE_SCHEMA
 from app.config import settings
 from app.db.models import AnalysisResult, Repository, ShareToken, User
-from app.deps import get_current_user, get_db_session
+from app.deps import get_current_user, get_db_session, get_repo_or_404
 from app.services.share_tokens import create_share_token, decode_share_token, new_share_token_id, share_token_expiry
 
 router = APIRouter(prefix="/export", tags=["export"])
@@ -76,9 +76,7 @@ class SharedAnalysisResponse(BaseModel):
 
 
 def _get_repo_or_404(db: Session, repo_id: UUID) -> Repository:
-    repo = db.execute(select(Repository).where(Repository.id == repo_id)).scalar_one_or_none()
-    if repo is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+    repo = get_repo_or_404(db, repo_id)
     return repo
 
 

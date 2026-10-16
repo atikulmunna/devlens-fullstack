@@ -6,7 +6,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import User
+from app.db.models import Repository, User
 from app.db.session import SessionLocal
 from app.services.tokens import decode_access_token
 
@@ -44,3 +44,10 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
     return user
+
+
+def get_repo_or_404(db: Session, repo_id: UUID) -> Repository:
+    repo = db.execute(select(Repository).where(Repository.id == repo_id)).scalar_one_or_none()
+    if repo is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+    return repo
