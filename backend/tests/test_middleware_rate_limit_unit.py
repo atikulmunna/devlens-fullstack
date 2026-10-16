@@ -5,7 +5,9 @@ def test_limited_prefix_rules() -> None:
     assert RateLimitMiddleware._limited_prefix({"method": "POST", "path": "/api/v1/repos/analyze"}) == "analyze"
     assert RateLimitMiddleware._limited_prefix({"method": "POST", "path": "/api/v1/chat/sessions/1/message"}) == "chat"
     assert RateLimitMiddleware._limited_prefix({"method": "GET", "path": "/api/v1/repos/analyze"}) is None
-    assert RateLimitMiddleware._limited_prefix({"method": "POST", "path": "/api/v1/repos/abc-123/diff/ask"}) == "diff_ask"
+    assert (
+        RateLimitMiddleware._limited_prefix({"method": "POST", "path": "/api/v1/repos/abc-123/diff/ask"}) == "diff_ask"
+    )
     assert RateLimitMiddleware._limited_prefix({"method": "GET", "path": "/api/v1/repos/abc-123/diff"}) is None
 
 

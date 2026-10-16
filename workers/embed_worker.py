@@ -39,9 +39,10 @@ class ChunkRecord:
 
 
 def fetch_next_embed_job(db: Session) -> EmbedSnapshot | None:
-    row = db.execute(
-        text(
-            """
+    row = (
+        db.execute(
+            text(
+                """
             SELECT id::text AS job_id, repo_id::text AS repo_id
             FROM analysis_jobs
             WHERE status = 'embedding'
@@ -49,8 +50,11 @@ def fetch_next_embed_job(db: Session) -> EmbedSnapshot | None:
             ORDER BY created_at ASC
             LIMIT 1
             """
+            )
         )
-    ).mappings().first()
+        .mappings()
+        .first()
+    )
 
     if not row:
         return None
@@ -59,17 +63,21 @@ def fetch_next_embed_job(db: Session) -> EmbedSnapshot | None:
 
 
 def load_repo_chunks(db: Session, repo_id: str) -> list[ChunkRecord]:
-    rows = db.execute(
-        text(
-            """
+    rows = (
+        db.execute(
+            text(
+                """
             SELECT id::text, file_path, start_line, end_line, content, language
             FROM code_chunks
             WHERE repo_id = CAST(:repo_id AS uuid)
             ORDER BY created_at ASC
             """
-        ),
-        {'repo_id': repo_id},
-    ).mappings().all()
+            ),
+            {'repo_id': repo_id},
+        )
+        .mappings()
+        .all()
+    )
 
     return [
         ChunkRecord(
@@ -108,7 +116,9 @@ def _request_with_retries(
                 return None
 
             if response.status_code >= 400:
-                raise EmbedError('EMBED_UPSERT_FAILED', f'Qdrant request failed ({response.status_code}): {response.text[:200]}')
+                raise EmbedError(
+                    'EMBED_UPSERT_FAILED', f'Qdrant request failed ({response.status_code}): {response.text[:200]}'
+                )
 
             if response.content:
                 return response.json()
@@ -127,21 +137,14 @@ def _request_with_retries(
 def ensure_collection(vector_size: int) -> None:
     url = f"{str(settings.qdrant_url).rstrip('/')}/collections/{settings.qdrant_collection}"
     headers = {'api-key': settings.qdrant_api_key} if settings.qdrant_api_key else None
-    body = {
-        'vectors': {'size': vector_size, 'distance': 'Cosine'}
-    }
+    body = {'vectors': {'size': vector_size, 'distance': 'Cosine'}}
 
     # Detect an existing collection whose vector dimension no longer matches the
     # embedder's output (e.g. after switching embedding models). A mismatched
     # collection is dropped and recreated once; every repo must then be re-analyzed.
     existing = _request_with_retries('GET', url, allowed_statuses={404}, headers=headers)
     if existing:
-        vectors_cfg = (
-            existing.get('result', {})
-            .get('config', {})
-            .get('params', {})
-            .get('vectors', {})
-        )
+        vectors_cfg = existing.get('result', {}).get('config', {}).get('params', {}).get('vectors', {})
         current_size = vectors_cfg.get('size') if isinstance(vectors_cfg, dict) else None
         if current_size == vector_size:
             return
@@ -177,7 +180,7 @@ def upsert_chunk_vectors(repo_id: str, chunks: list[ChunkRecord], vectors: list[
 
     points = []
     qdrant_ids: list[str] = []
-    for chunk, vector in zip(chunks, vectors):
+    for chunk, vector in zip(chunks, vectors, strict=False):
         point_id = str(uuid4())
         qdrant_ids.append(point_id)
         points.append(
@@ -203,7 +206,7 @@ def upsert_chunk_vectors(repo_id: str, chunks: list[ChunkRecord], vectors: list[
 
 
 def store_qdrant_point_ids(db: Session, chunk_ids: list[str], qdrant_ids: list[str]) -> None:
-    for chunk_id, qdrant_id in zip(chunk_ids, qdrant_ids):
+    for chunk_id, qdrant_id in zip(chunk_ids, qdrant_ids, strict=False):
         db.execute(
             text(
                 """
@@ -236,7 +239,7 @@ def embed_job(db: Session, snapshot: EmbedSnapshot) -> None:
             batch_size = max(1, settings.embed_batch_size)
 
             for idx in range(0, len(chunks), batch_size):
-                batch = chunks[idx: idx + batch_size]
+                batch = chunks[idx : idx + batch_size]
                 vectors = embed_with_cache(
                     [chunk.content for chunk in batch],
                     embed_texts,
@@ -288,4 +291,3 @@ def process_next_embed_job(db: Session) -> bool:
 
     embed_job(db, snapshot)
     return True
-

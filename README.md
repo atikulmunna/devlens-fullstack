@@ -272,8 +272,20 @@ Share/Export:
 ```powershell
 ./scripts/test-backend.ps1
 ./scripts/test-worker.ps1
+npm --prefix frontend-next test
 npm --prefix frontend-next run typecheck
 npm --prefix frontend-next run build
+```
+
+### Lint and format
+
+CI fails on any finding. Python rules live in `ruff.toml` at the repo root; the frontend uses `next lint`.
+
+```powershell
+pip install ruff==0.12.4
+ruff check .
+ruff format --check .   # `ruff format .` rewrites
+npm --prefix frontend-next run lint
 ```
 
 ### Smoke / E2E

@@ -13,7 +13,9 @@ def normalize_github_repo_url(url: str) -> str:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid GitHub URL") from exc
 
     if parsed.scheme not in {"http", "https"} or parsed.netloc.lower() != "github.com":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only github.com repository URLs are supported")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Only github.com repository URLs are supported"
+        )
 
     path_parts = [p for p in parsed.path.split("/") if p]
     if len(path_parts) < 2:
@@ -54,7 +56,9 @@ def resolve_public_repo_snapshot(github_url: str) -> dict:
 
         commit_response = client.get(f"{repo_api}/commits/{default_branch}", headers=headers)
         if commit_response.status_code != 200:
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to resolve repository head commit")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to resolve repository head commit"
+            )
 
         commit_sha = commit_response.json().get("sha")
         if not commit_sha:

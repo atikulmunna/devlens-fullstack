@@ -6,7 +6,6 @@ from app.config import settings
 from app.redis_client import get_redis
 from app.services.tokens import decode_access_token
 
-
 LUA_RATE_LIMIT = """
 local current = redis.call("INCR", KEYS[1])
 if current == 1 then

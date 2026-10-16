@@ -1,6 +1,8 @@
+import pytest
+
 import embed_worker
 import embeddings
-from embed_worker import ChunkRecord, EmbedSnapshot, EmbedError
+from embed_worker import ChunkRecord, EmbedError, EmbedSnapshot
 from embeddings import embed_text, embed_texts
 
 _REAL_ENSURE_COLLECTION = embed_worker.ensure_collection
@@ -23,7 +25,6 @@ class FakeSession:
 
     def first(self):
         return {'retry_count': self.retry_count}
-
 
 
 class _FakeResponse:
@@ -68,10 +69,12 @@ def _fake_openrouter(monkeypatch, status_code, payload) -> dict:
 
 
 def test_embed_texts_calls_openrouter_embeddings(monkeypatch) -> None:
-    payload = {'data': [
-        {'index': 1, 'embedding': [0.4, 0.5, 0.6]},
-        {'index': 0, 'embedding': [0.1, 0.2, 0.3]},
-    ]}
+    payload = {
+        'data': [
+            {'index': 1, 'embedding': [0.4, 0.5, 0.6]},
+            {'index': 0, 'embedding': [0.1, 0.2, 0.3]},
+        ]
+    }
     capture = _fake_openrouter(monkeypatch, 200, payload)
 
     vectors = embed_texts(['first passage', 'second passage'])
@@ -95,49 +98,61 @@ def test_embed_texts_caps_oversized_inputs(monkeypatch) -> None:
 
 
 def test_embed_texts_client_error_fails_without_retry(monkeypatch) -> None:
-    capture = _fake_openrouter(monkeypatch, 410, {'error': {'message': 'The model has reached its end of life', 'code': 410}})
+    capture = _fake_openrouter(
+        monkeypatch, 410, {'error': {'message': 'The model has reached its end of life', 'code': 410}}
+    )
 
-    try:
+    # The provider's reason travels with the error into the job's failure message.
+    with pytest.raises(embeddings.EmbeddingError, match='status 410: The model has reached its end of life'):
         embed_texts(['hello'])
-        assert False, 'expected EmbeddingError'
-    except embeddings.EmbeddingError as exc:
-        # The provider's reason travels with the error into the job's failure message.
-        assert 'status 410: The model has reached its end of life' in str(exc)
     assert capture['posts'] == 1
 
 
 def test_embed_text_missing_api_key_raises(monkeypatch) -> None:
     monkeypatch.setattr(embeddings.settings, 'openrouter_api_key', None)
-    try:
+    with pytest.raises(embeddings.EmbeddingError):
         embed_text('hello world')
-        assert False, 'expected EmbeddingError'
-    except embeddings.EmbeddingError:
-        pass
 
 
 def test_upsert_vectors_requires_matching_lengths() -> None:
     chunk = ChunkRecord(id='1', file_path='a.py', start_line=1, end_line=2, content='x', language='py')
-    try:
+    with pytest.raises(EmbedError) as raised:
         embed_worker.upsert_chunk_vectors('repo', [chunk], [])
-        assert False, 'expected mismatch error'
-    except EmbedError as exc:
-        assert exc.code == 'EMBED_VECTOR_MISMATCH'
+    assert raised.value.code == 'EMBED_VECTOR_MISMATCH'
 
 
 def test_embed_job_success_transitions_to_analyzing(monkeypatch) -> None:
     fake_db = FakeSession()
-    snapshot = EmbedSnapshot(repo_id='00000000-0000-0000-0000-000000000021', job_id='00000000-0000-0000-0000-000000000022')
+    snapshot = EmbedSnapshot(
+        repo_id='00000000-0000-0000-0000-000000000021', job_id='00000000-0000-0000-0000-000000000022'
+    )
 
     chunks = [
-        ChunkRecord(id='00000000-0000-0000-0000-000000000101', file_path='a.py', start_line=1, end_line=10, content='print(1)', language='py'),
-        ChunkRecord(id='00000000-0000-0000-0000-000000000102', file_path='b.py', start_line=1, end_line=10, content='print(2)', language='py'),
+        ChunkRecord(
+            id='00000000-0000-0000-0000-000000000101',
+            file_path='a.py',
+            start_line=1,
+            end_line=10,
+            content='print(1)',
+            language='py',
+        ),
+        ChunkRecord(
+            id='00000000-0000-0000-0000-000000000102',
+            file_path='b.py',
+            start_line=1,
+            end_line=10,
+            content='print(2)',
+            language='py',
+        ),
     ]
 
     monkeypatch.setattr(embed_worker, 'load_repo_chunks', lambda *_args, **_kwargs: chunks)
     monkeypatch.setattr(embed_worker, 'ensure_collection', lambda _vector_size: None)
     monkeypatch.setattr(embed_worker, 'delete_repo_vectors', lambda _repo_id: None)
     monkeypatch.setattr(embed_worker, 'embed_texts', lambda contents, size=None: [[0.0] * 4 for _ in contents])
-    monkeypatch.setattr(embed_worker, 'upsert_chunk_vectors', lambda _repo_id, batch, _vectors: [f'id-{c.id}' for c in batch])
+    monkeypatch.setattr(
+        embed_worker, 'upsert_chunk_vectors', lambda _repo_id, batch, _vectors: [f'id-{c.id}' for c in batch]
+    )
 
     monkeypatch.setattr(embed_worker.settings, 'embed_batch_size', 1)
 
@@ -148,7 +163,11 @@ def test_embed_job_success_transitions_to_analyzing(monkeypatch) -> None:
 
     monkeypatch.setattr(embed_worker, 'store_qdrant_point_ids', fake_store)
     observed = {'count': 0}
-    monkeypatch.setattr(embed_worker, 'record_stage_duration', lambda *_args, **_kwargs: observed.__setitem__('count', observed['count'] + 1))
+    monkeypatch.setattr(
+        embed_worker,
+        'record_stage_duration',
+        lambda *_args, **_kwargs: observed.__setitem__('count', observed['count'] + 1),
+    )
 
     embed_worker.embed_job(fake_db, snapshot)
 
@@ -183,8 +202,19 @@ def _stub_embed_pipeline(monkeypatch, chunks) -> list[tuple]:
 
 def test_embed_job_deletes_old_repo_vectors_before_upserting(monkeypatch) -> None:
     fake_db = FakeSession()
-    snapshot = EmbedSnapshot(repo_id='00000000-0000-0000-0000-000000000041', job_id='00000000-0000-0000-0000-000000000042')
-    chunks = [ChunkRecord(id='00000000-0000-0000-0000-000000000141', file_path='a.py', start_line=1, end_line=2, content='print(1)', language='py')]
+    snapshot = EmbedSnapshot(
+        repo_id='00000000-0000-0000-0000-000000000041', job_id='00000000-0000-0000-0000-000000000042'
+    )
+    chunks = [
+        ChunkRecord(
+            id='00000000-0000-0000-0000-000000000141',
+            file_path='a.py',
+            start_line=1,
+            end_line=2,
+            content='print(1)',
+            language='py',
+        )
+    ]
     qdrant_calls = _stub_embed_pipeline(monkeypatch, chunks)
 
     embed_worker.embed_job(fake_db, snapshot)
@@ -199,8 +229,19 @@ def test_embed_job_deletes_old_repo_vectors_before_upserting(monkeypatch) -> Non
 
 def test_embed_job_stops_before_upsert_when_vector_delete_fails(monkeypatch) -> None:
     fake_db = FakeSession()
-    snapshot = EmbedSnapshot(repo_id='00000000-0000-0000-0000-000000000051', job_id='00000000-0000-0000-0000-000000000052')
-    chunks = [ChunkRecord(id='00000000-0000-0000-0000-000000000151', file_path='a.py', start_line=1, end_line=2, content='print(1)', language='py')]
+    snapshot = EmbedSnapshot(
+        repo_id='00000000-0000-0000-0000-000000000051', job_id='00000000-0000-0000-0000-000000000052'
+    )
+    chunks = [
+        ChunkRecord(
+            id='00000000-0000-0000-0000-000000000151',
+            file_path='a.py',
+            start_line=1,
+            end_line=2,
+            content='print(1)',
+            language='py',
+        )
+    ]
     qdrant_calls = _stub_embed_pipeline(monkeypatch, chunks)
 
     def failing_delete(method, url, *, json_body=None, allowed_statuses=None, headers=None):
@@ -211,7 +252,9 @@ def test_embed_job_stops_before_upsert_when_vector_delete_fails(monkeypatch) -> 
 
     monkeypatch.setattr(embed_worker, '_request_with_retries', failing_delete)
     scheduled = {}
-    monkeypatch.setattr(embed_worker, 'schedule_retry_or_dead_letter', lambda *_args, **kwargs: scheduled.update(kwargs))
+    monkeypatch.setattr(
+        embed_worker, 'schedule_retry_or_dead_letter', lambda *_args, **kwargs: scheduled.update(kwargs)
+    )
 
     embed_worker.embed_job(fake_db, snapshot)
 
@@ -222,7 +265,9 @@ def test_embed_job_stops_before_upsert_when_vector_delete_fails(monkeypatch) -> 
 
 def test_embed_job_fails_with_no_chunks(monkeypatch) -> None:
     fake_db = FakeSession()
-    snapshot = EmbedSnapshot(repo_id='00000000-0000-0000-0000-000000000031', job_id='00000000-0000-0000-0000-000000000032')
+    snapshot = EmbedSnapshot(
+        repo_id='00000000-0000-0000-0000-000000000031', job_id='00000000-0000-0000-0000-000000000032'
+    )
 
     monkeypatch.setattr(embed_worker, 'load_repo_chunks', lambda *_args, **_kwargs: [])
 
@@ -279,8 +324,19 @@ def test_ensure_collection_keeps_matching_size_and_recreates_on_change(monkeypat
 
 def test_embed_job_sizes_the_collection_from_the_model_output(monkeypatch) -> None:
     fake_db = FakeSession()
-    snapshot = EmbedSnapshot(repo_id='00000000-0000-0000-0000-000000000061', job_id='00000000-0000-0000-0000-000000000062')
-    chunks = [ChunkRecord(id='00000000-0000-0000-0000-000000000161', file_path='a.py', start_line=1, end_line=2, content='print(1)', language='py')]
+    snapshot = EmbedSnapshot(
+        repo_id='00000000-0000-0000-0000-000000000061', job_id='00000000-0000-0000-0000-000000000062'
+    )
+    chunks = [
+        ChunkRecord(
+            id='00000000-0000-0000-0000-000000000161',
+            file_path='a.py',
+            start_line=1,
+            end_line=2,
+            content='print(1)',
+            language='py',
+        )
+    ]
     qdrant_calls = _stub_embed_pipeline(monkeypatch, chunks)
     monkeypatch.setattr(embed_worker, 'ensure_collection', _REAL_ENSURE_COLLECTION)
 
@@ -299,12 +355,25 @@ def test_embed_job_sizes_the_collection_from_the_model_output(monkeypatch) -> No
 
 def test_embed_job_rejects_empty_vectors_before_touching_qdrant(monkeypatch) -> None:
     fake_db = FakeSession()
-    snapshot = EmbedSnapshot(repo_id='00000000-0000-0000-0000-000000000071', job_id='00000000-0000-0000-0000-000000000072')
-    chunks = [ChunkRecord(id='00000000-0000-0000-0000-000000000171', file_path='a.py', start_line=1, end_line=2, content='print(1)', language='py')]
+    snapshot = EmbedSnapshot(
+        repo_id='00000000-0000-0000-0000-000000000071', job_id='00000000-0000-0000-0000-000000000072'
+    )
+    chunks = [
+        ChunkRecord(
+            id='00000000-0000-0000-0000-000000000171',
+            file_path='a.py',
+            start_line=1,
+            end_line=2,
+            content='print(1)',
+            language='py',
+        )
+    ]
     qdrant_calls = _stub_embed_pipeline(monkeypatch, chunks)
     monkeypatch.setattr(embed_worker, 'embed_texts', lambda contents, size=None: [[] for _ in contents])
     scheduled = {}
-    monkeypatch.setattr(embed_worker, 'schedule_retry_or_dead_letter', lambda *_args, **kwargs: scheduled.update(kwargs))
+    monkeypatch.setattr(
+        embed_worker, 'schedule_retry_or_dead_letter', lambda *_args, **kwargs: scheduled.update(kwargs)
+    )
 
     embed_worker.embed_job(fake_db, snapshot)
 
@@ -314,7 +383,9 @@ def test_embed_job_rejects_empty_vectors_before_touching_qdrant(monkeypatch) -> 
 
 def test_embed_job_retriable_failure_schedules_retry(monkeypatch) -> None:
     fake_db = FakeSession()
-    snapshot = EmbedSnapshot(repo_id='00000000-0000-0000-0000-000000000071', job_id='00000000-0000-0000-0000-000000000072')
+    snapshot = EmbedSnapshot(
+        repo_id='00000000-0000-0000-0000-000000000071', job_id='00000000-0000-0000-0000-000000000072'
+    )
     chunks = [ChunkRecord(id='1', file_path='a.py', start_line=1, end_line=2, content='print(1)', language='py')]
 
     monkeypatch.setattr(embed_worker, 'load_repo_chunks', lambda *_args, **_kwargs: chunks)
@@ -334,7 +405,11 @@ def test_embed_job_retriable_failure_schedules_retry(monkeypatch) -> None:
 
     monkeypatch.setattr(embed_worker, 'schedule_retry_or_dead_letter', fake_schedule)
     observed = {'count': 0}
-    monkeypatch.setattr(embed_worker, 'record_stage_duration', lambda *_args, **_kwargs: observed.__setitem__('count', observed['count'] + 1))
+    monkeypatch.setattr(
+        embed_worker,
+        'record_stage_duration',
+        lambda *_args, **_kwargs: observed.__setitem__('count', observed['count'] + 1),
+    )
     embed_worker.embed_job(fake_db, snapshot)
 
     assert called['stage'] == 'embedding'

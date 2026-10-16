@@ -2,8 +2,7 @@ import asyncio
 import json
 import time
 from datetime import datetime
-from uuid import UUID
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi.responses import PlainTextResponse, StreamingResponse
@@ -11,15 +10,15 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import AnalysisJob, AnalysisResult, CodeChunk, Repository
 from app.api.error_schema import ERROR_RESPONSE_SCHEMA
-from app.deps import get_db_session
+from app.db.models import AnalysisJob, AnalysisResult, CodeChunk, Repository
 from app.db.session import SessionLocal
+from app.deps import get_db_session
+from app.observability import observe_sse_startup, trace_span
 from app.services.dependency_graph import build_dependency_graph
 from app.services.github_repos import resolve_public_repo_snapshot
 from app.services.retrieval_hybrid import hybrid_search_chunks
 from app.services.retrieval_lexical import lexical_search_chunks
-from app.observability import observe_sse_startup, trace_span
 
 router = APIRouter(prefix="/repos", tags=["repos"])
 
@@ -168,10 +167,7 @@ class DependencyGraphResponse(BaseModel):
 def _fetch_latest_job(db: Session, repo_id: UUID) -> AnalysisJob | None:
     return (
         db.execute(
-            select(AnalysisJob)
-            .where(AnalysisJob.repo_id == repo_id)
-            .order_by(AnalysisJob.created_at.desc())
-            .limit(1)
+            select(AnalysisJob).where(AnalysisJob.repo_id == repo_id).order_by(AnalysisJob.created_at.desc()).limit(1)
         )
         .scalars()
         .first()
@@ -303,15 +299,19 @@ def analyze_repo(
 
     if not payload.force_reanalyze:
         if idempotency_key:
-            by_key = db.execute(
-                select(AnalysisJob)
-                .where(
-                    AnalysisJob.repo_id == repo.id,
-                    AnalysisJob.commit_sha == commit_sha,
-                    AnalysisJob.idempotency_key == idempotency_key,
+            by_key = (
+                db.execute(
+                    select(AnalysisJob)
+                    .where(
+                        AnalysisJob.repo_id == repo.id,
+                        AnalysisJob.commit_sha == commit_sha,
+                        AnalysisJob.idempotency_key == idempotency_key,
+                    )
+                    .order_by(AnalysisJob.created_at.desc())
                 )
-                .order_by(AnalysisJob.created_at.desc())
-            ).scalars().first()
+                .scalars()
+                .first()
+            )
             if by_key:
                 return AnalyzeRepoResponse(
                     job_id=str(by_key.id),
@@ -322,15 +322,19 @@ def analyze_repo(
                     commit_sha=commit_sha,
                 )
 
-        by_commit = db.execute(
-            select(AnalysisJob)
-            .where(
-                AnalysisJob.repo_id == repo.id,
-                AnalysisJob.commit_sha == commit_sha,
-                AnalysisJob.status.in_(ACTIVE_STATUSES | {"done"}),
+        by_commit = (
+            db.execute(
+                select(AnalysisJob)
+                .where(
+                    AnalysisJob.repo_id == repo.id,
+                    AnalysisJob.commit_sha == commit_sha,
+                    AnalysisJob.status.in_(ACTIVE_STATUSES | {"done"}),
+                )
+                .order_by(AnalysisJob.created_at.desc())
             )
-            .order_by(AnalysisJob.created_at.desc())
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
 
         if by_commit:
             return AnalyzeRepoResponse(
@@ -384,7 +388,9 @@ def analyze_repo(
         },
     },
 )
-def search_repo_lexical(repo_id: UUID, q: str, limit: int = 20, db: Session = Depends(get_db_session)) -> LexicalSearchResponse:
+def search_repo_lexical(
+    repo_id: UUID, q: str, limit: int = 20, db: Session = Depends(get_db_session)
+) -> LexicalSearchResponse:
     repo = db.execute(select(Repository).where(Repository.id == repo_id)).scalar_one_or_none()
     if repo is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
@@ -416,7 +422,9 @@ def search_repo_lexical(repo_id: UUID, q: str, limit: int = 20, db: Session = De
         },
     },
 )
-def search_repo_hybrid(repo_id: UUID, q: str, limit: int = 20, db: Session = Depends(get_db_session)) -> HybridSearchResponse:
+def search_repo_hybrid(
+    repo_id: UUID, q: str, limit: int = 20, db: Session = Depends(get_db_session)
+) -> HybridSearchResponse:
     repo = db.execute(select(Repository).where(Repository.id == repo_id)).scalar_one_or_none()
     if repo is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
@@ -445,12 +453,16 @@ def get_repo_dashboard(repo_id: UUID, db: Session = Depends(get_db_session)) -> 
     if repo is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
 
-    result = db.execute(
-        select(AnalysisResult)
-        .where(AnalysisResult.repo_id == repo.id)
-        .order_by(AnalysisResult.created_at.desc())
-        .limit(1)
-    ).scalars().first()
+    result = (
+        db.execute(
+            select(AnalysisResult)
+            .where(AnalysisResult.repo_id == repo.id)
+            .order_by(AnalysisResult.created_at.desc())
+            .limit(1)
+        )
+        .scalars()
+        .first()
+    )
 
     analysis_payload: dict | None = None
     if result is not None:
@@ -495,12 +507,16 @@ def list_recent_repos(
     limit: int = Query(default=6, ge=1, le=20),
     db: Session = Depends(get_db_session),
 ) -> RecentReposResponse:
-    repos = db.execute(
-        select(Repository)
-        .where(Repository.last_analyzed_at.is_not(None))
-        .order_by(Repository.last_analyzed_at.desc())
-        .limit(limit)
-    ).scalars().all()
+    repos = (
+        db.execute(
+            select(Repository)
+            .where(Repository.last_analyzed_at.is_not(None))
+            .order_by(Repository.last_analyzed_at.desc())
+            .limit(limit)
+        )
+        .scalars()
+        .all()
+    )
     return RecentReposResponse(repos=[_repo_summary(repo) for repo in repos])
 
 
@@ -517,9 +533,11 @@ def list_recent_repos(
     },
 )
 def get_repo_by_name(owner: str, name: str, db: Session = Depends(get_db_session)) -> RepoSummaryResponse:
-    repo = db.execute(
-        select(Repository).where(func.lower(Repository.full_name) == f"{owner}/{name}".lower())
-    ).scalars().first()
+    repo = (
+        db.execute(select(Repository).where(func.lower(Repository.full_name) == f"{owner}/{name}".lower()))
+        .scalars()
+        .first()
+    )
     if repo is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not analyzed yet")
     return _repo_summary(repo)

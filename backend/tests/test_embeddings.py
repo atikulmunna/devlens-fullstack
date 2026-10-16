@@ -15,7 +15,9 @@ class _FakeResponse:
         return self._payload
 
 
-def _fake_openrouter(monkeypatch, status_code: int = 200, payload: dict | None = None, error: Exception | None = None) -> dict:
+def _fake_openrouter(
+    monkeypatch, status_code: int = 200, payload: dict | None = None, error: Exception | None = None
+) -> dict:
     """Replace httpx.Client and record the embeddings request."""
     captured: dict = {}
 

@@ -3,7 +3,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-
 STATUS_TO_CODE = {
     400: 'BAD_REQUEST',
     401: 'UNAUTHORIZED',

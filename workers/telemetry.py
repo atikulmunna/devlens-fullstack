@@ -1,9 +1,8 @@
-from contextlib import contextmanager
 import logging
 import time
+from contextlib import contextmanager
 
 from prometheus_client import Counter, Histogram, start_http_server
-
 
 logger = logging.getLogger("devlens.worker.telemetry")
 
@@ -18,6 +17,7 @@ llm_provider_attempts_total = Counter(
     "LLM provider summary attempts by provider/status/error code.",
     ["provider", "status", "error_code"],
 )
+
 
 def start_metrics_server(port: int) -> None:
     try:

@@ -1,13 +1,12 @@
-from contextlib import contextmanager
-from contextvars import ContextVar
 import logging
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from uuid import uuid4
 
 from prometheus_client import CONTENT_TYPE_LATEST, Histogram, generate_latest
 from starlette.requests import Request
 from starlette.responses import Response
-
 
 logger = logging.getLogger("devlens.observability")
 

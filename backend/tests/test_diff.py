@@ -52,9 +52,7 @@ def _seed_repo_with_diff(db_session: Session) -> tuple[User, Repository]:
     return user, repo
 
 
-def test_diff_ask_runs_llm_off_the_event_loop(
-    client, db_session: Session, monkeypatch, running_on_event_loop
-) -> None:
+def test_diff_ask_runs_llm_off_the_event_loop(client, db_session: Session, monkeypatch, running_on_event_loop) -> None:
     user, repo = _seed_repo_with_diff(db_session)
     headers = {"Authorization": f"Bearer {create_access_token(user.id)}"}
     llm_on_event_loop: list[bool] = []
@@ -81,7 +79,9 @@ def _auth_headers(user: User) -> dict[str, str]:
 def _seed_chunks(db_session: Session, repo: Repository, files: dict[str, str]) -> None:
     for path, content in files.items():
         db_session.add(
-            CodeChunk(id=uuid4(), repo_id=repo.id, file_path=path, start_line=1, end_line=5, content=content, language="py")
+            CodeChunk(
+                id=uuid4(), repo_id=repo.id, file_path=path, start_line=1, end_line=5, content=content, language="py"
+            )
         )
     db_session.commit()
 
@@ -104,7 +104,9 @@ def test_get_diff_returns_summary_flags_and_blast_radius(client, db_session: Ses
     assert response.status_code == 200
     payload = response.json()
     assert (payload["base_sha"], payload["head_sha"]) == ("sha-base", "sha-head")
-    assert payload["changed_files"] == [{"path": "src/auth.py", "status": "modified", "added": 1, "removed": 0, "hunks": 1}]
+    assert payload["changed_files"] == [
+        {"path": "src/auth.py", "status": "modified", "added": 1, "removed": 0, "hunks": 1}
+    ]
     assert payload["security_flags"] == [{"path": "src/auth.py", "categories": ["auth", "token"]}]
     assert payload["blast_radius"]["impacted_files"] == ["src/api.py", "src/cli.py"]
 
@@ -112,7 +114,9 @@ def test_get_diff_returns_summary_flags_and_blast_radius(client, db_session: Ses
 def test_get_diff_defaults_to_latest_and_filters_by_head(client, db_session: Session) -> None:
     user, repo = _seed_repo_with_diff(db_session)
     db_session.add(
-        CommitDiff(id=uuid4(), repo_id=repo.id, base_sha="sha-head", head_sha="sha-newer", changed_files=[], security_flags=[])
+        CommitDiff(
+            id=uuid4(), repo_id=repo.id, base_sha="sha-head", head_sha="sha-newer", changed_files=[], security_flags=[]
+        )
     )
     db_session.commit()
 
@@ -151,10 +155,12 @@ def test_diff_ask_falls_back_to_change_summary_when_llm_fails(client, db_session
 
     monkeypatch.setattr(diff_module, "synthesize_grounded_answer_stream", failing_stream)
 
-    response = client.post(f"/api/v1/repos/{repo.id}/diff/ask", json={"question": "What changed?"}, headers=_auth_headers(user))
+    response = client.post(
+        f"/api/v1/repos/{repo.id}/diff/ask", json={"question": "What changed?"}, headers=_auth_headers(user)
+    )
 
     assert response.status_code == 200
-    events = [json.loads(line[len("data: "):]) for line in response.text.splitlines() if line.startswith("data: ")]
+    events = [json.loads(line[len("data: ") :]) for line in response.text.splitlines() if line.startswith("data: ")]
     answer = "".join(event.get("token", "") for event in events)
     assert answer.strip() == "This commit (sha-head) changed: src/auth.py. Security-sensitive areas: auth, token."
     assert events[-1] == {"head_sha": "sha-head", "base_sha": "sha-base", "security_categories": ["auth", "token"]}

@@ -2,8 +2,8 @@ import time
 
 import redis
 
-from config import settings
 from analyze_worker import process_next_analyze_job
+from config import settings
 from db import SessionLocal
 from embed_worker import process_next_embed_job
 from parse_worker import process_next_parse_job

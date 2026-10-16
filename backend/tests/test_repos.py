@@ -1,5 +1,5 @@
-from uuid import uuid4
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session

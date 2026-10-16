@@ -1,0 +1,21 @@
+# Lint and format for the Python services (backend, workers, scripts).
+# Run from the repo root: `ruff check .` and `ruff format --check .`
+line-length = 120
+target-version = "py312"
+# First-party detection for import sorting: backend's `app` package and the workers' flat modules.
+src = ["backend", "workers"]
+
+[lint]
+# Defaults (pyflakes, pycodestyle errors) plus import order and bugbear.
+extend-select = ["I", "B"]
+# FastAPI declares dependencies as call defaults: `db: Session = Depends(get_db_session)`.
+ignore = ["B008"]
+
+[lint.per-file-ignores]
+# These set paths and environment before importing the app, on purpose.
+"backend/alembic/env.py" = ["E402"]
+"backend/tests/conftest.py" = ["E402"]
+
+[format]
+# Keep each package's existing quotes (workers use single, backend double) instead of a repo-wide rewrite.
+quote-style = "preserve"

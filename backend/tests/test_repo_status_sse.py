@@ -108,7 +108,7 @@ def _add_job_with_chunks(db_session: Session, status: str) -> Repository:
 
 def _payload(response_text: str) -> dict:
     data_line = next(line for line in response_text.splitlines() if line.startswith('data: '))
-    return json.loads(data_line[len('data: '):])
+    return json.loads(data_line[len('data: ') :])
 
 
 def test_status_reports_file_and_chunk_counts_while_indexing(client, db_session: Session) -> None:

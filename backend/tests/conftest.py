@@ -2,8 +2,8 @@ import asyncio
 import os
 from collections.abc import Callable
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 from redis import Redis
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
@@ -32,10 +32,11 @@ ENV_DEFAULTS = {
 for key, value in ENV_DEFAULTS.items():
     os.environ.setdefault(key, value)
 
+from app.config import settings
 from app.db.models import (
-    ApiKey,
     AnalysisJob,
     AnalysisResult,
+    ApiKey,
     ChatMessage,
     ChatSession,
     CodeChunk,
@@ -46,7 +47,6 @@ from app.db.models import (
     ShareToken,
     User,
 )
-from app.config import settings
 from app.db.session import SessionLocal
 from app.main import app
 
@@ -96,7 +96,9 @@ def db_session() -> Session:
 def cleanup_test_users(db_session: Session):
     # Cleanup before and after each test for deterministic auth/repo tests.
     def purge_test_rows() -> None:
-        test_repo_ids = db_session.query(Repository.id).filter(Repository.github_url.like("https://github.com/test-owner/%"))
+        test_repo_ids = db_session.query(Repository.id).filter(
+            Repository.github_url.like("https://github.com/test-owner/%")
+        )
         test_user_ids = db_session.query(User.id).filter(User.github_id >= 900000000)
         test_session_ids = db_session.query(ChatSession.id).filter(
             (ChatSession.repo_id.in_(test_repo_ids)) | (ChatSession.user_id.in_(test_user_ids))

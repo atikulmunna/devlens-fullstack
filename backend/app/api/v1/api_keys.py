@@ -96,9 +96,11 @@ def list_api_keys(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> ApiKeyListResponse:
-    rows = db.execute(
-        select(ApiKey).where(ApiKey.user_id == current_user.id).order_by(ApiKey.created_at.desc())
-    ).scalars().all()
+    rows = (
+        db.execute(select(ApiKey).where(ApiKey.user_id == current_user.id).order_by(ApiKey.created_at.desc()))
+        .scalars()
+        .all()
+    )
     return ApiKeyListResponse(
         items=[
             ApiKeyListItem(
@@ -130,7 +132,9 @@ def revoke_api_key(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    row = db.execute(select(ApiKey).where(ApiKey.id == api_key_id, ApiKey.user_id == current_user.id)).scalar_one_or_none()
+    row = db.execute(
+        select(ApiKey).where(ApiKey.id == api_key_id, ApiKey.user_id == current_user.id)
+    ).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")
     if row.revoked_at is None:

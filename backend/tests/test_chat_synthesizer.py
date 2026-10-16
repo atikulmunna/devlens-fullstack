@@ -6,7 +6,9 @@ import pytest
 from app.services import chat_synthesizer
 from app.services.chat_synthesizer import ChatSynthesisError, synthesize_grounded_answer_stream
 
-CONTEXTS = [{"chunk_id": "c1", "file_path": "src/auth.py", "line_start": 1, "line_end": 9, "content": "def login(): ..."}]
+CONTEXTS = [
+    {"chunk_id": "c1", "file_path": "src/auth.py", "line_start": 1, "line_end": 9, "content": "def login(): ..."}
+]
 
 
 def _sse(*pieces: str) -> list[str]:
@@ -43,7 +45,11 @@ class _FakeStreamResponse:
 
 
 def _fake_openrouter(
-    monkeypatch, status_code: int = 200, lines: list | None = None, error: Exception | None = None, body: dict | None = None
+    monkeypatch,
+    status_code: int = 200,
+    lines: list | None = None,
+    error: Exception | None = None,
+    body: dict | None = None,
 ) -> dict:
     """Replace httpx.Client and record the single streaming request the synthesizer makes."""
     captured: dict = {}
@@ -117,7 +123,9 @@ def test_failures_before_any_token_raise_chat_synthesis_error(monkeypatch, statu
 
 def test_error_status_carries_openrouter_reason(monkeypatch) -> None:
     # A retired model slug used to surface only as "status 404", hiding the actual cause.
-    _fake_openrouter(monkeypatch, status_code=404, body={"error": {"message": "This model is unavailable for free", "code": 404}})
+    _fake_openrouter(
+        monkeypatch, status_code=404, body={"error": {"message": "This model is unavailable for free", "code": 404}}
+    )
 
     with pytest.raises(ChatSynthesisError, match="status 404: This model is unavailable for free"):
         list(synthesize_grounded_answer_stream(query="q", contexts=CONTEXTS))

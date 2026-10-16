@@ -53,7 +53,9 @@ def _function_name(node) -> str:
 def _is_function(node) -> bool:
     if node.type in FUNCTION_TYPES:
         return True
-    return node.type in ASSIGNED_FUNCTION_TYPES and node.parent is not None and node.parent.type == "variable_declarator"
+    return (
+        node.type in ASSIGNED_FUNCTION_TYPES and node.parent is not None and node.parent.type == "variable_declarator"
+    )
 
 
 def find_long_functions(content: str, language_key: str, min_lines: int = LONG_FUNCTION_LINES) -> list[dict]:
@@ -73,7 +75,9 @@ def find_long_functions(content: str, language_key: str, min_lines: int = LONG_F
         if _is_function(node):
             length = node.end_point[0] - node.start_point[0] + 1
             if length > min_lines:
-                found.append({"name": _function_name(node) or "(anonymous)", "line": node.start_point[0] + 1, "length": length})
+                found.append(
+                    {"name": _function_name(node) or "(anonymous)", "line": node.start_point[0] + 1, "length": length}
+                )
         stack.extend(node.named_children)
     return sorted(found, key=lambda item: item["line"])
 
