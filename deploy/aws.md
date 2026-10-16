@@ -56,7 +56,18 @@ First build is slow (a few minutes) because of the backend image.
   open the commit-diff view.
 
 ## Operations
-- **Update:** `git pull && sudo docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build`
+- **Update:** back up first (see Backups), then build, migrate, and only then start the new worker. The worker
+  reads new columns as soon as it starts, so starting it before migrating makes it crash-loop until the
+  schema catches up.
+  ```bash
+  git pull
+  C="sudo docker compose -f docker-compose.prod.yml --env-file .env.prod"
+  $C build
+  $C up -d backend                                   # also starts postgres, redis, qdrant
+  $C exec -T backend alembic -c alembic.ini upgrade head
+  $C up -d                                           # worker, frontend, caddy
+  $C restart caddy                                   # Caddyfile and gate.html are single-file mounts
+  ```
 - **Backups:** `sudo docker compose -f docker-compose.prod.yml exec -T postgres pg_dump -U postgres devlens > backup-$(date +%F).sql` (cron it).
 - **Logs:** `sudo docker compose -f docker-compose.prod.yml logs -f backend worker`
 - **Restart on reboot:** handled by `restart: unless-stopped` on every service.
