@@ -287,7 +287,13 @@ def test_questions_about_ci_keep_workflow_files_on_top(monkeypatch) -> None:
 
 
 def test_tooling_path_pattern() -> None:
-    for path in (".github/workflows/a.yml", "pkg/.github/x.yml", ".pre-commit-config.yaml", "tox.ini", ".gitlab-ci.yml"):
+    for path in (
+        ".github/workflows/a.yml",
+        "pkg/.github/x.yml",
+        ".pre-commit-config.yaml",
+        "tox.ini",
+        ".gitlab-ci.yml",
+    ):
         assert retrieval_hybrid.TOOLING_PATH_RE.search(path), path
     for path in ("src/github_client.py", "docs/ci.md", "app/workflows/engine.py", "Dockerfile"):
         assert not retrieval_hybrid.TOOLING_PATH_RE.search(path), path
