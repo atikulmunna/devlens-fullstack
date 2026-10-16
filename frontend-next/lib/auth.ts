@@ -1,13 +1,11 @@
+import type { components } from "./api-schema";
+
 // Session handling for the GitHub-backed auth flow.
 //
 // The access token lives in memory only. A reload restores it from the HttpOnly refresh cookie via
 // /auth/refresh, so no long-lived credential sits in localStorage where injected script could read it.
 
-export type CurrentUser = {
-  id: string;
-  username: string;
-  avatar_url: string | null;
-};
+export type CurrentUser = components["schemas"]["CurrentUserResponse"];
 
 const CSRF_COOKIE = "devlens_csrf_token";
 

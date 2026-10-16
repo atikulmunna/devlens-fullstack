@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -19,6 +20,37 @@ router = APIRouter(prefix="/repos", tags=["diff"])
 
 class DiffAskRequest(BaseModel):
     question: str
+
+
+class ChangedFileResponse(BaseModel):
+    path: str
+    status: str
+    added: int
+    removed: int
+    hunks: int
+
+
+class SecurityFlagResponse(BaseModel):
+    path: str
+    # e.g. "auth", "token", or "removed: token" for a match in removed lines.
+    categories: list[str]
+
+
+class BlastRadiusResponse(BaseModel):
+    changed_files: list[str]
+    impacted_files: list[str]
+    impacted_count: int
+    graph_stats: dict[str, int]
+
+
+class CommitDiffResponse(BaseModel):
+    repo_id: str
+    base_sha: str | None
+    head_sha: str
+    changed_files: list[ChangedFileResponse]
+    security_flags: list[SecurityFlagResponse]
+    blast_radius: BlastRadiusResponse
+    created_at: datetime | None
 
 
 def _latest_diff(db: Session, repo_id: UUID, head: str | None) -> CommitDiff | None:
@@ -92,6 +124,7 @@ def _diff_contexts(changed_files: list[dict], limit: int = 6, lines_per_side: in
 
 @router.get(
     "/{repo_id}/diff",
+    response_model=CommitDiffResponse,
     responses={
         401: {"content": {"application/json": {"schema": ERROR_RESPONSE_SCHEMA}}},
         404: {"content": {"application/json": {"schema": ERROR_RESPONSE_SCHEMA}}},
@@ -122,7 +155,7 @@ def get_commit_diff(
         "changed_files": _summarize_changed(changed_files),
         "security_flags": diff.security_flags or [],
         "blast_radius": blast,
-        "created_at": diff.created_at.isoformat() if diff.created_at else None,
+        "created_at": diff.created_at,
     }
 
 

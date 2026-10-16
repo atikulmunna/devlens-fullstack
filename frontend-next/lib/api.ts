@@ -1,33 +1,15 @@
+import type { components } from "./api-schema";
 import { authFetch } from "./auth";
 
-export type AnalyzeRequest = {
-  github_url: string;
-};
+// Request and response shapes come from the backend's OpenAPI schema (lib/api-schema.ts, generated
+// by `npm run gen:api` from lib/openapi.json), so a backend change that breaks the frontend fails
+// typecheck. Only shapes the schema cannot describe (SSE events, JSON columns) are written here.
+type Schemas = components["schemas"];
 
-export type AnalyzeResponse = {
-  job_id: string;
-  repo_id: string;
-  full_name: string;
-  status: string;
-  cache_hit: boolean;
-  commit_sha: string;
-};
-
-// Mirrors DashboardResponse in backend/app/api/v1/repos.py.
-export type DashboardRepository = {
-  id: string;
-  github_url: string;
-  full_name: string;
-  owner: string;
-  name: string;
-  default_branch: string;
-  latest_commit_sha: string | null;
-  description: string | null;
-  stars: number | null;
-  forks: number | null;
-  language: string | null;
-  size_kb: number | null;
-};
+// Fields with a server default are generated as always present, which is right for responses; in
+// a request they may be left out.
+export type AnalyzeRequest = Pick<Schemas["AnalyzeRepoRequest"], "github_url"> & Partial<Schemas["AnalyzeRepoRequest"]>;
+export type AnalyzeResponse = Schemas["AnalyzeRepoResponse"];
 
 export type LongFunction = {
   file: string;
@@ -47,21 +29,13 @@ export type TechDebtFlags = {
   test_file_count?: number;
 };
 
-export type DashboardAnalysis = {
-  quality_score: number | null;
-  architecture_summary: string | null;
-  language_breakdown: Record<string, number> | null;
-  contributor_stats: Record<string, unknown> | null;
+// tech_debt_flags is a JSON column; this is the shape the analyze worker writes.
+export type DashboardAnalysis = Omit<Schemas["DashboardAnalysisResponse"], "tech_debt_flags"> & {
   tech_debt_flags: TechDebtFlags | null;
-  file_tree: Record<string, unknown> | null;
-  created_at: string;
 };
 
-export type DashboardResponse = {
-  repo_id: string;
-  repository: DashboardRepository;
+export type DashboardResponse = Omit<Schemas["DashboardResponse"], "analysis"> & {
   analysis: DashboardAnalysis | null;
-  has_analysis: boolean;
 };
 
 export type RepoStatusSnapshot = {
@@ -103,15 +77,7 @@ export async function postAnalyze(payload: AnalyzeRequest): Promise<AnalyzeRespo
   return assertJson<AnalyzeResponse>(response, "Analyze request failed");
 }
 
-// Mirrors RepoSummaryResponse in backend/app/api/v1/repos.py.
-export type RepoSummary = {
-  repo_id: string;
-  full_name: string;
-  github_url: string;
-  description: string | null;
-  language: string | null;
-  last_analyzed_at: string | null;
-};
+export type RepoSummary = Schemas["RepoSummaryResponse"];
 
 // null when DevLens has never analyzed the repository (the page then offers to analyze it).
 export async function getRepoByName(owner: string, name: string): Promise<RepoSummary | null> {
@@ -127,7 +93,7 @@ export async function getRepoByName(owner: string, name: string): Promise<RepoSu
 
 export async function getRecentRepos(limit = 6): Promise<RepoSummary[]> {
   const response = await fetch(`/api/v1/repos/recent?limit=${limit}`, { cache: "no-store" });
-  const payload = await assertJson<{ repos: RepoSummary[] }>(response, "Could not load recent repositories");
+  const payload = await assertJson<Schemas["RecentReposResponse"]>(response, "Could not load recent repositories");
   return payload.repos;
 }
 
@@ -157,11 +123,7 @@ export type ChatDoneMeta = {
   no_citation: boolean;
 };
 
-export type CreateSessionResponse = {
-  session_id: string;
-  repo_id: string;
-  created_at: string;
-};
+export type CreateSessionResponse = Schemas["CreateChatSessionResponse"];
 
 export async function createChatSession(repoId: string): Promise<CreateSessionResponse> {
   const response = await authFetch("/api/v1/chat/sessions", {
@@ -174,7 +136,7 @@ export async function createChatSession(repoId: string): Promise<CreateSessionRe
 
 export async function getSuggestions(repoId: string): Promise<string[]> {
   const response = await authFetch(`/api/v1/chat/repos/${encodeURIComponent(repoId)}/suggestions`);
-  const payload = await assertJson<{ suggestions: string[] }>(response, "Could not load suggestions");
+  const payload = await assertJson<Schemas["SuggestedQuestionsResponse"]>(response, "Could not load suggestions");
   return payload.suggestions || [];
 }
 
@@ -256,31 +218,7 @@ export function sendChatMessageStream(
 
 // --- Commit-diff intelligence ------------------------------------------------
 
-export type DiffChangedFile = {
-  path: string;
-  status: string;
-  added: number;
-  removed: number;
-  hunks: number;
-};
-
-export type SecurityFlag = { path: string; categories: string[] };
-
-export type BlastRadius = {
-  changed_files: string[];
-  impacted_files: string[];
-  impacted_count: number;
-};
-
-export type CommitDiffSummary = {
-  repo_id: string;
-  base_sha: string | null;
-  head_sha: string;
-  changed_files: DiffChangedFile[];
-  security_flags: SecurityFlag[];
-  blast_radius: BlastRadius;
-  created_at: string | null;
-};
+export type CommitDiffSummary = Schemas["CommitDiffResponse"];
 
 export async function getCommitDiff(repoId: string, head?: string): Promise<CommitDiffSummary> {
   const suffix = head ? `?head=${encodeURIComponent(head)}` : "";
