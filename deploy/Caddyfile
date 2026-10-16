@@ -21,6 +21,7 @@
 	# Login submission: correct key sets the access cookie, wrong key returns to the page.
 	@gate path /__gate
 	handle @gate {
+		header Cache-Control "no-store"
 		@ok query key={$DEVLENS_GATE_SECRET}
 		handle @ok {
 			header Set-Cookie "devlens_access={$DEVLENS_GATE_SECRET}; Path=/; Max-Age=2592000; Secure; HttpOnly; SameSite=Lax"
@@ -34,8 +35,11 @@
 	}
 
 	# No valid access cookie: serve the branded gate page.
+	# no-store: the gate is served at every URL, including "/". A cached copy would keep showing
+	# after the access cookie is set, so entering the right key would seem to do nothing.
 	@ungated not header Cookie *devlens_access={$DEVLENS_GATE_SECRET}*
 	handle @ungated {
+		header Cache-Control "no-store"
 		rewrite * /gate.html
 		file_server
 	}

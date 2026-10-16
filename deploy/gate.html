@@ -3,68 +3,168 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>DevLens , Private Alpha</title>
+<title>DevLens (private alpha)</title>
+<!-- Before the gate, Caddy answers every path with this page, so the app's self-hosted fonts are
+     out of reach; the same two families come from Google Fonts, with system fallbacks. -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet" />
 <style>
+  /* Same survey-map palette as frontend-next/app/globals.css. */
   :root {
-    --bg: #f4f7fb; --ink: #182433; --muted: #516377;
-    --panel: #ffffff; --line: #d9e1ec; --accent: #0f6dbb;
+    --paper: #edf0ea;
+    --surface: #f8f9f5;
+    --ink: #1e2b24;
+    --lichen: #55635b;
+    --rule: #c7d0c6;
+    --pine: #2d5a47;
+    --pine-deep: #234637;
+    --ochre: #a86f24;
+    --brick: #9c3b2e;
+    --brick-wash: #f6e9e5;
+    --font-body: "Atkinson Hyperlegible", system-ui, sans-serif;
+    --font-code: "IBM Plex Mono", ui-monospace, monospace;
+    --radius: 6px;
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
-    background: radial-gradient(circle at 10% 10%, #ffffff, var(--bg));
-    color: var(--ink); font-family: "Segoe UI", Tahoma, sans-serif; padding: 24px;
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 1.0625rem;
+    line-height: 1.55;
   }
-  .card {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
-    padding: 28px 26px; max-width: 460px; width: 100%;
-    box-shadow: 0 12px 40px rgba(24, 36, 51, 0.08);
+  a { color: var(--pine); text-underline-offset: 0.2em; }
+  a:hover { color: var(--pine-deep); }
+  :focus-visible { outline: 2px solid var(--ochre); outline-offset: 3px; }
+
+  .site-header { border-bottom: 1px solid var(--rule); background: var(--surface); }
+  .site-header-inner { max-width: 1040px; margin: 0 auto; padding: 14px 16px; }
+  .wordmark { font-weight: 700; font-size: 1.3rem; letter-spacing: -0.01em; }
+
+  .shell { max-width: 1040px; margin: 0 auto; padding: 32px 16px 56px; }
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    gap: 40px;
+    align-items: center;
+    padding: 24px 0;
   }
-  .chip {
-    display: inline-block; border: 1px solid #b5d3f0; color: var(--accent);
-    border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 600;
+  h1 {
+    font-size: clamp(2.25rem, 5vw, 3.4rem);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    margin: 0 0 18px;
+    max-width: 15ch;
   }
-  h1 { margin: 14px 0 6px; font-size: 30px; }
-  .lead { margin: 0 0 16px; color: var(--muted); line-height: 1.5; }
-  .note {
-    border: 1px solid #b9d8f4; background: #eef6ff; border-radius: 10px;
-    padding: 12px 14px; color: #1b3b57; font-size: 14px; line-height: 1.5; margin-bottom: 18px;
-  }
-  form { display: flex; flex-direction: column; gap: 10px; }
-  label { font-size: 13px; color: var(--muted); }
+  .lede { color: var(--lichen); font-size: 1.3rem; line-height: 1.45; margin: 0 0 28px; max-width: 34rem; }
+
+  form { max-width: 36rem; }
+  label { display: block; font-size: 0.875rem; color: var(--lichen); margin-bottom: 6px; }
+  .row { display: flex; gap: 10px; }
   input {
-    font: inherit; width: 100%; border: 1px solid var(--line);
-    border-radius: 9px; padding: 11px 13px;
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    font-family: var(--font-code);
+    font-size: 0.95rem;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    background: #fff;
+    color: var(--ink);
+    padding: 10px 12px;
   }
+  input:focus-visible { border-color: var(--ochre); }
   button {
-    font: inherit; border: 1px solid #0b5ea1; background: var(--accent); color: #fff;
-    border-radius: 9px; padding: 11px 14px; cursor: pointer; font-weight: 600;
+    font: inherit;
+    border: 1px solid var(--pine);
+    border-radius: var(--radius);
+    background: var(--pine);
+    color: #fff;
+    padding: 10px 16px;
+    cursor: pointer;
+    white-space: nowrap;
   }
-  button:hover { background: #0b5ea1; }
-  .error { color: #8a2500; background: #fff4f1; border: 1px solid #f1c5b8;
-    border-radius: 9px; padding: 9px 12px; font-size: 14px; display: none; }
-  .foot { margin-top: 16px; font-size: 13px; color: var(--muted); }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
+  button:hover { background: var(--pine-deep); }
+  .error {
+    display: none;
+    margin-top: 14px;
+    max-width: 36rem;
+    border: 1px solid #e3c2ba;
+    background: var(--brick-wash);
+    color: var(--brick);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+  }
+  .note { margin: 18px 0 0; max-width: 36rem; color: var(--lichen); font-size: 0.875rem; }
+
+  .contours { width: 100%; height: auto; max-width: 420px; justify-self: end; }
+  .contours .ring { fill: none; stroke: var(--ochre); stroke-width: 1.4; }
+  .contours .ring-faint { fill: none; stroke: var(--ochre); stroke-width: 1; opacity: 0.45; }
+  .contours .node { fill: var(--pine); }
+  .contours .node-changed { fill: var(--surface); stroke: var(--pine); stroke-width: 2.5; }
+  .contours .label {
+    font-family: var(--font-code);
+    font-size: 13px;
+    fill: var(--ink);
+    paint-order: stroke;
+    stroke: var(--paper);
+    stroke-width: 4px;
+    stroke-linejoin: round;
+  }
+
+  @media (max-width: 760px) {
+    .hero { grid-template-columns: 1fr; gap: 24px; }
+    .contours { justify-self: start; max-width: 300px; }
+    .row { flex-direction: column; }
+  }
 </style>
 </head>
 <body>
-  <main class="card">
-    <span class="chip">DevLens</span>
-    <h1>Private Alpha</h1>
-    <p class="lead">Repository intelligence: analyze any public GitHub repo and chat with citation-grounded answers over its code.</p>
-    <div class="note">
-      This demo runs on a small AWS instance to conserve limited free-tier credits, so access is
-      invite-only. <strong>Contact the author for credentials.</strong>
-    </div>
-    <div class="error" id="err">That access key was not recognized. Try again or contact the author.</div>
-    <form method="GET" action="/__gate" id="gateform">
-      <label for="key">Access key</label>
-      <input id="key" name="key" type="text" placeholder="Enter your access key" autofocus required
-             autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
-      <button type="submit">Enter DevLens</button>
-    </form>
-    <p class="foot">Need access? Reach the author on <a href="https://github.com/atikulmunna" rel="noreferrer">GitHub</a>. Source: <a href="https://github.com/atikulmunna/devlens-fullstack" rel="noreferrer">devlens-fullstack</a>.</p>
+  <header class="site-header">
+    <div class="site-header-inner"><span class="wordmark">DevLens</span></div>
+  </header>
+  <main class="shell">
+    <section class="hero">
+      <div>
+        <h1>Understand a repository before you change it.</h1>
+        <p class="lede">DevLens is in a private alpha. Enter the access key you were given to continue.</p>
+        <form method="GET" action="/__gate" id="gateform">
+          <label for="key">Access key</label>
+          <div class="row">
+            <input id="key" name="key" type="text" autofocus required
+                   autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+            <button type="submit">Enter DevLens</button>
+          </div>
+        </form>
+        <p class="error" id="err" role="alert">That access key was not recognized. Check it and try again.</p>
+        <p class="note">
+          Access is by invitation while DevLens runs on a small server. Ask the author on
+          <a href="https://github.com/atikulmunna" rel="noreferrer">GitHub</a> for a key, or read the
+          <a href="https://github.com/atikulmunna/devlens-fullstack" rel="noreferrer">source</a>.
+        </p>
+      </div>
+      <!-- The home page's illustration (frontend-next/components/contour-map.tsx): a changed file at
+           the summit, the files that import it on the contour lines around it. -->
+      <svg class="contours" viewBox="0 0 400 350" role="img"
+           aria-label="A changed file at the center, with the files that import it on contour lines around it">
+        <path class="ring-faint" d="M218 20 C304 14 362 78 358 152 C356 190 376 226 352 262 C326 302 276 318 236 322 C196 326 168 344 124 334 C76 323 50 284 54 236 C56 204 36 172 50 132 C68 74 134 26 218 20 Z" />
+        <path class="ring" d="M214 56 C280 50 326 96 324 150 C322 180 336 206 320 236 C302 270 262 278 230 282 C200 286 180 306 144 300 C104 294 82 262 86 222 C88 196 72 170 84 140 C98 98 150 60 214 56 Z" />
+        <path class="ring" d="M210 92 C258 88 284 122 282 160 C280 200 262 232 226 238 C196 243 178 262 150 258 C120 254 108 226 116 196 C122 172 128 150 140 128 C154 104 178 94 210 92 Z" />
+        <path class="ring" d="M205 128 C232 126 246 146 244 166 C242 188 226 202 204 200 C182 198 166 186 166 166 C166 144 180 130 205 128 Z" />
+        <circle class="node-changed" cx="205" cy="164" r="8" />
+        <text class="label" x="205" y="188" text-anchor="middle">auth/jwt.py</text>
+        <circle class="node" cx="244" cy="166" r="5" />
+        <text class="label" x="252" y="162">session.py</text>
+        <circle class="node" cx="116" cy="196" r="5" />
+        <text class="label" x="108" y="200" text-anchor="end">chat.py</text>
+        <circle class="node" cx="320" cy="236" r="5" />
+        <text class="label" x="328" y="240">deps.py</text>
+        <circle class="node" cx="144" cy="300" r="5" />
+        <text class="label" x="152" y="304">main.py</text>
+      </svg>
+    </section>
   </main>
   <script>
     if (new URLSearchParams(location.search).has("denied")) {
