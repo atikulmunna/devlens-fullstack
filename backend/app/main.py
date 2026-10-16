@@ -1,6 +1,6 @@
-from urllib.parse import urlparse
 import socket
 import time
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI

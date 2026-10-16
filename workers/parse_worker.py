@@ -26,9 +26,33 @@ logger = logging.getLogger(__name__)
 SKIP_DIRS = {'.git', 'node_modules', '.venv', 'venv', 'dist', 'build', '__pycache__'}
 ALLOWED_EXTENSIONS = {
     # Code
-    '.py', '.js', '.ts', '.tsx', '.jsx', '.go', '.java', '.cpp', '.c', '.h', '.hpp', '.rs', '.php', '.rb', '.cs',
+    '.py',
+    '.js',
+    '.ts',
+    '.tsx',
+    '.jsx',
+    '.go',
+    '.java',
+    '.cpp',
+    '.c',
+    '.h',
+    '.hpp',
+    '.rs',
+    '.php',
+    '.rb',
+    '.cs',
     # Config / IaC / data / docs (feed the chat "setup" intent)
-    '.md', '.rst', '.sql', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.env', '.sh', '.tf',
+    '.md',
+    '.rst',
+    '.sql',
+    '.yaml',
+    '.yml',
+    '.toml',
+    '.ini',
+    '.cfg',
+    '.env',
+    '.sh',
+    '.tf',
 }
 # Files indexed by name: extensionless setup files, and the JSON manifests and TS configs
 # that summaries and import resolution read.
@@ -63,7 +87,11 @@ def _run(cmd: list[str], cwd: str | None = None, timeout: int | None = None) -> 
 def clone_repo(github_url: str, commit_sha: str) -> str:
     temp_dir = tempfile.mkdtemp(prefix='devlens-parse-')
     _run(['git', 'clone', '--depth', '1', github_url, temp_dir], timeout=settings.parse_clone_timeout_seconds)
-    _run(['git', 'fetch', '--depth', '1', 'origin', commit_sha], cwd=temp_dir, timeout=settings.parse_clone_timeout_seconds)
+    _run(
+        ['git', 'fetch', '--depth', '1', 'origin', commit_sha],
+        cwd=temp_dir,
+        timeout=settings.parse_clone_timeout_seconds,
+    )
     _run(['git', 'checkout', commit_sha], cwd=temp_dir, timeout=settings.parse_clone_timeout_seconds)
     return temp_dir
 
@@ -135,9 +163,10 @@ def update_job_status(db: Session, job_id: str, status: str, progress: int, erro
 
 
 def fetch_next_parse_job(db: Session) -> RepoSnapshot | None:
-    row = db.execute(
-        text(
-            """
+    row = (
+        db.execute(
+            text(
+                """
             SELECT j.id::text AS job_id,
                    j.repo_id::text AS repo_id,
                    j.commit_sha,
@@ -149,8 +178,11 @@ def fetch_next_parse_job(db: Session) -> RepoSnapshot | None:
             ORDER BY j.created_at ASC
             LIMIT 1
             """
+            )
         )
-    ).mappings().first()
+        .mappings()
+        .first()
+    )
 
     if not row:
         return None
@@ -247,7 +279,9 @@ def parse_job(db: Session, snapshot: RepoSnapshot) -> None:
 
             files = list(iter_source_files(repo_path))
             if len(files) > settings.parse_max_files:
-                raise ParseError('FILE_LIMIT_EXCEEDED', f'Repo has {len(files)} source files; limit is {settings.parse_max_files}')
+                raise ParseError(
+                    'FILE_LIMIT_EXCEEDED', f'Repo has {len(files)} source files; limit is {settings.parse_max_files}'
+                )
 
             chunks: list[dict] = []
             long_functions: list[dict] = []

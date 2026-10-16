@@ -29,23 +29,27 @@ def schedule_retry_or_dead_letter(
     message: str,
     metadata: dict | None = None,
 ) -> None:
-    row = db.execute(
-        text(
-            """
+    row = (
+        db.execute(
+            text(
+                """
             SELECT retry_count
             FROM analysis_jobs
             WHERE id = CAST(:job_id AS uuid)
             """
-        ),
-        {"job_id": job_id},
-    ).mappings().first()
+            ),
+            {"job_id": job_id},
+        )
+        .mappings()
+        .first()
+    )
 
     retry_count = int((row or {}).get("retry_count") or 0)
     retriable = is_retriable_error(stage, error_code)
     max_attempts = max(0, settings.worker_retry_max_attempts)
 
     if retriable and retry_count < max_attempts:
-        delay_seconds = settings.worker_retry_base_delay_seconds * (2 ** retry_count)
+        delay_seconds = settings.worker_retry_base_delay_seconds * (2**retry_count)
         next_retry_at = datetime.now(UTC) + timedelta(seconds=delay_seconds)
         db.execute(
             text(
@@ -109,4 +113,3 @@ def schedule_retry_or_dead_letter(
             "metadata": json.dumps(metadata or {}),
         },
     )
-

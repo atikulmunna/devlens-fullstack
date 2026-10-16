@@ -70,9 +70,9 @@ def test_openapi_docs_error_schema_has_example(client) -> None:
     assert response.status_code == 200
     schema = response.json()
 
-    analyze_errors = schema["paths"]["/api/v1/repos/analyze"]["post"]["responses"]["400"]["content"]["application/json"][
-        "schema"
-    ]
+    analyze_errors = schema["paths"]["/api/v1/repos/analyze"]["post"]["responses"]["400"]["content"][
+        "application/json"
+    ]["schema"]
     assert "example" in analyze_errors
     assert "error" in analyze_errors["example"]
 

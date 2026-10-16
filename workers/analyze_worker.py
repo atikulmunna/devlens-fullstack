@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from code_signals import LONG_FUNCTION_LINES, is_test_path
+from config import settings
 from openrouter import describe_error
 from parse_worker import update_job_status
 from reliability import schedule_retry_or_dead_letter
@@ -18,7 +19,6 @@ from telemetry import (
     record_stage_duration,
     trace_span,
 )
-from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +51,10 @@ class ChunkRecord:
 
 
 def fetch_next_analyze_job(db: Session) -> AnalyzeSnapshot | None:
-    row = db.execute(
-        text(
-            """
+    row = (
+        db.execute(
+            text(
+                """
             SELECT j.id::text AS job_id,
                    j.repo_id::text AS repo_id,
                    r.full_name,
@@ -66,8 +67,11 @@ def fetch_next_analyze_job(db: Session) -> AnalyzeSnapshot | None:
             ORDER BY j.created_at ASC
             LIMIT 1
             """
+            )
         )
-    ).mappings().first()
+        .mappings()
+        .first()
+    )
 
     if not row:
         return None
@@ -82,17 +86,21 @@ def fetch_next_analyze_job(db: Session) -> AnalyzeSnapshot | None:
 
 
 def load_repo_chunks(db: Session, repo_id: str) -> list[ChunkRecord]:
-    rows = db.execute(
-        text(
-            """
+    rows = (
+        db.execute(
+            text(
+                """
             SELECT file_path, start_line, end_line, content, language
             FROM code_chunks
             WHERE repo_id = CAST(:repo_id AS uuid)
             ORDER BY created_at ASC
             """
-        ),
-        {'repo_id': repo_id},
-    ).mappings().all()
+            ),
+            {'repo_id': repo_id},
+        )
+        .mappings()
+        .all()
+    )
 
     return [
         ChunkRecord(
@@ -113,7 +121,10 @@ def language_breakdown(chunks: list[ChunkRecord]) -> dict:
         totals[lang] = totals.get(lang, 0) + len(chunk.content)
 
     total_size = sum(totals.values()) or 1
-    return {lang: round((size / total_size) * 100, 2) for lang, size in sorted(totals.items(), key=lambda kv: kv[1], reverse=True)}
+    return {
+        lang: round((size / total_size) * 100, 2)
+        for lang, size in sorted(totals.items(), key=lambda kv: kv[1], reverse=True)
+    }
 
 
 def detect_tech_debt(chunks: list[ChunkRecord], code_signals: dict | None) -> dict:
@@ -186,13 +197,36 @@ def build_architecture_summary(snapshot: AnalyzeSnapshot, chunks: list[ChunkReco
 
 # Files that say what a project is and how it starts, in the order the summary prompt lists them.
 SUMMARY_MANIFESTS = {
-    'pyproject.toml', 'setup.py', 'package.json', 'go.mod', 'cargo.toml', 'pom.xml', 'build.gradle', 'gemfile',
+    'pyproject.toml',
+    'setup.py',
+    'package.json',
+    'go.mod',
+    'cargo.toml',
+    'pom.xml',
+    'build.gradle',
+    'gemfile',
     'composer.json',
 }
 SUMMARY_ENTRYPOINTS = {
-    '__main__.py', 'main.py', 'app.py', 'server.py', 'cli.py', 'manage.py', 'wsgi.py', 'asgi.py',
-    'main.go', 'main.rs', 'lib.rs', 'index.ts', 'index.js', 'main.ts', 'main.js', 'server.ts', 'server.js',
-    'app.ts', 'app.js',
+    '__main__.py',
+    'main.py',
+    'app.py',
+    'server.py',
+    'cli.py',
+    'manage.py',
+    'wsgi.py',
+    'asgi.py',
+    'main.go',
+    'main.rs',
+    'lib.rs',
+    'index.ts',
+    'index.js',
+    'main.ts',
+    'main.js',
+    'server.ts',
+    'server.js',
+    'app.ts',
+    'app.js',
 }
 SUMMARY_SOURCE_LIMIT = 6
 SUMMARY_SOURCE_CHARS = 1500
@@ -264,12 +298,7 @@ def _request_summary(prompt: str) -> str:
         raise AnalyzeError(code, f"OpenRouter returned {describe_error(response)}")
 
     data = response.json()
-    text = (
-        data.get("choices", [{}])[0]
-        .get("message", {})
-        .get("content", "")
-        .strip()
-    )
+    text = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
     if not text:
         raise AnalyzeError("LLM_PROVIDER_EMPTY_RESPONSE", "OpenRouter returned an empty summary")
     return text
@@ -340,10 +369,14 @@ def store_analysis_result(
     tech_debt: dict,
     file_tree: dict,
 ) -> None:
-    existing = db.execute(
-        text('SELECT id::text FROM analysis_results WHERE job_id = CAST(:job_id AS uuid) LIMIT 1'),
-        {'job_id': snapshot.job_id},
-    ).mappings().first()
+    existing = (
+        db.execute(
+            text('SELECT id::text FROM analysis_results WHERE job_id = CAST(:job_id AS uuid) LIMIT 1'),
+            {'job_id': snapshot.job_id},
+        )
+        .mappings()
+        .first()
+    )
 
     payload = {
         'repo_id': snapshot.repo_id,
@@ -475,4 +508,3 @@ def process_next_analyze_job(db: Session) -> bool:
 
     analyze_job(db, snapshot)
     return True
-

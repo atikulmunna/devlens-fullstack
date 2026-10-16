@@ -112,7 +112,7 @@ def _iter_tokens(
                 for line in response.iter_lines():
                     if not line or not line.startswith("data:"):
                         continue
-                    data = line[len("data:"):].strip()
+                    data = line[len("data:") :].strip()
                     if data == "[DONE]":
                         break
                     try:
@@ -143,12 +143,7 @@ def _build_prompt(query: str, contexts: list[dict], mode: Literal["answer", "sum
             }
         )
 
-    prompt = (
-        "Question:\n"
-        f"{query.strip()}\n\n"
-        "Retrieved code contexts (JSON):\n"
-        f"{json.dumps(trimmed_contexts)}\n\n"
-    )
+    prompt = f"Question:\n{query.strip()}\n\nRetrieved code contexts (JSON):\n{json.dumps(trimmed_contexts)}\n\n"
     if mode == "summary":
         prompt += (
             "Summarize this repository in 4 to 6 bullets: what it is for, its main components, "

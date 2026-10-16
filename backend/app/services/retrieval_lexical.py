@@ -11,9 +11,10 @@ def lexical_search_chunks(db: Session, repo_id: UUID, query: str, limit: int = 2
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Query must not be empty")
 
     safe_limit = max(1, min(limit, 100))
-    rows = db.execute(
-        text(
-            """
+    rows = (
+        db.execute(
+            text(
+                """
             SELECT id::text AS chunk_id,
                    file_path,
                    start_line,
@@ -26,9 +27,12 @@ def lexical_search_chunks(db: Session, repo_id: UUID, query: str, limit: int = 2
             ORDER BY score DESC, file_path ASC, start_line ASC NULLS LAST
             LIMIT :limit
             """
-        ),
-        {"repo_id": str(repo_id), "query": q, "limit": safe_limit},
-    ).mappings().all()
+            ),
+            {"repo_id": str(repo_id), "query": q, "limit": safe_limit},
+        )
+        .mappings()
+        .all()
+    )
 
     return [
         {

@@ -40,10 +40,17 @@ jobs:
           python -m compileall backend/app
           python -m compileall workers
 
-      - name: Frontend typecheck and build
+      - name: Python lint and format (ruff.toml)
+        run: |
+          pip install ruff==0.12.4
+          ruff check .
+          ruff format --check .
+
+      - name: Frontend lint, typecheck, test, and build
         working-directory: frontend-next
         run: |
           npm ci --no-audit --no-fund
+          npm run lint
           npm run typecheck
           npm test
           npm run build

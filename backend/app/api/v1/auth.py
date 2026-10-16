@@ -1,7 +1,6 @@
-from datetime import UTC, datetime
 import secrets
-from urllib.parse import quote
-from urllib.parse import urlparse
+from datetime import UTC, datetime
+from urllib.parse import quote, urlparse
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -10,8 +9,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.api.error_schema import ERROR_RESPONSE_SCHEMA
+from app.config import settings
 from app.db.models import RefreshToken, User
 from app.deps import get_current_user, get_db_session
 from app.services.github_oauth import (
@@ -47,6 +46,7 @@ ME_RESPONSE_EXAMPLE = {
     "email": "octo@example.com",
     "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4",
 }
+
 
 class RefreshAccessTokenResponse(BaseModel):
     access_token: str

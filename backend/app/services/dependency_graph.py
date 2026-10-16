@@ -131,7 +131,7 @@ def _alias_bases(config: dict, ref: str) -> list[str]:
             prefix, suffix = pattern.split("*", 1)
             if not (ref.startswith(prefix) and ref.endswith(suffix) and len(ref) >= len(prefix) + len(suffix)):
                 continue
-            star = ref[len(prefix): len(ref) - len(suffix)]
+            star = ref[len(prefix) : len(ref) - len(suffix)]
             bases += [target.replace("*", star, 1) for target in targets]
         elif ref == pattern:
             bases += list(targets)
@@ -196,7 +196,9 @@ def build_dependency_graph(file_chunks: list[dict]) -> dict:
         if file_path.endswith(".py"):
             edge_set |= {(file_path, target, "python") for target in _python_edges(file_path, source, files)}
         if file_path.endswith(JS_EXTENSIONS):
-            edge_set |= {(file_path, target, "javascript") for target in _js_edges(file_path, source, files, ts_configs)}
+            edge_set |= {
+                (file_path, target, "javascript") for target in _js_edges(file_path, source, files, ts_configs)
+            }
 
     edges = [
         {"id": f"{src}->{dst}", "source": src, "target": dst, "kind": kind}

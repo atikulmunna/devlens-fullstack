@@ -81,10 +81,19 @@ def run(golden: dict, name: str) -> dict:
             repo_id = db.execute(select(Repository.id).where(Repository.full_name == repo["full_name"])).scalar_one()
             for item in repo["questions"]:
                 started = time.perf_counter()
-                results = retrieval_hybrid.hybrid_search_chunks(db, repo_id=repo_id, query=item["question"], limit=TOP_K)
+                results = retrieval_hybrid.hybrid_search_chunks(
+                    db, repo_id=repo_id, query=item["question"], limit=TOP_K
+                )
                 latency_ms = (time.perf_counter() - started) * 1000
                 paths = [str(r.get("file_path") or "") for r in results]
-                rows.append({"id": item["id"], "latency_ms": latency_ms, "top": paths, **score_question(paths, set(item["relevant_files"]))})
+                rows.append(
+                    {
+                        "id": item["id"],
+                        "latency_ms": latency_ms,
+                        "top": paths,
+                        **score_question(paths, set(item["relevant_files"])),
+                    }
+                )
     count = len(rows)
     return {
         "config": name,

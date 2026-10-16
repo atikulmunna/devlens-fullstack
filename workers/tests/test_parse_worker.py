@@ -26,7 +26,6 @@ class FakeSession:
         return {'retry_count': self.retry_count}
 
 
-
 def test_chunk_lines_with_overlap() -> None:
     content = '\n'.join([f'line-{i}' for i in range(1, 11)])
     chunks = chunk_lines(content, chunk_lines=4, overlap_lines=1)
@@ -88,7 +87,9 @@ def test_iter_source_files_indexes_manifests_and_ts_configs_by_name() -> None:
 
 def test_parse_job_fails_when_file_limit_exceeded(monkeypatch) -> None:
     fake_db = FakeSession()
-    snapshot = RepoSnapshot('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 'https://github.com/x/y', 'abc')
+    snapshot = RepoSnapshot(
+        '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 'https://github.com/x/y', 'abc'
+    )
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -107,7 +108,9 @@ def test_parse_job_fails_when_file_limit_exceeded(monkeypatch) -> None:
 
 def test_parse_job_success_transitions_to_embedding(monkeypatch) -> None:
     fake_db = FakeSession()
-    snapshot = RepoSnapshot('00000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000012', 'https://github.com/x/y', 'abc')
+    snapshot = RepoSnapshot(
+        '00000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000012', 'https://github.com/x/y', 'abc'
+    )
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -127,7 +130,11 @@ def test_parse_job_success_transitions_to_embedding(monkeypatch) -> None:
         signals = {}
         monkeypatch.setattr(parse_worker, 'store_code_signals', lambda _db, _job_id, value: signals.update(value))
         observed = {'count': 0}
-        monkeypatch.setattr(parse_worker, 'record_stage_duration', lambda *_args, **_kwargs: observed.__setitem__('count', observed['count'] + 1))
+        monkeypatch.setattr(
+            parse_worker,
+            'record_stage_duration',
+            lambda *_args, **_kwargs: observed.__setitem__('count', observed['count'] + 1),
+        )
 
         parse_job(fake_db, snapshot)
 
@@ -159,7 +166,11 @@ def test_parse_job_retriable_failure_schedules_retry(monkeypatch) -> None:
         'abc',
     )
 
-    monkeypatch.setattr(parse_worker, 'clone_repo', lambda *_args, **_kwargs: (_ for _ in ()).throw(ParseError('CLONE_TIMEOUT', 'timeout')))
+    monkeypatch.setattr(
+        parse_worker,
+        'clone_repo',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ParseError('CLONE_TIMEOUT', 'timeout')),
+    )
     called = {'stage': None, 'code': None}
 
     def fake_schedule(*_args, **kwargs):
@@ -168,7 +179,11 @@ def test_parse_job_retriable_failure_schedules_retry(monkeypatch) -> None:
 
     monkeypatch.setattr(parse_worker, 'schedule_retry_or_dead_letter', fake_schedule)
     observed = {'count': 0}
-    monkeypatch.setattr(parse_worker, 'record_stage_duration', lambda *_args, **_kwargs: observed.__setitem__('count', observed['count'] + 1))
+    monkeypatch.setattr(
+        parse_worker,
+        'record_stage_duration',
+        lambda *_args, **_kwargs: observed.__setitem__('count', observed['count'] + 1),
+    )
     parse_job(fake_db, snapshot)
 
     assert called['stage'] == 'parsing'
@@ -187,7 +202,9 @@ def test_maybe_store_commit_diff_rolls_back_and_logs_on_store_failure(monkeypatc
             self.rolled_back = True
 
     db = FailingSession()
-    monkeypatch.setattr(parse_worker, 'compute_commit_diff', lambda *_args, **_kwargs: {'head_sha': 'sha', 'changed_files': []})
+    monkeypatch.setattr(
+        parse_worker, 'compute_commit_diff', lambda *_args, **_kwargs: {'head_sha': 'sha', 'changed_files': []}
+    )
 
     parse_worker.maybe_store_commit_diff(db, '/tmp/repo', 'repo-1', 'sha')
 

@@ -4,8 +4,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from app.services import share_tokens
-from app.services import tokens
+from app.services import share_tokens, tokens
 
 
 def test_access_token_round_trip() -> None:

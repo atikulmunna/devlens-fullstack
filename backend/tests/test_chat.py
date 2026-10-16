@@ -112,9 +112,13 @@ def test_chat_message_stream_persists_assistant_with_citations(client, db_sessio
     assert "event: done" in stream.text
     assert '"no_citation": false' in stream.text
 
-    rows = db_session.execute(
-        select(ChatMessage).where(ChatMessage.session_id == UUID(session_id)).order_by(ChatMessage.created_at.asc())
-    ).scalars().all()
+    rows = (
+        db_session.execute(
+            select(ChatMessage).where(ChatMessage.session_id == UUID(session_id)).order_by(ChatMessage.created_at.asc())
+        )
+        .scalars()
+        .all()
+    )
     assert len(rows) == 2
     assert rows[0].role == "user"
     assert rows[1].role == "assistant"
@@ -374,11 +378,21 @@ def _ask(client, db_session: Session, monkeypatch, question: str, synthesize, ex
     user, repo, chunk_id = _seed_user_and_repo(db_session)
     for file_path, content in extra_chunks:
         db_session.add(
-            CodeChunk(id=uuid4(), repo_id=repo.id, file_path=file_path, start_line=1, end_line=5, content=content, language="md")
+            CodeChunk(
+                id=uuid4(),
+                repo_id=repo.id,
+                file_path=file_path,
+                start_line=1,
+                end_line=5,
+                content=content,
+                language="md",
+            )
         )
     db_session.commit()
     headers = {"Authorization": f"Bearer {create_access_token(user.id)}"}
-    session_id = client.post("/api/v1/chat/sessions", json={"repo_id": str(repo.id)}, headers=headers).json()["session_id"]
+    session_id = client.post("/api/v1/chat/sessions", json={"repo_id": str(repo.id)}, headers=headers).json()[
+        "session_id"
+    ]
     monkeypatch.setattr(
         chat_module,
         "hybrid_search_chunks",
@@ -410,7 +424,9 @@ def _recording_synthesizer(calls: list[dict], answer: str = "From the model."):
 def test_summary_question_is_answered_by_the_model_in_summary_mode(client, db_session: Session, monkeypatch) -> None:
     calls: list[dict] = []
 
-    text = _ask(client, db_session, monkeypatch, "Summarize this repository", _recording_synthesizer(calls, "- Signs tokens."))
+    text = _ask(
+        client, db_session, monkeypatch, "Summarize this repository", _recording_synthesizer(calls, "- Signs tokens.")
+    )
 
     assert len(calls) == 1
     assert calls[0]["mode"] == "summary"
@@ -432,7 +448,9 @@ def test_regular_question_uses_answer_mode(client, db_session: Session, monkeypa
 def test_stack_trace_question_is_not_answered_with_languages(client, db_session: Session, monkeypatch) -> None:
     calls: list[dict] = []
 
-    text = _ask(client, db_session, monkeypatch, "Where does this stack trace come from?", _recording_synthesizer(calls))
+    text = _ask(
+        client, db_session, monkeypatch, "Where does this stack trace come from?", _recording_synthesizer(calls)
+    )
 
     assert len(calls) == 1
     assert "appears to" not in text
@@ -460,8 +478,7 @@ def test_language_answer_counts_code_only_and_ranks_by_share() -> None:
     answer = chat_module._language_answer({"py": 62.4, "rst": 22.6, "md": 3.3, "sh": 2.0, "makefile": 0.6, "toml": 4.6})
 
     assert answer == (
-        "The code is mostly Python (96%), with Shell (3%), Makefile (under 1%). "
-        "Shares are by size of the indexed code."
+        "The code is mostly Python (96%), with Shell (3%), Makefile (under 1%). Shares are by size of the indexed code."
     )
 
 
@@ -482,14 +499,18 @@ def test_language_question_without_a_breakdown_goes_to_the_model(client, db_sess
 def test_stale_vector_hits_are_not_sent_to_the_model(client, db_session: Session, monkeypatch) -> None:
     user, repo, chunk_id = _seed_user_and_repo(db_session)
     headers = {"Authorization": f"Bearer {create_access_token(user.id)}"}
-    session_id = client.post("/api/v1/chat/sessions", json={"repo_id": str(repo.id)}, headers=headers).json()["session_id"]
+    session_id = client.post("/api/v1/chat/sessions", json={"repo_id": str(repo.id)}, headers=headers).json()[
+        "session_id"
+    ]
     stale = {"chunk_id": str(uuid4()), "file_path": "src/gone.py", "start_line": 1, "end_line": 9, "rerank_score": 0.9}
     real = {"chunk_id": chunk_id, "file_path": "src/auth/jwt.py", "start_line": 10, "end_line": 30, "rerank_score": 0.7}
     monkeypatch.setattr(chat_module, "hybrid_search_chunks", lambda *_args, **_kwargs: [stale, real])
     calls: list[dict] = []
     monkeypatch.setattr(chat_module, "synthesize_grounded_answer_stream", _recording_synthesizer(calls))
 
-    client.post(f"/api/v1/chat/sessions/{session_id}/message", json={"content": "how are tokens refreshed?"}, headers=headers)
+    client.post(
+        f"/api/v1/chat/sessions/{session_id}/message", json={"content": "how are tokens refreshed?"}, headers=headers
+    )
 
     assert [context["file_path"] for context in calls[0]["contexts"]] == ["src/auth/jwt.py"]
 
@@ -536,11 +557,15 @@ def test_every_context_is_a_numbered_citation_flagged_by_use(client, db_session:
 def test_follow_up_question_sends_earlier_turns_as_history(client, db_session: Session, monkeypatch) -> None:
     user, repo, chunk_id = _seed_user_and_repo(db_session)
     headers = {"Authorization": f"Bearer {create_access_token(user.id)}"}
-    session_id = client.post("/api/v1/chat/sessions", json={"repo_id": str(repo.id)}, headers=headers).json()["session_id"]
+    session_id = client.post("/api/v1/chat/sessions", json={"repo_id": str(repo.id)}, headers=headers).json()[
+        "session_id"
+    ]
     hit = {"chunk_id": chunk_id, "file_path": "src/auth/jwt.py", "start_line": 10, "end_line": 30, "rerank_score": 0.7}
     monkeypatch.setattr(chat_module, "hybrid_search_chunks", lambda *_args, **_kwargs: [hit])
     calls: list[dict] = []
-    monkeypatch.setattr(chat_module, "synthesize_grounded_answer_stream", _recording_synthesizer(calls, "In jwt.py [1]."))
+    monkeypatch.setattr(
+        chat_module, "synthesize_grounded_answer_stream", _recording_synthesizer(calls, "In jwt.py [1].")
+    )
 
     for question in ["Where are tokens refreshed?", "And how long do they last?"]:
         client.post(f"/api/v1/chat/sessions/{session_id}/message", json={"content": question}, headers=headers)

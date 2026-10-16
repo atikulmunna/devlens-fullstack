@@ -2,7 +2,6 @@ import hashlib
 import secrets
 from uuid import uuid4
 
-
 API_KEY_PREFIX = "dlk_"
 
 

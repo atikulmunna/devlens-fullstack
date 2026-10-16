@@ -89,17 +89,21 @@ def _tokenize(text: str) -> set[str]:
 def load_chunk_content(db: Session, repo_id: UUID, chunk_ids: list[str]) -> dict[str, str]:
     if not chunk_ids:
         return {}
-    rows = db.execute(
-        text(
-            """
+    rows = (
+        db.execute(
+            text(
+                """
             SELECT id::text AS chunk_id, content
             FROM code_chunks
             WHERE repo_id = CAST(:repo_id AS uuid)
               AND id = ANY(CAST(:chunk_ids AS uuid[]))
             """
-        ),
-        {"repo_id": str(repo_id), "chunk_ids": chunk_ids},
-    ).mappings().all()
+            ),
+            {"repo_id": str(repo_id), "chunk_ids": chunk_ids},
+        )
+        .mappings()
+        .all()
+    )
     return {row["chunk_id"]: row.get("content") or "" for row in rows}
 
 

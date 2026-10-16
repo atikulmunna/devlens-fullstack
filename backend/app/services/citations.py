@@ -4,7 +4,6 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-
 CITATION_MARKER = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
 
 
@@ -56,18 +55,22 @@ def validate_citations_for_repo(db: Session, repo_id: UUID, citations: list[dict
         if not chunk_id or not file_path:
             continue
 
-        row = db.execute(
-            text(
-                """
+        row = (
+            db.execute(
+                text(
+                    """
                 SELECT file_path, start_line, end_line
                 FROM code_chunks
                 WHERE id = CAST(:chunk_id AS uuid)
                   AND repo_id = CAST(:repo_id AS uuid)
                 LIMIT 1
                 """
-            ),
-            {"chunk_id": chunk_id, "repo_id": str(repo_id)},
-        ).mappings().first()
+                ),
+                {"chunk_id": chunk_id, "repo_id": str(repo_id)},
+            )
+            .mappings()
+            .first()
+        )
         if not row:
             continue
 

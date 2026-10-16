@@ -32,10 +32,14 @@ def _latest_diff(db: Session, repo_id: UUID, head: str | None) -> CommitDiff | N
 
 
 def _load_file_chunks(db: Session, repo_id: UUID) -> list[dict]:
-    rows = db.execute(
-        text("SELECT file_path, content FROM code_chunks WHERE repo_id = CAST(:repo_id AS uuid)"),
-        {"repo_id": str(repo_id)},
-    ).mappings().all()
+    rows = (
+        db.execute(
+            text("SELECT file_path, content FROM code_chunks WHERE repo_id = CAST(:repo_id AS uuid)"),
+            {"repo_id": str(repo_id)},
+        )
+        .mappings()
+        .all()
+    )
     return [{"file_path": row["file_path"], "content": row["content"]} for row in rows]
 
 
@@ -118,7 +122,9 @@ def get_commit_diff(
 
     diff = _latest_diff(db, repo_id, head)
     if not diff:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No commit diff available for this repository")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="No commit diff available for this repository"
+        )
 
     changed_files = diff.changed_files or []
     changed_paths = [entry.get("path") for entry in changed_files if entry.get("path")]
@@ -155,7 +161,9 @@ def ask_about_diff(
 
     diff = _latest_diff(db, repo_id, head)
     if not diff:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No commit diff available for this repository")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="No commit diff available for this repository"
+        )
 
     changed_files = diff.changed_files or []
     contexts = _diff_contexts(_rank_for_question(changed_files, payload.question))

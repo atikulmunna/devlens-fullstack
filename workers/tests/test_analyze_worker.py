@@ -23,7 +23,6 @@ class FakeSession:
         return {'retry_count': self.retry_count}
 
 
-
 def test_language_breakdown_percentages_sum_close_to_100() -> None:
     chunks = [
         ChunkRecord(file_path='a.py', start_line=1, end_line=2, content='x' * 50, language='py'),
@@ -68,7 +67,11 @@ def test_analyze_job_success_marks_done(monkeypatch) -> None:
     monkeypatch.setattr(analyze_worker, 'store_analysis_result', fake_store)
     monkeypatch.setattr(analyze_worker, 'mark_job_done', fake_done)
     observed = {'count': 0}
-    monkeypatch.setattr(analyze_worker, 'record_stage_duration', lambda *_args, **_kwargs: observed.__setitem__('count', observed['count'] + 1))
+    monkeypatch.setattr(
+        analyze_worker,
+        'record_stage_duration',
+        lambda *_args, **_kwargs: observed.__setitem__('count', observed['count'] + 1),
+    )
 
     analyze_worker.analyze_job(fake_db, snapshot)
 
@@ -112,8 +115,10 @@ def test_generate_architecture_summary_falls_back_without_api_key(monkeypatch) -
     ]
     monkeypatch.setattr(analyze_worker.settings, 'openrouter_api_key', None)
     summary = analyze_worker.generate_architecture_summary(snapshot, {'py': 100.0}, chunks)
-    assert summary == 'test-owner/repo has 1 indexed file across src and the repository root. ' \
+    assert (
+        summary == 'test-owner/repo has 1 indexed file across src and the repository root. '
         'A written summary was not generated for this analysis.'
+    )
     assert 'later stages' not in summary
 
 
@@ -229,7 +234,9 @@ def test_analyze_job_unexpected_failure_schedules_retry(monkeypatch) -> None:
         full_name='test-owner/repo',
         default_branch='main',
     )
-    monkeypatch.setattr(analyze_worker, 'load_repo_chunks', lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError('boom')))
+    monkeypatch.setattr(
+        analyze_worker, 'load_repo_chunks', lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError('boom'))
+    )
     called = {'stage': None, 'code': None}
 
     def fake_schedule(*_args, **kwargs):
@@ -238,7 +245,11 @@ def test_analyze_job_unexpected_failure_schedules_retry(monkeypatch) -> None:
 
     monkeypatch.setattr(analyze_worker, 'schedule_retry_or_dead_letter', fake_schedule)
     observed = {'count': 0}
-    monkeypatch.setattr(analyze_worker, 'record_stage_duration', lambda *_args, **_kwargs: observed.__setitem__('count', observed['count'] + 1))
+    monkeypatch.setattr(
+        analyze_worker,
+        'record_stage_duration',
+        lambda *_args, **_kwargs: observed.__setitem__('count', observed['count'] + 1),
+    )
     analyze_worker.analyze_job(fake_db, snapshot)
 
     assert called['stage'] == 'analyzing'
@@ -297,7 +308,9 @@ def test_summary_failure_logs_openrouter_reason(monkeypatch, caplog) -> None:
 
 
 def test_contributor_stats_failures_are_logged(monkeypatch, caplog) -> None:
-    monkeypatch.setattr(analyze_worker.httpx, 'Client', _ErrorClient(error=analyze_worker.httpx.ConnectError('dns failure')))
+    monkeypatch.setattr(
+        analyze_worker.httpx, 'Client', _ErrorClient(error=analyze_worker.httpx.ConnectError('dns failure'))
+    )
     unreachable = analyze_worker.get_contributor_stats('test-owner/repo')
 
     monkeypatch.setattr(analyze_worker.httpx, 'Client', _ErrorClient(response=_JsonResponse(403, {})))

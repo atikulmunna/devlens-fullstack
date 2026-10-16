@@ -6,8 +6,8 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.api.error_schema import ERROR_RESPONSE_SCHEMA
+from app.config import settings
 from app.db.models import AnalysisResult, Repository, ShareToken, User
 from app.deps import get_current_user, get_db_session
 from app.services.share_tokens import create_share_token, decode_share_token, new_share_token_id, share_token_expiry
@@ -40,12 +40,21 @@ SHARE_RESOLVE_RESPONSE_EXAMPLE = {
         "architecture_summary": "Service-oriented modules...",
         "language_breakdown": {"Python": 80, "TypeScript": 20},
         "contributor_stats": {"total": 7},
-        "tech_debt_flags": {"measured": True, "long_function_lines": 50, "long_function_count": 2, "long_functions": [{"file": "src/app.py", "name": "handle", "line": 40, "length": 72}], "todo_count": 5, "todo_file_count": 2, "test_file_count": 12},
+        "tech_debt_flags": {
+            "measured": True,
+            "long_function_lines": 50,
+            "long_function_count": 2,
+            "long_functions": [{"file": "src/app.py", "name": "handle", "line": 40, "length": 72}],
+            "todo_count": 5,
+            "todo_file_count": 2,
+            "test_file_count": 12,
+        },
         "file_tree": {"type": "dir", "name": "/", "children": []},
     },
     "shared_at": "2026-02-23T12:00:00Z",
     "expires_at": "2026-03-01T12:00:00Z",
 }
+
 
 class ShareCreateRequest(BaseModel):
     ttl_days: int | None = None
@@ -74,12 +83,16 @@ def _get_repo_or_404(db: Session, repo_id: UUID) -> Repository:
 
 
 def _get_latest_result_or_404(db: Session, repo_id: UUID) -> AnalysisResult:
-    result = db.execute(
-        select(AnalysisResult)
-        .where(AnalysisResult.repo_id == repo_id)
-        .order_by(AnalysisResult.created_at.desc())
-        .limit(1)
-    ).scalars().first()
+    result = (
+        db.execute(
+            select(AnalysisResult)
+            .where(AnalysisResult.repo_id == repo_id)
+            .order_by(AnalysisResult.created_at.desc())
+            .limit(1)
+        )
+        .scalars()
+        .first()
+    )
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis result not found")
     return result

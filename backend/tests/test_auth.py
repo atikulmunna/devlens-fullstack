@@ -58,7 +58,9 @@ def test_auth_callback_rejects_invalid_state(client: TestClient) -> None:
     assert response.status_code == 400
 
 
-def test_auth_callback_upserts_user_and_sets_refresh_cookie(client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_auth_callback_upserts_user_and_sets_refresh_cookie(
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(auth_module, 'exchange_code_for_access_token', lambda code: 'mock-token')
     monkeypatch.setattr(
         auth_module,

@@ -10,7 +10,6 @@ from fastapi import HTTPException, status
 
 from app.config import settings
 
-
 GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
 GITHUB_ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token"
 GITHUB_USER_URL = "https://api.github.com/user"
@@ -27,7 +26,9 @@ def generate_oauth_state(next_path: str | None = None) -> str:
         "iat": int(time.time()),
         "next": next_path or "/profile",
     }
-    payload = base64.urlsafe_b64encode(json.dumps(body, separators=(",", ":")).encode("utf-8")).decode("utf-8").rstrip("=")
+    payload = (
+        base64.urlsafe_b64encode(json.dumps(body, separators=(",", ":")).encode("utf-8")).decode("utf-8").rstrip("=")
+    )
     signature = _sign_payload(payload)
     return f"{payload}.{signature}"
 

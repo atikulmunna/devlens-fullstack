@@ -60,7 +60,9 @@ def test_create_share_link_and_resolve_public_payload(client, db_session: Sessio
     assert create_payload["share_token"]
     assert "/share/" in create_payload["share_url"]
 
-    share_row = db_session.execute(select(ShareToken).where(ShareToken.id == UUID(create_payload["share_id"]))).scalar_one()
+    share_row = db_session.execute(
+        select(ShareToken).where(ShareToken.id == UUID(create_payload["share_id"]))
+    ).scalar_one()
     assert share_row.repo_id == repo.id
     assert share_row.user_id == user.id
 

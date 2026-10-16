@@ -10,17 +10,17 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import AnalysisResult, ChatMessage, CodeChunk, ChatSession, Repository, User
-from app.db.session import SessionLocal
 from app.api.error_schema import ERROR_RESPONSE_SCHEMA
+from app.db.models import AnalysisResult, ChatMessage, ChatSession, CodeChunk, Repository, User
+from app.db.session import SessionLocal
 from app.deps import get_current_user, get_db_session
-from app.services.citations import format_citation, mark_cited, validate_citations_for_repo
 from app.services.chat_synthesizer import (
     MAX_CONTEXTS,
     ChatIntent,
     ChatSynthesisError,
     synthesize_grounded_answer_stream,
 )
+from app.services.citations import format_citation, mark_cited, validate_citations_for_repo
 from app.services.retrieval_hybrid import hybrid_search_chunks, load_chunk_content
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,7 @@ CHAT_SSE_SAMPLE_RESPONSE = (
     "event: done\n"
     'data: {"message_id":"d7a2ca6c-f9d1-42ce-9de0-35e0dbdc47dc","citations":[],"no_citation":true}\n\n'
 )
+
 
 class CreateChatSessionRequest(BaseModel):
     repo_id: str
@@ -162,7 +163,9 @@ def _language_answer(breakdown: dict | None) -> str | None:
     if len(ranked) == 1:
         return f"The code is written in {lead_name}."
     rest = ", ".join(_describe(name, share) for name, share in ranked[1:4])
-    return f"The code is mostly {_describe(lead_name, lead_share)}, with {rest}. Shares are by size of the indexed code."
+    return (
+        f"The code is mostly {_describe(lead_name, lead_share)}, with {rest}. Shares are by size of the indexed code."
+    )
 
 
 def _language_question(query: str) -> bool:
@@ -245,11 +248,7 @@ def _select_diverse_results(results: list[dict], limit: int = 6) -> list[dict]:
             continue
         root = path.split("/", 1)[0]
         # Prefer root diversity but allow at most two per root.
-        root_count = sum(
-            1
-            for s in selected
-            if str(s.get("file_path") or "").split("/", 1)[0] == root
-        )
+        root_count = sum(1 for s in selected if str(s.get("file_path") or "").split("/", 1)[0] == root)
         if root in seen_roots and root_count >= 2:
             continue
         selected.append(item)
@@ -306,7 +305,9 @@ def _plan_assistant_response(db: Session, repo_id: UUID, query: str, results: li
     if _language_question(query):
         analysis = (
             db.execute(
-                select(AnalysisResult).where(AnalysisResult.repo_id == repo_id).order_by(AnalysisResult.created_at.desc())
+                select(AnalysisResult)
+                .where(AnalysisResult.repo_id == repo_id)
+                .order_by(AnalysisResult.created_at.desc())
             )
             .scalars()
             .first()
@@ -467,11 +468,13 @@ def list_chat_sessions(
     sessions = db.execute(query).scalars().all()
     payload: list[ChatSessionListItem] = []
     for row in sessions:
-        messages = db.execute(
-            select(ChatMessage)
-            .where(ChatMessage.session_id == row.id)
-            .order_by(ChatMessage.created_at.desc())
-        ).scalars().all()
+        messages = (
+            db.execute(
+                select(ChatMessage).where(ChatMessage.session_id == row.id).order_by(ChatMessage.created_at.desc())
+            )
+            .scalars()
+            .all()
+        )
         last_preview = messages[0].content[:120] if messages else None
         payload.append(
             ChatSessionListItem(
@@ -540,9 +543,13 @@ def get_chat_session(
     current_user: User = Depends(get_current_user),
 ) -> ChatSessionResponse:
     session_row = _ensure_owned_session(db, session_id, current_user.id)
-    message_rows = db.execute(
-        select(ChatMessage).where(ChatMessage.session_id == session_row.id).order_by(ChatMessage.created_at.asc())
-    ).scalars().all()
+    message_rows = (
+        db.execute(
+            select(ChatMessage).where(ChatMessage.session_id == session_row.id).order_by(ChatMessage.created_at.asc())
+        )
+        .scalars()
+        .all()
+    )
     messages = [
         ChatMessageResponse(
             id=str(msg.id),

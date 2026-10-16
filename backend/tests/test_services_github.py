@@ -5,8 +5,7 @@ import time
 import pytest
 from fastapi import HTTPException
 
-from app.services import github_oauth
-from app.services import github_repos
+from app.services import github_oauth, github_repos
 
 
 class FakeResponse:
@@ -54,7 +53,9 @@ def test_oauth_state_rejects_expired() -> None:
 
 
 def test_exchange_code_for_access_token(monkeypatch) -> None:
-    monkeypatch.setattr(github_oauth.httpx, "Client", lambda **_kwargs: FakeClient([FakeResponse(200, {"access_token": "abc"})]))
+    monkeypatch.setattr(
+        github_oauth.httpx, "Client", lambda **_kwargs: FakeClient([FakeResponse(200, {"access_token": "abc"})])
+    )
     assert github_oauth.exchange_code_for_access_token("code") == "abc"
 
 

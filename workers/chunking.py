@@ -122,7 +122,7 @@ def chunk_code(content: str, ts_language: str, max_lines: int, overlap_lines: in
     for start, end in raw_spans:
         pieces = [(start, end)] if (end - start + 1) <= max_lines else _window(start, end, max_lines, overlap_lines)
         for piece_start, piece_end in pieces:
-            text = "\n".join(lines[piece_start - 1:piece_end])
+            text = "\n".join(lines[piece_start - 1 : piece_end])
             if text.strip():
                 out.append((piece_start, piece_end, text))
     return out
