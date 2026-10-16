@@ -24,9 +24,6 @@ ENV_DEFAULTS = {
     "JWT_ACCESS_TTL_MINUTES": "15",
     "JWT_REFRESH_TTL_DAYS": "7",
     "SHARE_TOKEN_TTL_DAYS": "7",
-    "R2_BUCKET": "test-bucket",
-    "R2_ACCESS_KEY": "test-key",
-    "R2_SECRET_KEY": "test-secret",
 }
 
 for key, value in ENV_DEFAULTS.items():
@@ -36,7 +33,6 @@ from app.config import settings
 from app.db.models import (
     AnalysisJob,
     AnalysisResult,
-    ApiKey,
     ChatMessage,
     ChatSession,
     CodeChunk,
@@ -116,7 +112,6 @@ def cleanup_test_users(db_session: Session):
 
         db_session.execute(delete(RefreshToken).where(RefreshToken.user_id.in_(test_user_ids)))
         db_session.execute(delete(ShareToken).where(ShareToken.user_id.in_(test_user_ids)))
-        db_session.execute(delete(ApiKey).where(ApiKey.user_id.in_(test_user_ids)))
         db_session.execute(delete(User).where(User.github_id >= 900000000))
         db_session.commit()
 
