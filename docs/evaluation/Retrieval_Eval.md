@@ -58,7 +58,9 @@ Latency is measured on a desktop CPU; nearly all of it is the query embedding ro
 
 - `reranker_enabled` defaults to `False` (production already forced it off). The reranker code and
   the `INSTALL_RERANKER` build flag stay, so it can be re-measured with the script below.
-- Ship the test-file weight: `TEST_FILE_WEIGHT = 0.6` in `backend/app/services/retrieval_hybrid.py`.
+- Ship the test-file weight: `SUPPORTING_FILE_WEIGHT = 0.6` in `backend/app/services/retrieval_hybrid.py`.
+  (2026-10-16: CI and tooling files such as `.github/workflows/*` now share it, after a production
+  "main architecture components" question retrieved only workflow files.)
 
 ## Remaining misses (hybrid, tests at 0.6)
 

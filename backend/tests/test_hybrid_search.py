@@ -264,3 +264,30 @@ def test_test_path_pattern() -> None:
         assert retrieval_hybrid.TEST_PATH_RE.search(path), path
     for path in ("src/latest.py", "contest/main.py", "testing_utils.py", "src/attestation.ts"):
         assert not retrieval_hybrid.TEST_PATH_RE.search(path), path
+
+
+TOOLING_HITS = [
+    (".github/workflows/tests.yaml", 0.95),
+    ("src/markupsafe/__init__.py", 0.90),
+    (".pre-commit-config.yaml", 0.89),
+    ("docs/index.md", 0.10),
+]
+
+
+def test_ci_and_tooling_files_rank_below_close_implementation_matches(monkeypatch) -> None:
+    paths = _rank_paths(monkeypatch, "What are the main architecture components?", TOOLING_HITS)
+
+    assert paths[0] == "src/markupsafe/__init__.py"
+
+
+def test_questions_about_ci_keep_workflow_files_on_top(monkeypatch) -> None:
+    paths = _rank_paths(monkeypatch, "Which CI workflows run on a pull request?", TOOLING_HITS)
+
+    assert paths[0] == ".github/workflows/tests.yaml"
+
+
+def test_tooling_path_pattern() -> None:
+    for path in (".github/workflows/a.yml", "pkg/.github/x.yml", ".pre-commit-config.yaml", "tox.ini", ".gitlab-ci.yml"):
+        assert retrieval_hybrid.TOOLING_PATH_RE.search(path), path
+    for path in ("src/github_client.py", "docs/ci.md", "app/workflows/engine.py", "Dockerfile"):
+        assert not retrieval_hybrid.TOOLING_PATH_RE.search(path), path

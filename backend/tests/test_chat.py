@@ -645,3 +645,21 @@ def test_session_list_counts_messages_and_shows_the_latest_in_one_query(client, 
     # More sessions, same number of statements: no query per session.
     assert len(one["sessions"]) == 1
     assert statements_for_four == statements_for_one
+
+
+def test_repo_wide_questions_route_to_summary_mode() -> None:
+    for question in (
+        "What are the main architecture components in this repository?",
+        "Give me a high-level overview",
+        "How is this repo organized?",
+        "What does this library do?",
+        "Describe the overall architecture",
+        "What is the project structure?",
+    ):
+        assert chat_planner._summary_question(question), question
+    for question in (
+        "How does the auth architecture handle refresh?",
+        "Which module parses the config file?",
+        "Where are the key components of the token signer tested?",
+    ):
+        assert not chat_planner._summary_question(question), question

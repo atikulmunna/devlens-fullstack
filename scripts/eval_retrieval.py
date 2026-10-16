@@ -9,7 +9,7 @@ changes only how candidates are ranked:
   hybrid   both, fused (production today)
   rerank   hybrid, then the cross-encoder reranker (needs sentence-transformers)
 
-A ":<weight>" suffix sets the test-file weight for that run (hybrid:1.0 ranks tests like any file).
+A ":<weight>" suffix sets the supporting-file weight (tests, CI) for that run (hybrid:1.0 ranks them like any file).
 
 Usage (from the repo root):
   docker compose exec -T backend sh -c 'cat > /tmp/eval_retrieval.py' < scripts/eval_retrieval.py
@@ -43,11 +43,11 @@ def configured(config: str):
         retrieval_hybrid.lexical_search_chunks,
         retrieval_hybrid.dense_search_qdrant,
         settings.reranker_enabled,
-        retrieval_hybrid.TEST_FILE_WEIGHT,
+        retrieval_hybrid.SUPPORTING_FILE_WEIGHT,
     )
     settings.reranker_enabled = name == "rerank"
     if weight:
-        retrieval_hybrid.TEST_FILE_WEIGHT = float(weight)
+        retrieval_hybrid.SUPPORTING_FILE_WEIGHT = float(weight)
     if name == "dense":
         retrieval_hybrid.lexical_search_chunks = lambda *_args, **_kwargs: []
     elif name == "lexical":
@@ -59,7 +59,7 @@ def configured(config: str):
             retrieval_hybrid.lexical_search_chunks,
             retrieval_hybrid.dense_search_qdrant,
             settings.reranker_enabled,
-            retrieval_hybrid.TEST_FILE_WEIGHT,
+            retrieval_hybrid.SUPPORTING_FILE_WEIGHT,
         ) = saved
 
 
