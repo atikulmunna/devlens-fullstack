@@ -108,10 +108,21 @@ class DashboardRepositoryResponse(BaseModel):
     size_kb: int | None = None
 
 
+class DashboardAnalysisResponse(BaseModel):
+    quality_score: int | None = None
+    architecture_summary: str | None = None
+    language_breakdown: dict[str, float] | None = None
+    # JSON columns written by the analyze worker (workers/analyze_worker.py), passed through as stored.
+    contributor_stats: dict | None = None
+    tech_debt_flags: dict | None = None
+    file_tree: dict | None = None
+    created_at: datetime
+
+
 class DashboardResponse(BaseModel):
     repo_id: str
     repository: DashboardRepositoryResponse
-    analysis: dict | None = None
+    analysis: DashboardAnalysisResponse | None = None
     has_analysis: bool
 
 
@@ -458,17 +469,17 @@ def get_repo_dashboard(repo_id: UUID, db: Session = Depends(get_db_session)) -> 
         .first()
     )
 
-    analysis_payload: dict | None = None
+    analysis_payload = None
     if result is not None:
-        analysis_payload = {
-            "quality_score": result.quality_score,
-            "architecture_summary": result.architecture_summary,
-            "language_breakdown": result.language_breakdown,
-            "contributor_stats": result.contributor_stats,
-            "tech_debt_flags": result.tech_debt_flags,
-            "file_tree": result.file_tree,
-            "created_at": result.created_at,
-        }
+        analysis_payload = DashboardAnalysisResponse(
+            quality_score=result.quality_score,
+            architecture_summary=result.architecture_summary,
+            language_breakdown=result.language_breakdown,
+            contributor_stats=result.contributor_stats,
+            tech_debt_flags=result.tech_debt_flags,
+            file_tree=result.file_tree,
+            created_at=result.created_at,
+        )
 
     return DashboardResponse(
         repo_id=str(repo.id),

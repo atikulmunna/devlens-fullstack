@@ -1,0 +1,4478 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DevLens API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/auth/github": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Start GitHub OAuth flow",
+        "description": "Redirects the user to GitHub authorization page. Supports an optional frontend-relative `next` path.",
+        "operationId": "auth_github_api_v1_auth_github_get",
+        "parameters": [
+          {
+            "name": "next",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "/",
+              "title": "Next"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "302": {
+            "description": "Redirect to GitHub OAuth authorize endpoint"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/callback": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Handle GitHub OAuth callback",
+        "description": "Exchanges OAuth code, upserts user, sets refresh+CSRF cookies, then redirects back to frontend.",
+        "operationId": "auth_callback_api_v1_auth_callback_get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "State"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "302": {
+            "description": "Login succeeded and redirected to frontend"
+          },
+          "400": {
+            "description": "Invalid OAuth state or request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitHub payload was invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Rotate refresh cookie and issue a new access token",
+        "description": "Requires matching CSRF cookie/header and valid origin. On success, revokes old refresh token, sets a new cookie pair, and returns bearer access token.",
+        "operationId": "refresh_access_token_api_v1_auth_refresh_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshAccessTokenResponse"
+                },
+                "example": {
+                  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                  "token_type": "bearer",
+                  "expires_in_seconds": 900
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid, revoked, or expired refresh token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin or CSRF validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "delete": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Logout and revoke refresh token",
+        "description": "Revokes current refresh token when present and clears refresh/CSRF cookies.",
+        "operationId": "logout_api_v1_auth_logout_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Origin or CSRF validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Fetch current authenticated user",
+        "operationId": "current_user_me_api_v1_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserResponse"
+                },
+                "example": {
+                  "id": "d7a2ca6c-f9d1-42ce-9de0-35e0dbdc47dc",
+                  "github_id": 123,
+                  "username": "octocat",
+                  "email": "octo@example.com",
+                  "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/repos/analyze": {
+      "post": {
+        "tags": [
+          "repos"
+        ],
+        "summary": "Create or reuse repository analysis job",
+        "description": "Resolves latest repository metadata and head commit from GitHub. Returns an existing active/done job when dedupe conditions are met.",
+        "operationId": "analyze_repo_api_v1_repos_analyze_post",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyzeRepoRequest"
+              },
+              "example": {
+                "github_url": "https://github.com/owner/repo",
+                "force_reanalyze": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Job created or existing job returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyzeRepoResponse"
+                },
+                "example": {
+                  "job_id": "d7a2ca6c-f9d1-42ce-9de0-35e0dbdc47dc",
+                  "repo_id": "cd3ce6f7-76fc-4cc2-8e34-c176f7af6f82",
+                  "full_name": "owner/repo",
+                  "status": "queued",
+                  "cache_hit": false,
+                  "commit_sha": "abcdef1234567890"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid GitHub URL or unsupported repository",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream GitHub API failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/{repo_id}/search/lexical": {
+      "get": {
+        "tags": [
+          "repos"
+        ],
+        "summary": "Lexical search over repository chunks (PostgreSQL FTS)",
+        "description": "Runs keyword search using PostgreSQL full-text search and ranks matches with ts_rank_cd. Results are scoped to the provided repo_id.",
+        "operationId": "search_repo_lexical_api_v1_repos__repo_id__search_lexical_get",
+        "parameters": [
+          {
+            "name": "repo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Repo Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LexicalSearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Repository not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/{repo_id}/search/hybrid": {
+      "get": {
+        "tags": [
+          "repos"
+        ],
+        "summary": "Hybrid search (dense + lexical + rerank)",
+        "description": "Runs dense retrieval in Qdrant and lexical retrieval in PostgreSQL, merges candidates, then applies deterministic reranking.",
+        "operationId": "search_repo_hybrid_api_v1_repos__repo_id__search_hybrid_get",
+        "parameters": [
+          {
+            "name": "repo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Repo Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HybridSearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Repository not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream vector search failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/{repo_id}/dashboard": {
+      "get": {
+        "tags": [
+          "repos"
+        ],
+        "summary": "Repository dashboard payload",
+        "description": "Returns repository metadata and latest analysis result to render the dashboard panels (overview, architecture summary, tech debt, quality score, contributors, file explorer).",
+        "operationId": "get_repo_dashboard_api_v1_repos__repo_id__dashboard_get",
+        "parameters": [
+          {
+            "name": "repo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Repo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Repository not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/recent": {
+      "get": {
+        "tags": [
+          "repos"
+        ],
+        "summary": "Recently analyzed repositories",
+        "description": "Repositories with a finished analysis, newest first.",
+        "operationId": "list_recent_repos_api_v1_repos_recent_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 1,
+              "default": 6,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecentReposResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/by-name/{owner}/{name}": {
+      "get": {
+        "tags": [
+          "repos"
+        ],
+        "summary": "Look up a repository by owner and name",
+        "description": "Case-insensitive, like GitHub. Returns 404 when the repository has never been analyzed.",
+        "operationId": "get_repo_by_name_api_v1_repos_by_name__owner___name__get",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Owner"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepoSummaryResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Repository not analyzed yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/{repo_id}/dependency-graph": {
+      "get": {
+        "tags": [
+          "repos"
+        ],
+        "summary": "Repository dependency graph",
+        "description": "Builds a module dependency graph from analyzed code chunks. Edges represent import/require relationships resolved to files within the same repository snapshot.",
+        "operationId": "get_dependency_graph_api_v1_repos__repo_id__dependency_graph_get",
+        "parameters": [
+          {
+            "name": "repo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Repo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DependencyGraphResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Repository not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/{repo_id}/status": {
+      "get": {
+        "tags": [
+          "repos"
+        ],
+        "summary": "Stream repository analysis status (SSE)",
+        "description": "Server-Sent Events endpoint emitting `progress`, `done`, or `error` events. Use `once=true` to get a single snapshot and close the stream.",
+        "operationId": "stream_repo_status_api_v1_repos__repo_id__status_get",
+        "parameters": [
+          {
+            "name": "repo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Repo Id"
+            }
+          },
+          {
+            "name": "once",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Once"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream payload",
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "event: progress\ndata: {\"job_id\":\"d7a2ca6c-f9d1-42ce-9de0-35e0dbdc47dc\",\"stage\":\"parsing\",\"progress\":35,\"message\":\"parsing in progress\",\"eta_seconds\":null}\n\nevent: done\ndata: {\"job_id\":\"d7a2ca6c-f9d1-42ce-9de0-35e0dbdc47dc\",\"stage\":\"done\",\"progress\":100,\"files\":42,\"chunks\":310,\"indexed_chunks\":310}\n\n"
+              }
+            }
+          },
+          "404": {
+            "description": "Repository not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/sessions": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "List chat sessions",
+        "operationId": "list_chat_sessions_api_v1_chat_sessions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "repo_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSessionListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Create chat session",
+        "operationId": "create_chat_session_api_v1_chat_sessions_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateChatSessionRequest"
+              },
+              "example": {
+                "repo_id": "cd3ce6f7-76fc-4cc2-8e34-c176f7af6f82"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateChatSessionResponse"
+                },
+                "example": {
+                  "session_id": "d7a2ca6c-f9d1-42ce-9de0-35e0dbdc47dc",
+                  "repo_id": "cd3ce6f7-76fc-4cc2-8e34-c176f7af6f82",
+                  "created_at": "2026-02-23T13:00:00Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Get session with message history",
+        "operationId": "get_chat_session_api_v1_chat_sessions__session_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Delete chat session",
+        "operationId": "delete_chat_session_api_v1_chat_sessions__session_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/repos/{repo_id}/suggestions": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Suggested chat questions for a repository",
+        "operationId": "suggested_questions_api_v1_chat_repos__repo_id__suggestions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "repo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Repo Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10,
+              "minimum": 1,
+              "default": 5,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestedQuestionsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/sessions/{session_id}/message": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Send message and stream assistant response (SSE)",
+        "operationId": "send_chat_message_api_v1_chat_sessions__session_id__message_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMessageRequest"
+              },
+              "example": {
+                "content": "Where is auth refresh handled?",
+                "top_k": 5
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "event: delta\ndata: {\"token\":\"Relevant \"}\n\nevent: done\ndata: {\"message_id\":\"d7a2ca6c-f9d1-42ce-9de0-35e0dbdc47dc\",\"citations\":[],\"no_citation\":true}\n\n"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/{repo_id}/diff": {
+      "get": {
+        "tags": [
+          "diff"
+        ],
+        "summary": "Get Commit Diff",
+        "operationId": "get_commit_diff_api_v1_repos__repo_id__diff_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "repo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Repo Id"
+            }
+          },
+          {
+            "name": "head",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Head"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitDiffResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/{repo_id}/diff/ask": {
+      "post": {
+        "tags": [
+          "diff"
+        ],
+        "summary": "Ask About Diff",
+        "operationId": "ask_about_diff_api_v1_repos__repo_id__diff_ask_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "repo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Repo Id"
+            }
+          },
+          {
+            "name": "head",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Head"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiffAskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/export/{repo_id}/share": {
+      "post": {
+        "tags": [
+          "export"
+        ],
+        "summary": "Create signed public share link",
+        "operationId": "create_share_link_api_v1_export__repo_id__share_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "repo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Repo Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareCreateRequest"
+              },
+              "example": {
+                "ttl_days": 7
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareCreateResponse"
+                },
+                "example": {
+                  "share_id": "d7a2ca6c-f9d1-42ce-9de0-35e0dbdc47dc",
+                  "share_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                  "share_url": "http://localhost:3000/share/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                  "expires_at": "2026-03-01T12:00:00Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/export/share/{share_id}": {
+      "delete": {
+        "tags": [
+          "export"
+        ],
+        "summary": "Revoke existing share link",
+        "operationId": "revoke_share_link_api_v1_export_share__share_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "share_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Share Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/share/{token}": {
+      "get": {
+        "tags": [
+          "share"
+        ],
+        "summary": "Resolve public share token",
+        "operationId": "get_shared_analysis_api_v1_share__token__get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedAnalysisResponse"
+                },
+                "example": {
+                  "repo_id": "cd3ce6f7-76fc-4cc2-8e34-c176f7af6f82",
+                  "repository": {
+                    "github_url": "https://github.com/owner/repo",
+                    "full_name": "owner/repo",
+                    "owner": "owner",
+                    "name": "repo",
+                    "description": "Example repository",
+                    "stars": 120,
+                    "forks": 20,
+                    "language": "Python",
+                    "default_branch": "main",
+                    "latest_commit_sha": "abcdef123"
+                  },
+                  "analysis": {
+                    "quality_score": 74,
+                    "architecture_summary": "Service-oriented modules...",
+                    "language_breakdown": {
+                      "Python": 80,
+                      "TypeScript": 20
+                    },
+                    "contributor_stats": {
+                      "total": 7
+                    },
+                    "tech_debt_flags": {
+                      "measured": true,
+                      "long_function_lines": 50,
+                      "long_function_count": 2,
+                      "long_functions": [
+                        {
+                          "file": "src/app.py",
+                          "name": "handle",
+                          "line": 40,
+                          "length": 72
+                        }
+                      ],
+                      "todo_count": 5,
+                      "todo_file_count": 2,
+                      "test_file_count": 12
+                    },
+                    "file_tree": {
+                      "type": "dir",
+                      "name": "/",
+                      "children": []
+                    }
+                  },
+                  "shared_at": "2026-02-23T12:00:00Z",
+                  "expires_at": "2026-03-01T12:00:00Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/deps": {
+      "get": {
+        "summary": "Health Deps",
+        "operationId": "health_deps_health_deps_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Deps Health Deps Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "summary": "Metrics",
+        "operationId": "metrics_metrics_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Metrics Metrics Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AnalyzeRepoRequest": {
+        "properties": {
+          "github_url": {
+            "type": "string",
+            "title": "Github Url",
+            "examples": [
+              "https://github.com/owner/repo"
+            ]
+          },
+          "force_reanalyze": {
+            "type": "boolean",
+            "title": "Force Reanalyze",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "github_url"
+        ],
+        "title": "AnalyzeRepoRequest"
+      },
+      "AnalyzeRepoResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "repo_id": {
+            "type": "string",
+            "title": "Repo Id"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "cache_hit": {
+            "type": "boolean",
+            "title": "Cache Hit"
+          },
+          "commit_sha": {
+            "type": "string",
+            "title": "Commit Sha"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "repo_id",
+          "full_name",
+          "status",
+          "cache_hit",
+          "commit_sha"
+        ],
+        "title": "AnalyzeRepoResponse"
+      },
+      "BlastRadiusResponse": {
+        "properties": {
+          "changed_files": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Changed Files"
+          },
+          "impacted_files": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Impacted Files"
+          },
+          "impacted_count": {
+            "type": "integer",
+            "title": "Impacted Count"
+          },
+          "graph_stats": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Graph Stats"
+          }
+        },
+        "type": "object",
+        "required": [
+          "changed_files",
+          "impacted_files",
+          "impacted_count",
+          "graph_stats"
+        ],
+        "title": "BlastRadiusResponse"
+      },
+      "ChangedFileResponse": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "added": {
+            "type": "integer",
+            "title": "Added"
+          },
+          "removed": {
+            "type": "integer",
+            "title": "Removed"
+          },
+          "hunks": {
+            "type": "integer",
+            "title": "Hunks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "status",
+          "added",
+          "removed",
+          "hunks"
+        ],
+        "title": "ChangedFileResponse"
+      },
+      "ChatMessageResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "source_citations": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Citations"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "role",
+          "content",
+          "created_at"
+        ],
+        "title": "ChatMessageResponse"
+      },
+      "ChatSessionListItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "repo_id": {
+            "type": "string",
+            "title": "Repo Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count",
+            "default": 0
+          },
+          "last_message_preview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message Preview"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "repo_id",
+          "created_at"
+        ],
+        "title": "ChatSessionListItem"
+      },
+      "ChatSessionListResponse": {
+        "properties": {
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/ChatSessionListItem"
+            },
+            "type": "array",
+            "title": "Sessions"
+          }
+        },
+        "type": "object",
+        "title": "ChatSessionListResponse"
+      },
+      "ChatSessionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "repo_id": {
+            "type": "string",
+            "title": "Repo Id"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMessageResponse"
+            },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "repo_id",
+          "user_id",
+          "created_at"
+        ],
+        "title": "ChatSessionResponse"
+      },
+      "CommitDiffResponse": {
+        "properties": {
+          "repo_id": {
+            "type": "string",
+            "title": "Repo Id"
+          },
+          "base_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Sha"
+          },
+          "head_sha": {
+            "type": "string",
+            "title": "Head Sha"
+          },
+          "changed_files": {
+            "items": {
+              "$ref": "#/components/schemas/ChangedFileResponse"
+            },
+            "type": "array",
+            "title": "Changed Files"
+          },
+          "security_flags": {
+            "items": {
+              "$ref": "#/components/schemas/SecurityFlagResponse"
+            },
+            "type": "array",
+            "title": "Security Flags"
+          },
+          "blast_radius": {
+            "$ref": "#/components/schemas/BlastRadiusResponse"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo_id",
+          "base_sha",
+          "head_sha",
+          "changed_files",
+          "security_flags",
+          "blast_radius",
+          "created_at"
+        ],
+        "title": "CommitDiffResponse"
+      },
+      "CreateChatSessionRequest": {
+        "properties": {
+          "repo_id": {
+            "type": "string",
+            "title": "Repo Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo_id"
+        ],
+        "title": "CreateChatSessionRequest"
+      },
+      "CreateChatSessionResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "repo_id": {
+            "type": "string",
+            "title": "Repo Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "repo_id",
+          "created_at"
+        ],
+        "title": "CreateChatSessionResponse"
+      },
+      "CurrentUserResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "github_id": {
+            "type": "integer",
+            "title": "Github Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "github_id",
+          "username"
+        ],
+        "title": "CurrentUserResponse"
+      },
+      "DashboardAnalysisResponse": {
+        "properties": {
+          "quality_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Score"
+          },
+          "architecture_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Architecture Summary"
+          },
+          "language_breakdown": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Breakdown"
+          },
+          "contributor_stats": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contributor Stats"
+          },
+          "tech_debt_flags": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tech Debt Flags"
+          },
+          "file_tree": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Tree"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "created_at"
+        ],
+        "title": "DashboardAnalysisResponse"
+      },
+      "DashboardRepositoryResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "github_url": {
+            "type": "string",
+            "title": "Github Url"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "owner": {
+            "type": "string",
+            "title": "Owner"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "default_branch": {
+            "type": "string",
+            "title": "Default Branch"
+          },
+          "latest_commit_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Commit Sha"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "stars": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stars"
+          },
+          "forks": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forks"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "size_kb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Kb"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "github_url",
+          "full_name",
+          "owner",
+          "name",
+          "default_branch"
+        ],
+        "title": "DashboardRepositoryResponse"
+      },
+      "DashboardResponse": {
+        "properties": {
+          "repo_id": {
+            "type": "string",
+            "title": "Repo Id"
+          },
+          "repository": {
+            "$ref": "#/components/schemas/DashboardRepositoryResponse"
+          },
+          "analysis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DashboardAnalysisResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "has_analysis": {
+            "type": "boolean",
+            "title": "Has Analysis"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo_id",
+          "repository",
+          "has_analysis"
+        ],
+        "title": "DashboardResponse"
+      },
+      "DependencyEdge": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "target",
+          "kind"
+        ],
+        "title": "DependencyEdge"
+      },
+      "DependencyGraphResponse": {
+        "properties": {
+          "repo_id": {
+            "type": "string",
+            "title": "Repo Id"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/DependencyNode"
+            },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/DependencyEdge"
+            },
+            "type": "array",
+            "title": "Edges"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/DependencyGraphStats"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo_id",
+          "nodes",
+          "edges",
+          "stats"
+        ],
+        "title": "DependencyGraphResponse"
+      },
+      "DependencyGraphStats": {
+        "properties": {
+          "files_considered": {
+            "type": "integer",
+            "title": "Files Considered"
+          },
+          "edges_detected": {
+            "type": "integer",
+            "title": "Edges Detected"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files_considered",
+          "edges_detected"
+        ],
+        "title": "DependencyGraphStats"
+      },
+      "DependencyNode": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "file_path": {
+            "type": "string",
+            "title": "File Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "file_path"
+        ],
+        "title": "DependencyNode"
+      },
+      "DiffAskRequest": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "title": "Question"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "DiffAskRequest"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HybridSearchChunk": {
+        "properties": {
+          "chunk_id": {
+            "type": "string",
+            "title": "Chunk Id"
+          },
+          "file_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Path"
+          },
+          "start_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Line"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Line"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "dense_score": {
+            "type": "number",
+            "title": "Dense Score"
+          },
+          "lexical_score": {
+            "type": "number",
+            "title": "Lexical Score"
+          },
+          "rerank_score": {
+            "type": "number",
+            "title": "Rerank Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "chunk_id",
+          "dense_score",
+          "lexical_score",
+          "rerank_score"
+        ],
+        "title": "HybridSearchChunk"
+      },
+      "HybridSearchResponse": {
+        "properties": {
+          "repo_id": {
+            "type": "string",
+            "title": "Repo Id"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/HybridSearchChunk"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo_id",
+          "query",
+          "total",
+          "results"
+        ],
+        "title": "HybridSearchResponse"
+      },
+      "LexicalSearchChunk": {
+        "properties": {
+          "chunk_id": {
+            "type": "string",
+            "title": "Chunk Id"
+          },
+          "file_path": {
+            "type": "string",
+            "title": "File Path"
+          },
+          "start_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Line"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Line"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "chunk_id",
+          "file_path",
+          "score"
+        ],
+        "title": "LexicalSearchChunk"
+      },
+      "LexicalSearchResponse": {
+        "properties": {
+          "repo_id": {
+            "type": "string",
+            "title": "Repo Id"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/LexicalSearchChunk"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo_id",
+          "query",
+          "total",
+          "results"
+        ],
+        "title": "LexicalSearchResponse"
+      },
+      "RecentReposResponse": {
+        "properties": {
+          "repos": {
+            "items": {
+              "$ref": "#/components/schemas/RepoSummaryResponse"
+            },
+            "type": "array",
+            "title": "Repos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repos"
+        ],
+        "title": "RecentReposResponse"
+      },
+      "RefreshAccessTokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          },
+          "expires_in_seconds": {
+            "type": "integer",
+            "title": "Expires In Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "expires_in_seconds"
+        ],
+        "title": "RefreshAccessTokenResponse"
+      },
+      "RepoSummaryResponse": {
+        "properties": {
+          "repo_id": {
+            "type": "string",
+            "title": "Repo Id"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "github_url": {
+            "type": "string",
+            "title": "Github Url"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "last_analyzed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Analyzed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo_id",
+          "full_name",
+          "github_url"
+        ],
+        "title": "RepoSummaryResponse"
+      },
+      "SecurityFlagResponse": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Categories"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "categories"
+        ],
+        "title": "SecurityFlagResponse"
+      },
+      "SendMessageRequest": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "top_k": {
+            "type": "integer",
+            "title": "Top K",
+            "default": 5
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "SendMessageRequest"
+      },
+      "ShareCreateRequest": {
+        "properties": {
+          "ttl_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Days"
+          }
+        },
+        "type": "object",
+        "title": "ShareCreateRequest"
+      },
+      "ShareCreateResponse": {
+        "properties": {
+          "share_id": {
+            "type": "string",
+            "title": "Share Id"
+          },
+          "share_token": {
+            "type": "string",
+            "title": "Share Token"
+          },
+          "share_url": {
+            "type": "string",
+            "title": "Share Url"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "share_id",
+          "share_token",
+          "share_url",
+          "expires_at"
+        ],
+        "title": "ShareCreateResponse"
+      },
+      "SharedAnalysisResponse": {
+        "properties": {
+          "repo_id": {
+            "type": "string",
+            "title": "Repo Id"
+          },
+          "repository": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Repository"
+          },
+          "analysis": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Analysis"
+          },
+          "shared_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Shared At"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo_id",
+          "repository",
+          "analysis",
+          "shared_at",
+          "expires_at"
+        ],
+        "title": "SharedAnalysisResponse"
+      },
+      "SuggestedQuestionsResponse": {
+        "properties": {
+          "repo_id": {
+            "type": "string",
+            "title": "Repo Id"
+          },
+          "suggestions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Suggestions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo_id"
+        ],
+        "title": "SuggestedQuestionsResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

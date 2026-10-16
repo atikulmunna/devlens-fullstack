@@ -50,6 +50,8 @@ jobs:
         working-directory: frontend-next
         run: |
           npm ci --no-audit --no-fund
+          npm run gen:api
+          git diff --exit-code -- lib/api-schema.ts || { echo "lib/api-schema.ts is stale: run npm run gen:api and commit it."; exit 1; }
           npm run lint
           npm run typecheck
           npm test
@@ -68,6 +70,11 @@ jobs:
 
       - name: Run migrations
         run: bash ./scripts/db-migrate.sh
+
+      - name: OpenAPI schema matches the frontend's copy
+        run: |
+          docker compose exec -T -e PYTHONPATH=/app backend python - < scripts/export_openapi.py > frontend-next/lib/openapi.json
+          git diff --exit-code -- frontend-next/lib/openapi.json || { echo "The backend API changed: run scripts/export_openapi.py and npm run gen:api, then commit both."; exit 1; }
 
       - name: Run backend test suite
         run: bash ./scripts/test-backend.sh

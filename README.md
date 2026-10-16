@@ -288,6 +288,19 @@ ruff format --check .   # `ruff format .` rewrites
 npm --prefix frontend-next run lint
 ```
 
+### API types
+
+The frontend's request and response types are generated from the backend's OpenAPI schema, so a
+backend change that breaks the frontend fails typecheck. After changing an endpoint or response
+model, with the stack up:
+
+```powershell
+docker compose exec -T -e PYTHONPATH=/app backend python - < scripts/export_openapi.py > frontend-next/lib/openapi.json
+npm --prefix frontend-next run gen:api
+```
+
+Commit both `lib/openapi.json` and `lib/api-schema.ts`; CI fails if either is stale.
+
 ### Smoke / E2E
 
 ```powershell
