@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 import app.api.v1.chat as chat_module
 from app.db.models import AnalysisResult, ChatMessage, ChatSession, CodeChunk, Repository, User
+from app.services.chat_synthesizer import ChatSynthesisError
 from app.services.tokens import create_access_token
 
 
@@ -305,7 +306,7 @@ def test_chat_falls_back_when_synthesizer_fails(client, db_session: Session, mon
     )
 
     def _boom(**_kwargs):
-        raise chat_module.ChatSynthesisError("provider unavailable")
+        raise ChatSynthesisError("provider unavailable")
 
     monkeypatch.setattr(chat_module, "synthesize_grounded_answer_stream", _boom)
 
@@ -458,7 +459,7 @@ def test_stack_trace_question_is_not_answered_with_languages(client, db_session:
 
 def test_summary_falls_back_to_snippets_when_the_model_fails(client, db_session: Session, monkeypatch) -> None:
     def failing(**_kwargs):
-        raise chat_module.ChatSynthesisError("provider unavailable")
+        raise ChatSynthesisError("provider unavailable")
 
     text = _ask(client, db_session, monkeypatch, "Give me an overview", failing)
 

@@ -1,5 +1,3 @@
-import json
-import logging
 import re
 from uuid import UUID
 
@@ -10,12 +8,12 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.api.error_schema import ERROR_RESPONSE_SCHEMA
-from app.db.models import CommitDiff, Repository, User
-from app.deps import get_current_user, get_db_session
+from app.api.sse import SSE_HEADERS, sse_event, stream_answer
+from app.db.models import CommitDiff, User
+from app.deps import get_current_user, get_db_session, get_repo_or_404
 from app.services.blast_radius import compute_blast_radius
-from app.services.chat_synthesizer import ChatSynthesisError, synthesize_grounded_answer_stream
+from app.services.chat_synthesizer import detect_intent, synthesize_grounded_answer_stream
 
-logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/repos", tags=["diff"])
 
 
@@ -56,17 +54,6 @@ def _summarize_changed(changed_files: list[dict]) -> list[dict]:
             }
         )
     return summary
-
-
-def _diff_intent(question: str) -> str:
-    q = question.lower()
-    if any(w in q for w in ["security", "auth", "secret", "token", "vulnerab", "risk", "credential", "password"]):
-        return "security"
-    if any(w in q for w in ["architecture", "design", "structure", "coupling"]):
-        return "architecture"
-    if any(w in q for w in ["break", "broke", "fail", "bug", "regress", "impact", "affect", "caller"]):
-        return "debug"
-    return "general"
 
 
 def _rank_for_question(changed_files: list[dict], question: str) -> list[dict]:
@@ -116,9 +103,7 @@ def get_commit_diff(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ):
-    repo = db.execute(select(Repository).where(Repository.id == repo_id)).scalar_one_or_none()
-    if not repo:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+    get_repo_or_404(db, repo_id)
 
     diff = _latest_diff(db, repo_id, head)
     if not diff:
@@ -167,13 +152,10 @@ def ask_about_diff(
 
     changed_files = diff.changed_files or []
     contexts = _diff_contexts(_rank_for_question(changed_files, payload.question))
-    intent = _diff_intent(payload.question)
+    intent = detect_intent(payload.question)
     security_categories = sorted(
         {cat for flag in (diff.security_flags or []) for cat in (flag.get("categories") or [])}
     )
-
-    def _delta(token: str) -> str:
-        return f"event: delta\ndata: {json.dumps({'token': token})}\n\n"
 
     def _fallback_text() -> str:
         summary = _summarize_changed(changed_files)
@@ -184,31 +166,17 @@ def ask_about_diff(
     # A sync generator on purpose: Starlette iterates it in a worker thread, so the blocking
     # LLM HTTP stream never stalls the event loop.
     def event_stream():
-        parts: list[str] = []
-        try:
-            for piece in synthesize_grounded_answer_stream(
-                query=payload.question,
-                contexts=contexts,
-                intent=intent,
-            ):
-                parts.append(piece)
-                yield _delta(piece)
-        except ChatSynthesisError as exc:
-            logger.warning("Diff LLM synthesis failed for repo %s: %s", repo_id, exc)
-
-        if not "".join(parts).strip():
-            for token in _fallback_text().split(" "):
-                yield _delta(token + " ")
+        yield from stream_answer(
+            lambda: synthesize_grounded_answer_stream(query=payload.question, contexts=contexts, intent=intent),
+            _fallback_text,
+            f"Diff LLM synthesis failed for repo {repo_id}",
+        )
 
         final = {
             "head_sha": diff.head_sha,
             "base_sha": diff.base_sha,
             "security_categories": security_categories,
         }
-        yield f"event: done\ndata: {json.dumps(final)}\n\n"
+        yield sse_event("done", final)
 
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
-    )
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers=SSE_HEADERS)

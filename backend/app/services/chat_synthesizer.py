@@ -14,6 +14,47 @@ class ChatSynthesisError(RuntimeError):
 
 ChatIntent = Literal["general", "architecture", "setup", "debug", "security"]
 
+# Checked in order; the first group with a matching word wins. Security words are the most
+# specific, setup words ("run", "start", "env") the most generic.
+INTENT_WORDS: list[tuple[ChatIntent, tuple[str, ...]]] = [
+    (
+        "security",
+        (
+            "security",
+            "auth",
+            "token",
+            "permission",
+            "secret",
+            "csrf",
+            "oauth",
+            "vulnerab",
+            "credential",
+            "password",
+            "risk",
+        ),
+    ),
+    ("architecture", ("architecture", "design", "structure", "component", "module", "flow", "dependency", "coupling")),
+    (
+        "debug",
+        (
+            "bug",
+            "error",
+            "fail",
+            "exception",
+            "debug",
+            "issue",
+            "fix",
+            "broke",
+            "break",
+            "regress",
+            "impact",
+            "affect",
+            "caller",
+        ),
+    ),
+    ("setup", ("setup", "install", "run", "start", "configure", "env", "docker", "deploy")),
+]
+
 # How many retrieved contexts the model sees; each one is numbered and citable as [n].
 MAX_CONTEXTS = 6
 # Earlier turns sent with a follow-up question, each capped so a long answer cannot crowd out the code.
@@ -22,6 +63,12 @@ CITE_INSTRUCTION = (
     "Cite the contexts you rely on inline by their ref number in square brackets, like [2]. "
     "Use only the ref numbers listed."
 )
+
+
+def detect_intent(question: str) -> ChatIntent:
+    """The focus a question needs, which picks the system prompt emphasis and the answer length."""
+    q = question.lower()
+    return next((intent for intent, words in INTENT_WORDS if any(word in q for word in words)), "general")
 
 
 def _system_prompt(mode: Literal["answer", "summary"], intent: ChatIntent) -> str:

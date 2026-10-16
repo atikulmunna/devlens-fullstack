@@ -1,5 +1,3 @@
-import json
-import logging
 import re
 from datetime import datetime
 from uuid import UUID, uuid4
@@ -11,19 +9,18 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.error_schema import ERROR_RESPONSE_SCHEMA
-from app.db.models import AnalysisResult, ChatMessage, ChatSession, CodeChunk, Repository, User
+from app.api.sse import SSE_HEADERS, sse_event, stream_answer, stream_text
+from app.db.models import AnalysisResult, ChatMessage, ChatSession, CodeChunk, User
 from app.db.session import SessionLocal
-from app.deps import get_current_user, get_db_session
+from app.deps import get_current_user, get_db_session, get_repo_or_404
 from app.services.chat_synthesizer import (
     MAX_CONTEXTS,
-    ChatIntent,
-    ChatSynthesisError,
+    detect_intent,
     synthesize_grounded_answer_stream,
 )
 from app.services.citations import format_citation, mark_cited, validate_citations_for_repo
 from app.services.retrieval_hybrid import hybrid_search_chunks, load_chunk_content
 
-logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 # Earlier messages sent to the model with each question: three question and answer turns.
 HISTORY_MESSAGES = 6
@@ -199,23 +196,6 @@ def _summary_question(query: str) -> bool:
     return any(token in q for token in patterns)
 
 
-def _detect_chat_intent(query: str) -> ChatIntent:
-    q = query.lower()
-    architecture_tokens = ("architecture", "design", "components", "module", "flow", "dependency")
-    setup_tokens = ("setup", "install", "run", "start", "configure", "env", "docker", "deploy")
-    debug_tokens = ("bug", "error", "failing", "exception", "debug", "issue", "fix", "broken")
-    security_tokens = ("auth", "token", "permission", "secret", "security", "csrf", "oauth")
-    if any(t in q for t in architecture_tokens):
-        return "architecture"
-    if any(t in q for t in setup_tokens):
-        return "setup"
-    if any(t in q for t in debug_tokens):
-        return "debug"
-    if any(t in q for t in security_tokens):
-        return "security"
-    return "general"
-
-
 def _select_diverse_results(results: list[dict], limit: int = 6) -> list[dict]:
     if not results:
         return []
@@ -383,7 +363,7 @@ def _plan_assistant_response(db: Session, repo_id: UUID, query: str, results: li
         "kind": "llm",
         "contexts": llm_contexts,
         "mode": mode,
-        "intent": _detect_chat_intent(query),
+        "intent": detect_intent(query),
         "citations": citations,
         "top": top,
         "refs": refs,
@@ -517,9 +497,7 @@ def create_chat_session(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid repo_id") from exc
 
-    repo = db.execute(select(Repository).where(Repository.id == repo_uuid)).scalar_one_or_none()
-    if repo is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+    repo = get_repo_or_404(db, repo_uuid)
 
     row = ChatSession(id=uuid4(), repo_id=repo.id, user_id=current_user.id)
     db.add(row)
@@ -605,9 +583,7 @@ def suggested_questions(
     current_user: User = Depends(get_current_user),
 ) -> SuggestedQuestionsResponse:
     _ = current_user
-    repo = db.execute(select(Repository).where(Repository.id == repo_id)).scalar_one_or_none()
-    if repo is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository not found")
+    get_repo_or_404(db, repo_id)
 
     return SuggestedQuestionsResponse(repo_id=str(repo_id), suggestions=_build_suggested_questions(db, repo_id, limit))
 
@@ -662,42 +638,31 @@ def send_chat_message(
 
     repo_id = session_row.repo_id
 
-    def _delta(token: str) -> str:
-        return f"event: delta\ndata: {json.dumps({'token': token})}\n\n"
-
     # A sync generator on purpose: Starlette iterates it in a worker thread, so the blocking
     # LLM HTTP stream never stalls the event loop. The request's `db` is closed by the time
     # this runs, so any DB work here uses its own session.
     def event_stream():
-        # Deterministic branches (no results / language) emit their fixed text.
         if plan["kind"] == "final":
+            # Deterministic branches (no results / language) emit their fixed text.
             final_text = plan["text"]
-            for token in final_text.split(" "):
-                yield _delta(token + " ")
+            yield from stream_text(final_text)
         else:
-            # LLM branch: stream real tokens as they arrive from the model.
-            parts: list[str] = []
-            try:
-                for piece in synthesize_grounded_answer_stream(
+
+            def snippet_fallback() -> str:
+                with SessionLocal() as stream_db:
+                    return _snippet_fallback_text(stream_db, repo_id, plan["top"], plan["refs"])
+
+            final_text = yield from stream_answer(
+                lambda: synthesize_grounded_answer_stream(
                     query=payload.content,
                     contexts=plan["contexts"],
                     mode=plan["mode"],
                     intent=plan["intent"],
                     history=history,
-                ):
-                    parts.append(piece)
-                    yield _delta(piece)
-            except ChatSynthesisError as exc:
-                # A mid-stream failure keeps whatever partial text was already delivered.
-                logger.warning("Chat LLM synthesis failed for session %s: %s", session_id, exc)
-
-            final_text = "".join(parts).strip()
-            if not final_text:
-                # Nothing streamed (all providers failed before emitting): fall back.
-                with SessionLocal() as stream_db:
-                    final_text = _snippet_fallback_text(stream_db, repo_id, plan["top"], plan["refs"])
-                for token in final_text.split(" "):
-                    yield _delta(token + " ")
+                ),
+                snippet_fallback,
+                f"Chat LLM synthesis failed for session {session_id}",
+            )
 
         final_citations = {**citations, "citations": mark_cited(citations.get("citations", []), final_text)}
         message_id = uuid4()
@@ -718,10 +683,6 @@ def send_chat_message(
             "citations": final_citations["citations"],
             "no_citation": bool(final_citations.get("no_citation")),
         }
-        yield f"event: done\ndata: {json.dumps(final)}\n\n"
+        yield sse_event("done", final)
 
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
-    )
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers=SSE_HEADERS)
