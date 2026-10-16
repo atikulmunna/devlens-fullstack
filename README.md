@@ -1,395 +1,213 @@
 # DevLens
 
-DevLens is a full-stack repository intelligence platform that analyzes public GitHub repositories and gives you:
-- architecture and quality insights
-- searchable repository context
-- citation-grounded chat over indexed code
+DevLens reads a public GitHub repository and answers questions about its code. Each answer cites
+the files and lines it was built from. For the latest commit it shows what changed, which files
+import the changed code, and any security-sensitive lines that were added or removed.
 
-It is built as a production-oriented pipeline (API + workers + vector store + UI), and can run both locally with Docker and on a single cloud VM (AWS).
+![Chat about pallets/itsdangerous: an answer that cites timed.rst, test_timed.py, and exc.py inline, with two retrieved sources the model did not use drawn dashed](assets/chat.png)
 
-## Live Demo
+**Live demo.** DevLens runs as a private alpha on a single AWS instance that is started on request.
+[aimunna.me/devlens-fullstack](https://aimunna.me/devlens-fullstack/) explains how to get a demo
+window and an access key. Chat also asks you to sign in with GitHub.
 
-[![Open the live demo](https://img.shields.io/badge/%E2%96%B6%20Live%20Demo-DevLens-0f6dbb?style=for-the-badge)](https://aimunna.me/devlens-fullstack/)
+## What it does
 
-> **Private alpha.** The live instance is started on request to keep cloud costs near zero,
-> so it is not online 24/7. The link above is always available and explains how to reach the
-> **author** ([GitHub](https://github.com/atikulmunna)) for a live-demo window and an access
-> key. Once in, chat additionally requires signing in with GitHub inside the app.
+Paste a repository URL on the home page. While it is analyzed, a progress view walks through each
+step with live file and chunk counts. Then the repository has its own page at `/r/<owner>/<repo>`
+with three tabs.
 
-## Demo Screenshot
+**Chat.** Ask how something works. Up to six retrieved code sections go to the model, numbered
+`[1]` to `[6]`. The answer cites them inline, and each source is listed under the answer as
+`file:line`; sources the model saw but did not cite are drawn dashed. Follow-up questions see the
+previous three turns, and questions about the whole repository ("what are the main components?")
+start from the README.
 
-![DevLens Workspace](assets/devlens.png)
+**Overview.** An architecture summary written from the README, the package manifest, and the
+entry-point code. Code health is reported as facts, not a score: functions over 50 lines (with
+name, file, and line), TODO and FIXME notes, and test files. Contributors and the file tree are on
+the same page.
 
-## Why DevLens
+**Changes.** The latest commit against its parent: the changed files, every file that imports
+them, and lines touching auth, tokens, secrets, crypto, or environment config, flagged separately
+when they were removed. The import graph follows Python packages, relative imports, `src/`
+layouts, and TypeScript path aliases. You can ask questions about the diff itself.
 
-When you open a new repository, understanding it quickly is hard. DevLens automates that first-pass intelligence:
-1. ingest repo
-2. parse and chunk code
-3. embed chunks for semantic search
-4. generate analysis summary and quality signals
-5. answer questions with source citations
+![The Overview tab for pallets/markupsafe: architecture summary and code health](assets/repo-overview.png)
 
-## What You Can Do
-
-- Analyze any public GitHub repository URL.
-- Track analysis progress in real time.
-- Open dashboard snapshots for architecture and quality context.
-- Start chat sessions tied to a repository.
-- Ask engineering questions and get streaming, citation-backed responses.
-- Inspect commit-diff intelligence: what changed, its blast radius (impacted importers), and security-sensitive touches, with a diff-grounded Q&A.
-- Share analysis output through signed share links.
-
-## System Architecture
+## How it works
 
 ```mermaid
 flowchart LR
-  user["User"] --> frontend["Frontend UI"]
-  frontend -->|REST and SSE| backend["FastAPI Backend"]
-
-  backend --> postgres["PostgreSQL"]
-  backend --> redis["Redis"]
-  backend --> qdrant["Qdrant"]
-
-  backend -->|insert queued job| jobs["Job table (PostgreSQL)"]
-  jobs -->|polled| parse["Parse Worker"]
-  parse --> embed["Embed Worker"]
-  embed --> analyze["Analyze Worker"]
-
-  parse --> postgres
-  parse -->|commit diff| diff["Commit Diffs"]
-  diff --> postgres
-  embed --> qdrant
-  analyze --> postgres
-
-  embed -->|embeddings| openrouter["OpenRouter"]
-  analyze -->|summary llm| openrouter
-  backend -->|auth| auth["GitHub OAuth and JWT"]
-  backend -->|query embeddings and chat llm| openrouter
+  user["Browser"] --> frontend["Next.js frontend"]
+  frontend -->|"/api/v1 proxy: REST and SSE"| backend["FastAPI backend"]
+  backend --> postgres[("PostgreSQL")]
+  backend --> redis[("Redis")]
+  backend --> qdrant[("Qdrant")]
+  backend -->|"query embeddings, chat answers"| openrouter["OpenRouter"]
+  backend -->|"sign-in"| github["GitHub OAuth"]
+  postgres -->|"analysis_jobs, polled"| worker["Worker: parse, embed, analyze"]
+  worker -->|"clone"| repo["Public repository"]
+  worker --> postgres
+  worker --> qdrant
+  worker -->|"chunk embeddings, summary"| openrouter
 ```
 
-## Tech Stack
+- **Analysis** runs in one Python worker process that polls the `analysis_jobs` table and takes
+  each job through three stages:
+  1. *Parse*: a shallow clone, tree-sitter chunks that keep functions and classes whole (up to
+     120 lines each), the commit diff against its parent, and code health measured on whole files.
+  2. *Embed*: chunk embeddings through OpenRouter (`openai/text-embedding-3-small`) into Qdrant.
+  3. *Analyze*: the architecture summary (`openai/gpt-4.1-mini`), the language breakdown, and
+     contributors from the GitHub API.
 
-### Backend
-- Python, FastAPI
-- SQLAlchemy + Alembic
-- PostgreSQL
-- Redis (rate limits, embedding cache, worker heartbeat)
-- Qdrant (vector search)
+  Run exactly one worker. Jobs are claimed without a lease, so a second worker would process the
+  same job twice.
+- **Retrieval** combines Qdrant vector search with PostgreSQL full-text search. Test files and CI
+  config are ranked lower unless the question is about them, because they restate the code they
+  surround. Answers stream to the browser over Server-Sent Events.
+- **Sign-in** uses GitHub OAuth. The backend sets an HttpOnly refresh cookie that rotates on every
+  use, plus a CSRF cookie; the frontend keeps the access token in memory only and renews it on a
+  401. The frontend proxies `/api/v1`, so these cookies stay first-party.
+- **OpenRouter** is the only external AI service. Without a key, search and chat do not work.
 
-### Workers
-- Python worker services (`parse_worker`, `embed_worker`, `analyze_worker`)
-- Job queue: the `analysis_jobs` table in PostgreSQL, polled by a single worker process. Run exactly one
-  worker: jobs are not leased, so a second worker would process the same job twice.
+Stack: Python 3.12, FastAPI, SQLAlchemy and Alembic, PostgreSQL 16, Redis, Qdrant, Next.js 14 with
+TypeScript, Docker Compose. The frontend's API types are generated from the backend's OpenAPI
+schema, so a breaking backend change fails the frontend typecheck.
 
-### Frontend
-- Next.js + TypeScript UI (`frontend-next/`)
-- One flow: paste a repo on the home page, then each repository lives at `/r/<owner>/<repo>` with Overview, Chat, and Changes tabs
-- Streaming, citation-grounded chat answers
+## Evaluation
 
-### AI / Retrieval
-- Dense retrieval (Qdrant) with embeddings via OpenRouter (`openai/text-embedding-3-small`)
-- Lexical retrieval (PostgreSQL FTS)
-- Test files ranked lower unless the question is about tests; optional cross-encoder reranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`), off by default after measuring it
-- LLM via OpenRouter (chat answers and analysis summaries)
+The ranking and model choices were measured rather than assumed.
 
-### Infra
-- Docker Compose for local stack
-- AWS single-box deployment (Caddy TLS + gated private alpha), see `deploy/aws.md`
-- GitHub OAuth for auth
+- **Retrieval.** On a 25-question golden set where each question lists the files that answer it,
+  a chunk from the right file reaches the top 5 for 88% of questions (MRR 0.80). Ranking test files
+  lower raised that from 84%. A cross-encoder reranker was measured too and left off: no gain in
+  recall, about a second more per query, and a 3 GB image instead of 330 MB.
+  [Details](docs/evaluation/Retrieval_Eval.md).
+- **Models.** Chat and summary models were compared in blind-graded rounds on real retrieval,
+  including DevLens's own code, which no model could have seen in training. `openai/gpt-4.1-mini`
+  scored best in every graded round, at under a tenth of a cent per answer.
+  [Details](docs/evaluation/Model_Selection.md).
 
-## Repository Structure
+## Run it locally
 
-- `backend/` FastAPI API service
-- `workers/` async analysis pipeline
-- `frontend-next/` Next.js + TypeScript production UI (home, repository overview, chat, changes)
-- `docs/` contracts, planning, QA, runbooks
-- `scripts/` automation for setup, tests, deploy, eval
-- `assets/` static assets (screenshots)
-
-## End-to-End Runtime Flow
-
-1. User submits a GitHub URL on the home page (`/`).
-2. Backend creates/updates repository record and enqueues a job.
-3. `parse_worker` clones and chunks source code (tree-sitter, function/class aware) and captures the commit diff.
-4. `embed_worker` generates embeddings via OpenRouter and upserts into Qdrant.
-5. `analyze_worker` computes architecture/quality summaries.
-6. UI streams status updates from SSE endpoint, then opens `/r/<owner>/<repo>`.
-7. Dashboard API exposes final analysis payload (the Overview tab).
-8. Chat session retrieves relevant chunks (hybrid dense + lexical, test files ranked lower) and streams a citation-grounded response.
-9. Diff API exposes changed files, blast radius, security flags, and a diff-grounded Q&A.
-
-## Prerequisites
-
-- Docker Desktop (or Docker Engine + Compose)
-- PowerShell (Windows) or Bash
-- Node.js 20+ (for frontend scripts/tests)
-- Python 3.11+ (if running some checks outside containers)
-
-## Local Setup (Beginner-Friendly)
-
-### 1. Clone and enter project
+You need Docker with Compose, Node.js 20 (for the frontend checks), an
+[OpenRouter](https://openrouter.ai) API key, and a GitHub OAuth app whose callback URL is
+`http://localhost:8000/api/v1/auth/callback`.
 
 ```powershell
 git clone https://github.com/atikulmunna/devlens-fullstack.git
 cd devlens-fullstack
-```
-
-### 2. Create local env files
-
-Copy examples to real env files (do not commit secrets):
-
-```powershell
 Copy-Item backend/.env.example backend/.env
 Copy-Item workers/.env.example workers/.env
 Copy-Item frontend-next/.env.example frontend-next/.env
 ```
 
-### 3. Fill required secrets
-
-At minimum, set these in `backend/.env`:
-- `OPENROUTER_API_KEY` (the only AI provider: query embeddings and chat answers)
-- `GITHUB_CLIENT_ID`
-- `GITHUB_CLIENT_SECRET`
-- `JWT_SECRET`
-
-Set in `workers/.env` as well:
-- `OPENROUTER_API_KEY` (chunk embeddings and the analysis summary)
-
-### 4. Start services
+In `backend/.env`, set `OPENROUTER_API_KEY`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and
+`JWT_SECRET` (any long random string). In `workers/.env`, set `OPENROUTER_API_KEY`. Then:
 
 ```powershell
-./scripts/dev-up.ps1
+./scripts/dev-up.ps1       # bash scripts/dev-up.sh on macOS or Linux
+./scripts/db-migrate.ps1   # bash scripts/db-migrate.sh
 ```
 
-### 5. Run DB migrations
+Open <http://localhost:3000> and analyze a small repository such as `pallets/itsdangerous`. The
+backend's interactive API docs are at <http://localhost:8000/docs>.
 
-```powershell
-./scripts/db-migrate.ps1
-```
+The first build is slow: by default the backend image also installs PyTorch for the optional
+reranker. To skip it, build the backend with
+`docker compose build --build-arg INSTALL_RERANKER=false backend` before starting.
 
-### 6. Open app
+## Configuration
 
-- App: http://localhost:3000 (a repository page looks like http://localhost:3000/r/pallets/itsdangerous)
-- Backend health: http://localhost:8000/health
+Every setting is listed with its default in `backend/.env.example` and `workers/.env.example`.
+The ones you are most likely to change:
 
-## Environment Variables Reference
+| Setting | Service | Default | Notes |
+|---|---|---|---|
+| `OPENROUTER_API_KEY` | backend, workers | none | Embeddings, chat answers, summaries |
+| `LLM_CHAT_MODEL` | backend | `openai/gpt-4.1-mini` | Any OpenRouter chat model |
+| `LLM_SUMMARY_MODEL` | workers | `openai/gpt-4.1-mini` | Writes the architecture summary |
+| `EMBED_MODEL` | backend, workers | `openai/text-embedding-3-small` | Must match in both. A model with a different vector size recreates the collection; re-analyze every repository afterwards |
+| `FRONTEND_URL` | backend | `http://localhost:3000` | Where people open the app; sign-in returns there |
+| `RATE_LIMIT_GUEST_PER_WINDOW`, `RATE_LIMIT_AUTH_PER_WINDOW` | backend | 10, 50 per hour | Applies to analyses, chat requests, and diff questions |
+| `PARSE_MAX_FILES`, `PARSE_MAX_CHUNKS` | workers | 8000, 20000 | Larger repositories stop with a message saying which limit they hit |
+| `RERANKER_ENABLED` | backend | `false` | Needs an image built with `INSTALL_RERANKER=true` |
 
-### Backend (`backend/.env`)
+## Development
 
-Required core:
-- `DATABASE_URL`
-- `REDIS_URL`
-- `QDRANT_URL`
-- `QDRANT_COLLECTION`
-- `GITHUB_CLIENT_ID`
-- `GITHUB_CLIENT_SECRET`
-- `GITHUB_OAUTH_REDIRECT_URI`
-- `FRONTEND_URL`
-- `JWT_SECRET`
-
-OpenRouter (the only AI provider):
-- `OPENROUTER_API_KEY`
-- `EMBED_MODEL` (default `openai/text-embedding-3-small`, must match the worker)
-- `LLM_CHAT_MODEL` (default `openai/gpt-4.1-mini`)
-- `LLM_CHAT_TIMEOUT_SECONDS` (default `15`)
-
-Retrieval controls:
-- `RERANKER_ENABLED` (default `false`; see `docs/evaluation/Retrieval_Eval.md`)
-- `RERANKER_MODEL`
-- `RERANKER_CANDIDATE_LIMIT`
-
-### Workers (`workers/.env`)
-
-Required core:
-- `REDIS_URL`
-- `DATABASE_URL`
-- `QDRANT_URL`
-- `QDRANT_COLLECTION`
-
-OpenRouter (the only AI provider):
-- `OPENROUTER_API_KEY`
-- `EMBED_MODEL` (default `openai/text-embedding-3-small`, must match the backend)
-- The Qdrant collection is sized from the model's output; switching to a model with a different size recreates it (re-analyze every repo after)
-- `LLM_SUMMARY_MODEL` (default `openai/gpt-4.1-mini`; see `docs/evaluation/Model_Selection.md`)
-
-Pipeline tuning:
-- `PARSE_MAX_FILES`
-- `PARSE_MAX_CHUNKS`
-- `EMBED_BATCH_SIZE`
-- `EMBED_CACHE_TTL_SECONDS` (content-addressed embedding cache)
-
-### Frontend (`frontend-next/.env`)
-
-- `NEXT_PUBLIC_API_URL` (usually `http://localhost:8000` in local)
-
-## Authentication Overview
-
-DevLens uses GitHub OAuth + backend JWT session flow:
-1. Start login from `/api/v1/auth/github?next=<path>` (the Sign in link in the header does this for the current page)
-2. Callback hits backend (`/api/v1/auth/callback`)
-3. Backend sets refresh/session cookies and returns the user to `next`
-4. The frontend calls `/api/v1/auth/refresh` on load and again on any 401, keeping the access token in memory only
-5. Access token is sent as `Authorization: Bearer ...` for chat APIs
-
-CSRF protection:
-- cookie: `devlens_csrf_token`
-- header: `X-CSRF-Token`
-
-## API Highlights
-
-Base path: `/api/v1`
-
-Repository:
-- `POST /repos/analyze`
-- `GET /repos/{repo_id}/status` (SSE)
-- `GET /repos/{repo_id}/dashboard`
-- `GET /repos/{repo_id}/dependency-graph`
-
-Chat:
-- `POST /chat/sessions`
-- `GET /chat/sessions?repo_id=...`
-- `GET /chat/sessions/{session_id}`
-- `POST /chat/sessions/{session_id}/message` (SSE stream)
-
-Commit diff:
-- `GET /repos/{repo_id}/diff` (changed files, blast radius, security flags)
-- `POST /repos/{repo_id}/diff/ask` (SSE stream, security-aware Q&A)
-
-Auth:
-- `GET /auth/github`
-- `GET /auth/callback`
-- `POST /auth/refresh`
-
-Share/Export:
-- `POST /export/{repo_id}/share`
-- `DELETE /export/share/{share_id}`
-- `GET /share/{token}`
-
-## Testing and Validation
-
-### Core tests
+The backend and worker code is baked into their images, so rebuild after a change
+(`docker compose build backend worker`), then:
 
 ```powershell
 ./scripts/test-backend.ps1
 ./scripts/test-worker.ps1
 npm --prefix frontend-next test
-npm --prefix frontend-next run typecheck
-npm --prefix frontend-next run build
 ```
 
-### Lint and format
-
-CI fails on any finding. Python rules live in `ruff.toml` at the repo root; the frontend uses `next lint`.
+CI also fails on lint, formatting, or type errors. Python rules are in `ruff.toml`:
 
 ```powershell
 pip install ruff==0.12.4
 ruff check .
-ruff format --check .   # `ruff format .` rewrites
+ruff format --check .
 npm --prefix frontend-next run lint
+npm --prefix frontend-next run typecheck
 ```
 
-### API types
-
-The frontend's request and response types are generated from the backend's OpenAPI schema, so a
-backend change that breaks the frontend fails typecheck. After changing an endpoint or response
-model, with the stack up:
+After changing an endpoint or a response model, regenerate the frontend's API types and commit
+both files (CI checks that they are current):
 
 ```powershell
 docker compose exec -T -e PYTHONPATH=/app backend python - < scripts/export_openapi.py > frontend-next/lib/openapi.json
 npm --prefix frontend-next run gen:api
 ```
 
-Commit both `lib/openapi.json` and `lib/api-schema.ts`; CI fails if either is stale.
+`scripts/smoke-e2e.ps1` runs an analysis end to end against a running stack, and
+`scripts/eval_retrieval.py` reruns the retrieval evaluation (see its docstring).
 
-### Smoke / E2E
+| Path | Contents |
+|---|---|
+| `backend/` | FastAPI app: routers in `app/api/v1`, logic in `app/services`, Alembic migrations |
+| `workers/` | The parse, embed, and analyze stages |
+| `frontend-next/` | The Next.js app |
+| `deploy/` | Production pieces: Caddyfile, access-key page, provisioning script, runbook |
+| `docs/` | API contract, architecture decision record, evaluation reports and datasets |
+| `scripts/` | Dev, test, migration, and evaluation helpers |
 
-```powershell
-./scripts/smoke-e2e.ps1
-```
+## Deployment
 
-### Chat quality eval
+The demo runs the whole stack on one EC2 instance with `docker-compose.prod.yml`. Caddy serves it
+over HTTPS with a Let's Encrypt certificate for an sslip.io hostname, and an access-key page gates
+the whole site; chat still needs a GitHub sign-in behind it. The runbook,
+[`deploy/aws.md`](deploy/aws.md), covers provisioning, first boot, updates, backups, and teardown.
+When updating, run the migrations before the new worker starts; the runbook gives the order.
 
-```powershell
-./scripts/eval-chat-quality.ps1 -BaseUrl http://localhost:8000 -AccessToken <TOKEN>
-```
+## API
 
-Outputs are written under `artifacts/chat-quality/<run_id>/`.
+Everything is under `/api/v1`. The full contract is in
+[`docs/api/API_Contract_v1.1.md`](docs/api/API_Contract_v1.1.md).
 
-## Deployment (AWS single box)
+| Area | Endpoints |
+|---|---|
+| Repositories | `POST /repos/analyze`, `GET /repos/{id}/status` (SSE), `GET /repos/{id}/dashboard`, `GET /repos/by-name/{owner}/{name}`, `GET /repos/recent`, `GET /repos/{id}/dependency-graph` |
+| Chat | `POST /chat/sessions`, `GET /chat/sessions`, `GET /chat/sessions/{id}`, `POST /chat/sessions/{id}/message` (SSE), `GET /chat/repos/{id}/suggestions` |
+| Commit diff | `GET /repos/{id}/diff`, `POST /repos/{id}/diff/ask` (SSE) |
+| Auth | `GET /auth/github`, `GET /auth/callback`, `POST /auth/refresh`, `GET /auth/me`, `DELETE /auth/logout` |
+| Sharing | `POST /export/{repo_id}/share`, `GET /share/{token}`, `DELETE /export/share/{share_id}` |
 
-The live demo runs the whole stack on one AWS EC2 instance via `docker-compose.prod.yml`,
-fronted by Caddy (automatic HTTPS + a gated private-alpha login page). Full runbook,
-provisioning, gate secret, backups, and teardown, is in [`deploy/aws.md`](deploy/aws.md).
-
-Provision and bootstrap:
-
-```bash
-AWS_REGION=us-east-1 INSTANCE_TYPE=t3.medium bash deploy/provision-aws.sh
-# then on the box: copy deploy/env.prod.example to .env.prod, fill it, and run:
-bash deploy/bootstrap.sh
-```
-
-## New User Walkthrough
-
-1. Open the home page.
-2. Paste a GitHub URL and click Analyze repository.
-3. When analysis finishes, DevLens opens the repository page on its Overview tab.
-4. Open the Chat tab and sign in with GitHub if asked.
-5. Ask a question. The chat session is created with your first question.
-6. Open the Changes tab to see what the latest commit touched.
-
-Recommended starter prompts:
-- "Summarize this repository in 6 bullets."
-- "What are the core modules and how do they interact?"
-- "Where is authentication implemented?"
-- "List likely technical debt areas with citations."
+Chat, diff, and session endpoints need a signed-in user. Streaming endpoints send `delta` events
+with answer tokens and a final `done` event; for chat, `done` carries the numbered citations.
 
 ## Troubleshooting
 
-### UI looks old after deploy
-- Hard refresh browser (`Ctrl+F5`).
-- Confirm latest frontend deployment is `SUCCESS`.
-- Ensure deploy used `frontend --path-as-root`.
-
-### Analyze starts but no progress
-- Check backend + worker logs.
-- Verify Redis/Postgres/Qdrant are healthy.
-- Ensure repo URL is public and reachable.
-
-### Chat says no token / 401
-- Sign in with GitHub from the header or the Chat tab.
-- If sign-in does not stick, check that `devlens_refresh_token` and `devlens_csrf_token` cookies are set for the app's domain.
-- Confirm `FRONTEND_URL` in `backend/.env` matches the address you open the app on.
-
-### GitHub OAuth redirect_uri mismatch
-- OAuth app callback URL must exactly match backend setting:
-  - local: `http://localhost:8000/api/v1/auth/callback`
-  - prod: `https://backend-production-52c13.up.railway.app/api/v1/auth/callback`
-
-## Security and Production Notes
-
-- Keep `.env` files out of git (`.gitignore` enforced).
-- Rotate compromised secrets immediately.
-- Use branch protection + CI checks for production safety.
-- Keep production and staging env values isolated.
-
-## Useful Scripts
-
-- `scripts/dev-up.ps1` / `scripts/dev-down.ps1`
-- `scripts/db-migrate.ps1`
-- `scripts/test-backend.ps1`
-- `scripts/test-worker.ps1`
-- `scripts/smoke-e2e.ps1`
-- `scripts/eval-chat-quality.ps1`
-
-## Documentation Index
-
-- API contract: `docs/api/API_Contract_v1.1.md`
-- Frontend runtime ADR: `docs/architecture/ADR-001-frontend-runtime.md`
-- Retrieval quality eval (golden set, recall@5, reranker decision): `docs/evaluation/Retrieval_Eval.md`
-- Model selection (chat and summary, blind-graded rounds): `docs/evaluation/Model_Selection.md`
-- Reranker delta report: `docs/evaluation/DEV-045_Reranker_Delta_Report.md`
+- **Sign-in does not stick.** `FRONTEND_URL` must be the exact address in your browser, and
+  `GITHUB_OAUTH_REDIRECT_URI` must match the callback URL registered in the GitHub OAuth app.
+- **An analysis stays queued.** Check that the worker is running: `docker compose logs -f worker`.
+- **Search or chat fails with a 502.** The backend cannot reach OpenRouter; check
+  `OPENROUTER_API_KEY` in `backend/.env`. Query embeddings need it even when the model is fine.
+- **Answers ignore recent code.** Answers come from the commit that was analyzed. Analyze the
+  repository again to pick up newer commits.
 
 ## License
 
-Add your preferred license in this repository (for example MIT) if you plan to distribute or accept contributions publicly.
+No license has been chosen yet, so the code is not licensed for reuse.
