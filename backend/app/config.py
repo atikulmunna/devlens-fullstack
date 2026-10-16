@@ -27,9 +27,6 @@ class Settings(BaseSettings):
     jwt_access_ttl_minutes: int
     jwt_refresh_ttl_days: int
     share_token_ttl_days: int
-    r2_bucket: str
-    r2_access_key: str
-    r2_secret_key: str
     rate_limit_window_seconds: int = 3600
     rate_limit_guest_per_window: int = 10
     rate_limit_auth_per_window: int = 50
