@@ -1,11 +1,13 @@
 import json
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, text
+from sqlalchemy import event, select, text
 from sqlalchemy.orm import Session
 
 import app.api.v1.chat as chat_module
+import app.services.chat_planner as chat_planner
 from app.db.models import AnalysisResult, ChatMessage, ChatSession, CodeChunk, Repository, User
+from app.db.session import engine
 from app.services.chat_synthesizer import ChatSynthesisError
 from app.services.tokens import create_access_token
 
@@ -468,15 +470,17 @@ def test_summary_falls_back_to_snippets_when_the_model_fails(client, db_session:
 
 
 def test_language_question_matches_phrases_not_bare_words() -> None:
-    assert chat_module._language_question("What language is this written in?")
-    assert chat_module._language_question("Which languages does it use?")
-    assert chat_module._language_question("What is the tech stack?")
-    assert not chat_module._language_question("Where does this stack trace come from?")
-    assert not chat_module._language_question("How does it call the language model?")
+    assert chat_planner._language_question("What language is this written in?")
+    assert chat_planner._language_question("Which languages does it use?")
+    assert chat_planner._language_question("What is the tech stack?")
+    assert not chat_planner._language_question("Where does this stack trace come from?")
+    assert not chat_planner._language_question("How does it call the language model?")
 
 
 def test_language_answer_counts_code_only_and_ranks_by_share() -> None:
-    answer = chat_module._language_answer({"py": 62.4, "rst": 22.6, "md": 3.3, "sh": 2.0, "makefile": 0.6, "toml": 4.6})
+    answer = chat_planner._language_answer(
+        {"py": 62.4, "rst": 22.6, "md": 3.3, "sh": 2.0, "makefile": 0.6, "toml": 4.6}
+    )
 
     assert answer == (
         "The code is mostly Python (96%), with Shell (3%), Makefile (under 1%). Shares are by size of the indexed code."
@@ -484,9 +488,9 @@ def test_language_answer_counts_code_only_and_ranks_by_share() -> None:
 
 
 def test_language_answer_single_language_and_missing_breakdown() -> None:
-    assert chat_module._language_answer({"ts": 70, "tsx": 20, "json": 10}) == "The code is written in TypeScript."
-    assert chat_module._language_answer({"md": 100}) is None
-    assert chat_module._language_answer(None) is None
+    assert chat_planner._language_answer({"ts": 70, "tsx": 20, "json": 10}) == "The code is written in TypeScript."
+    assert chat_planner._language_answer({"md": 100}) is None
+    assert chat_planner._language_answer(None) is None
 
 
 def test_language_question_without_a_breakdown_goes_to_the_model(client, db_session: Session, monkeypatch) -> None:
@@ -597,3 +601,47 @@ def test_history_is_limited_to_the_most_recent_messages(db_session: Session) -> 
     history = chat_module._recent_history(db_session, session.id)
 
     assert [turn["content"] for turn in history] == ["m4", "m5", "m6", "m7", "m8", "m9"]
+
+
+def _count_statements(client, url: str, headers: dict) -> tuple[dict, int]:
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, *_args):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        response = client.get(url, headers=headers)
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+    assert response.status_code == 200
+    return response.json(), len(statements)
+
+
+def test_session_list_counts_messages_and_shows_the_latest_in_one_query(client, db_session: Session) -> None:
+    user, repo, _ = _seed_user_and_repo(db_session)
+    headers = {"Authorization": f"Bearer {create_access_token(user.id)}"}
+    first = client.post("/api/v1/chat/sessions", json={"repo_id": str(repo.id)}, headers=headers).json()["session_id"]
+    for n, role in enumerate(["user", "assistant", "user"]):
+        db_session.add(
+            ChatMessage(id=uuid4(), session_id=UUID(first), role=role, content=f"message {n}", source_citations=None)
+        )
+        db_session.flush()
+        db_session.execute(
+            text("UPDATE chat_messages SET created_at = now() + make_interval(secs => :n) WHERE content = :c"),
+            {"n": n, "c": f"message {n}"},
+        )
+    db_session.commit()
+
+    one, statements_for_one = _count_statements(client, f"/api/v1/chat/sessions?repo_id={repo.id}", headers)
+    for _ in range(3):
+        client.post("/api/v1/chat/sessions", json={"repo_id": str(repo.id)}, headers=headers)
+    four, statements_for_four = _count_statements(client, f"/api/v1/chat/sessions?repo_id={repo.id}", headers)
+
+    listed = {item["id"]: item for item in four["sessions"]}
+    assert (listed[first]["message_count"], listed[first]["last_message_preview"]) == (3, "message 2")
+    assert len(four["sessions"]) == 4
+    assert sum(item["message_count"] for item in four["sessions"]) == 3
+    # More sessions, same number of statements: no query per session.
+    assert len(one["sessions"]) == 1
+    assert statements_for_four == statements_for_one

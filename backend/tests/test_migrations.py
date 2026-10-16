@@ -27,7 +27,7 @@ def test_schema_tables_exist(db_session: Session) -> None:
 
 def test_alembic_head_is_applied(db_session: Session) -> None:
     version = db_session.execute(text('select version_num from alembic_version')).scalar_one()
-    assert version == '20261016_0010'
+    assert version == '20261016_0011'
 
 
 def test_hot_path_indexes_exist(db_session: Session) -> None:
@@ -48,5 +48,6 @@ def test_hot_path_indexes_exist(db_session: Session) -> None:
         "idx_analysis_jobs_repo_commit_idempotency",
         "idx_analysis_jobs_repo_commit_status_created",
         "idx_analysis_results_repo_created",
+        "idx_chat_messages_session_created",
     }
     assert required.issubset(indexes)
