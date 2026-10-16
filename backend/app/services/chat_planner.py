@@ -100,20 +100,23 @@ def _language_question(query: str) -> bool:
     return any(token in q for token in patterns)
 
 
+# Questions about the whole repository, answered in summary mode with the README first. Broad
+# phrasings like "main architecture components" retrieve config and CI files on their own.
+REPO_WIDE_QUESTION_RE = re.compile(
+    r"summari[sz]e|summary|high[- ]level|overview|purpose|runtime flow|output format"
+    # "main components" or "main components of this repo", but not "main components of the signer"
+    r"|\b(main|core|key|overall)\s+(architecture|components?|modules?|parts|pieces|building blocks)\b"
+    r"(?!\s+(of|in|for)\s+(?!(this|the)\s+(repo|repository|project|codebase|library|app)\b))"
+    r"|\barchitecture\s+(of|for)\s+(this|the)\s+(repo|repository|project|codebase)\b"
+    r"|\b(repo|repository|project|codebase)\s+(structure|layout|architecture)\b"
+    r"|\bhow\s+is\s+(this|the)\s+(repo|repository|project|codebase)\s+(organi[sz]ed|structured|laid out)\b"
+    r"|\bwhat\s+(does|is)\s+this\s+(repo|repository|project|codebase|library)\b",
+    re.IGNORECASE,
+)
+
+
 def _summary_question(query: str) -> bool:
-    q = query.lower()
-    patterns = (
-        "summarize",
-        "summary",
-        "high-level",
-        "high level",
-        "overview",
-        "purpose",
-        "core modules",
-        "runtime flow",
-        "output format",
-    )
-    return any(token in q for token in patterns)
+    return bool(REPO_WIDE_QUESTION_RE.search(query))
 
 
 def _select_diverse_results(results: list[dict], limit: int = 6) -> list[dict]:

@@ -14,12 +14,29 @@ from app.services.retrieval_lexical import lexical_search_chunks
 
 logger = logging.getLogger(__name__)
 
-# Tests restate the code they exercise, so they compete with it for the top results and won
-# too often (docs/evaluation/Retrieval_Eval.md). Unless the question is about tests, their
-# fused score is scaled down.
-TEST_FILE_WEIGHT = 0.6
+# Supporting files compete with the code they surround: tests restate it, CI and tooling config
+# wraps it, and for broad questions both won the top results too often
+# (docs/evaluation/Retrieval_Eval.md). Unless the question is about them, their fused score is
+# scaled down.
+SUPPORTING_FILE_WEIGHT = 0.6
 TEST_PATH_RE = re.compile(r"(^|/)(tests?|__tests__|spec)/|(^|/)test_[^/]*\.py$|_test\.(py|go)$|\.(test|spec)\.[jt]sx?$")
 TEST_QUESTION_RE = re.compile(r"\b(tests?|tested|testing|specs?|fixtures?)\b", re.IGNORECASE)
+TOOLING_PATH_RE = re.compile(
+    r"(^|/)\.(github|circleci|devcontainer)/|(^|/)\.(gitlab-ci|pre-commit-config|readthedocs)\.ya?ml$"
+    r"|(^|/)(tox\.ini|noxfile\.py)$"
+)
+TOOLING_QUESTION_RE = re.compile(
+    r"\b(ci|workflows?|actions?|pipelines?|pre-commit|lint(ing|er)?|release|publish(ing)?|deploy(s|ment)?)\b",
+    re.IGNORECASE,
+)
+SUPPORTING_FILES = ((TEST_PATH_RE, TEST_QUESTION_RE), (TOOLING_PATH_RE, TOOLING_QUESTION_RE))
+
+
+def _supporting_weight(file_path: str, question: str) -> float:
+    for path_re, question_re in SUPPORTING_FILES:
+        if path_re.search(file_path) and not question_re.search(question):
+            return SUPPORTING_FILE_WEIGHT
+    return 1.0
 
 
 def dense_search_qdrant(repo_id: str, query: str, limit: int) -> list[dict]:
@@ -172,7 +189,6 @@ def hybrid_search_chunks(db: Session, repo_id: UUID, query: str, limit: int = 20
     lexical_norm = _normalize_scores({cid: row.get("lexical_score", 0.0) for cid, row in merged.items()})
 
     query_terms = _tokenize(q)
-    test_weight = 1.0 if TEST_QUESTION_RE.search(q) else TEST_FILE_WEIGHT
     for chunk_id, row in merged.items():
         file_terms = _tokenize(f"{row.get('file_path') or ''} {row.get('language') or ''}")
         overlap = 0.0
@@ -182,8 +198,7 @@ def hybrid_search_chunks(db: Session, repo_id: UUID, query: str, limit: int = 20
         # file-path term-overlap heuristic is a light tie-breaker. The cross-encoder reranker
         # (when enabled) re-scores the top candidates after this fusion selects them.
         fused = 0.50 * dense_norm.get(chunk_id, 0.0) + 0.40 * lexical_norm.get(chunk_id, 0.0) + 0.10 * overlap
-        if TEST_PATH_RE.search(str(row.get("file_path") or "")):
-            fused *= test_weight
+        fused *= _supporting_weight(str(row.get("file_path") or ""), q)
         row["rerank_score"] = round(fused, 6)
 
     ranked = sorted(merged.values(), key=lambda row: (-row["rerank_score"], row["chunk_id"]))
