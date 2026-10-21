@@ -222,6 +222,7 @@ Common `error.code` values:
       "repo_id": "uuid",
       "created_at": "2026-02-23T13:00:00Z",
       "message_count": 2,
+      "first_question": "Where is auth refresh handled?",
       "last_message_preview": "Relevant code was found in..."
     }
   ]
@@ -291,12 +292,14 @@ event: delta
 data: {"token":"Relevant "}
 
 event: done
-data: {"message_id":"uuid","citations":[...],"no_citation":false}
+data: {"message_id":"uuid","citations":[...],"no_citation":false,"commit_sha":"abc123..."}
 ```
 - Citation guarantee:
   - Assistant response always stores `source_citations` with either:
     - `citations: [ ... ]` and `no_citation: false`, or
     - `citations: []` and `no_citation: true`
+- `commit_sha` is the commit the cited lines come from (the analysis the index was built from); it is
+  also stored in the message's `source_citations`, so links in older answers keep pointing at the right lines.
 - Citation entries: one per context the model was given, numbered as in the prompt.
   The answer cites them inline as `[ref]`; `cited` says whether this answer did.
 ```json

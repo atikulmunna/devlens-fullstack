@@ -1,59 +1,84 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { SignInLink, useAuth } from "@/components/auth";
+import { Answer } from "@/components/chat/answer";
+import { Citations } from "@/components/chat/citations";
+import { SessionList } from "@/components/chat/session-list";
 import { useRepo } from "@/components/repo-context";
-import { ChatCitation, createChatSession, getSuggestions, sendChatMessageStream } from "@/lib/api";
+import {
+  ChatCitation,
+  ChatSessionDetail,
+  ChatSessionSummary,
+  createChatSession,
+  getChatSession,
+  getSuggestions,
+  listChatSessions,
+  sendChatMessageStream
+} from "@/lib/api";
+import { friendlyChatError, isAbort } from "@/lib/errors";
 
 type ChatBubble = {
   role: "user" | "assistant";
   content: string;
   streaming?: boolean;
+  stopped?: boolean;
   citations?: ChatCitation[];
   noCitation?: boolean;
+  commitSha?: string | null;
 };
 
-function citationLabel(citation: ChatCitation): string {
-  const ref = citation.ref ? `[${citation.ref}] ` : "";
-  const path = citation.file_path || "source";
-  const line = citation.line_start ? `:${citation.line_start}` : "";
-  return `${ref}${path}${line}`;
-}
+type StoredCitations = { citations?: ChatCitation[]; no_citation?: boolean; commit_sha?: string | null };
 
-// Every source the model was given. When the answer cites some by [n], the rest are drawn
-// muted and dashed, like the unwalked trail in the progress steps.
-function Citations({ citations }: { citations: ChatCitation[] }) {
-  const anyCited = citations.some((citation) => citation.cited);
-  return (
-    <div className="citations">
-      {citations.map((citation, index) => {
-        const unused = anyCited && !citation.cited;
-        return (
-          <span key={index} className={`citation-pill mono${unused ? " unused" : ""}`}>
-            {citationLabel(citation)}
-            {unused && <span className="visually-hidden"> (given to the model, not cited)</span>}
-          </span>
-        );
-      })}
-    </div>
-  );
+// A stopped answer is never saved, so a question with no answer after it was stopped.
+const UNANSWERED: ChatBubble = { role: "assistant", content: "", stopped: true };
+
+function bubblesFrom(session: ChatSessionDetail): ChatBubble[] {
+  const bubbles: ChatBubble[] = [];
+  for (const message of session.messages ?? []) {
+    if (message.role === "user" && bubbles.at(-1)?.role === "user") {
+      bubbles.push(UNANSWERED);
+    }
+    const stored = (message.source_citations ?? {}) as StoredCitations;
+    bubbles.push({
+      role: message.role === "user" ? "user" : "assistant",
+      content: message.content,
+      citations: stored.citations ?? [],
+      noCitation: Boolean(stored.no_citation),
+      commitSha: stored.commit_sha ?? null
+    });
+  }
+  if (bubbles.at(-1)?.role === "user") {
+    bubbles.push(UNANSWERED);
+  }
+  return bubbles;
 }
 
 export function RepoChat() {
   const repo = useRepo();
   const { status } = useAuth();
+  const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [messages, setMessages] = useState<ChatBubble[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<number | null>(null);
   const logRef = useRef<HTMLDivElement | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const refreshSessions = useCallback(() => {
+    listChatSessions(repo.repo_id)
+      .then(setSessions)
+      .catch(() => setSessions([]));
+  }, [repo.repo_id]);
 
   useEffect(() => {
     if (status !== "signed-in") {
       return;
     }
+    refreshSessions();
     let cancelled = false;
     getSuggestions(repo.repo_id)
       .then((items) => {
@@ -69,13 +94,16 @@ export function RepoChat() {
     return () => {
       cancelled = true;
     };
-  }, [status, repo.repo_id]);
+  }, [status, repo.repo_id, refreshSessions]);
 
   useEffect(() => {
     if (logRef.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // Leaving the page stops an answer that is still streaming.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   // The chat session is created on the first question, so there is no separate "start" step.
   async function ensureSession(): Promise<string> {
@@ -109,23 +137,69 @@ export function RepoChat() {
     setInput("");
     setBusy(true);
     setMessages((prev) => [...prev, { role: "user", content }, { role: "assistant", content: "", streaming: true }]);
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const id = await ensureSession();
-      await sendChatMessageStream(id, content, 5, {
-        onToken: (token) => applyToLastAssistant((bubble) => ({ ...bubble, content: bubble.content + token })),
-        onDone: (meta) =>
-          applyToLastAssistant((bubble) => ({
-            ...bubble,
-            streaming: false,
-            citations: meta.citations || [],
-            noCitation: Boolean(meta.no_citation)
-          }))
-      });
+      await sendChatMessageStream(
+        id,
+        content,
+        5,
+        {
+          onToken: (token) => applyToLastAssistant((bubble) => ({ ...bubble, content: bubble.content + token })),
+          onDone: (meta) =>
+            applyToLastAssistant((bubble) => ({
+              ...bubble,
+              streaming: false,
+              citations: meta.citations || [],
+              noCitation: Boolean(meta.no_citation),
+              commitSha: meta.commit_sha ?? null
+            }))
+        },
+        controller.signal
+      );
     } catch (err) {
-      applyToLastAssistant((bubble) => ({ ...bubble, streaming: false, content: bubble.content || "(no answer)" }));
-      setError(err instanceof Error ? err.message : "The question could not be answered");
+      if (isAbort(err)) {
+        applyToLastAssistant((bubble) => ({ ...bubble, streaming: false, stopped: true }));
+      } else {
+        // The failed question stays in the log; only the empty answer bubble goes.
+        setMessages((prev) => prev.filter((bubble, index) => !(index === prev.length - 1 && !bubble.content)));
+        setError(friendlyChatError(err));
+      }
     } finally {
+      abortRef.current = null;
       setBusy(false);
+      refreshSessions();
+    }
+  }
+
+  async function openSession(id: string) {
+    if (busy || id === sessionId) {
+      return;
+    }
+    setError(null);
+    try {
+      const session = await getChatSession(id);
+      setSessionId(id);
+      setMessages(bubblesFrom(session));
+    } catch (err) {
+      setError(friendlyChatError(err));
+    }
+  }
+
+  function newChat() {
+    setSessionId(null);
+    setMessages([]);
+    setError(null);
+  }
+
+  async function copy(index: number) {
+    try {
+      await navigator.clipboard.writeText(messages[index].content.trim());
+      setCopied(index);
+      window.setTimeout(() => setCopied((current) => (current === index ? null : current)), 2000);
+    } catch {
+      setError("Copying is blocked in this browser. Select the answer text to copy it.");
     }
   }
 
@@ -148,52 +222,86 @@ export function RepoChat() {
   }
 
   return (
-    <section className="chat">
-      {suggestions.length > 0 && messages.length === 0 && (
-        <div className="suggestions">
-          {suggestions.map((question) => (
-            <button key={question} type="button" className="suggestion" onClick={() => void ask(question)}>
-              {question}
+    <section className="chat-layout">
+      <SessionList sessions={sessions} activeId={sessionId} disabled={busy} onSelect={(id) => void openSession(id)} onNew={newChat} />
+
+      <div className="chat">
+        {messages.length === 0 && (
+          <div className="chat-empty">
+            <p className="muted">
+              Ask how something works in {repo.full_name}. Answers name the files and lines they come from.
+            </p>
+            {suggestions.length > 0 && (
+              <div className="suggestions">
+                {suggestions.map((question) => (
+                  <button key={question} type="button" className="suggestion" onClick={() => void ask(question)}>
+                    {question}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {messages.length > 0 && (
+          <div className="chat-log" ref={logRef}>
+            {messages.map((bubble, index) => {
+              const links = { citations: bubble.citations ?? [], githubUrl: repo.github_url, commitSha: bubble.commitSha };
+              return (
+                <div key={index} className={`bubble ${bubble.role}`}>
+                  <div className="role">{bubble.role === "user" ? "You" : "DevLens"}</div>
+                  {bubble.role === "user" ? (
+                    <div className="question">{bubble.content}</div>
+                  ) : (
+                    <div className={bubble.streaming ? "blink" : undefined}>
+                      <Answer content={bubble.content} {...links} />
+                    </div>
+                  )}
+                  {bubble.role === "assistant" && links.citations.length > 0 && <Citations {...links} />}
+                  {bubble.role === "assistant" && !bubble.streaming && (
+                    <div className="answer-foot">
+                      {bubble.stopped && (
+                        <span className="muted">{bubble.content ? "Stopped." : "Stopped before an answer was saved."}</span>
+                      )}
+                      {bubble.noCitation && !bubble.stopped && <span className="muted">No source lines matched this answer.</span>}
+                      {bubble.content.trim() && (
+                        <button type="button" className="link-button" onClick={() => void copy(index)}>
+                          {copied === index ? "Copied" : "Copy answer"}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
+
+        <form className="chat-form" onSubmit={onSend}>
+          <input
+            className="input"
+            aria-label={`Ask about ${repo.full_name}`}
+            placeholder={`Ask how something works in ${repo.full_name}`}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+          />
+          {busy ? (
+            <button type="button" className="button secondary" onClick={() => abortRef.current?.abort()}>
+              Stop
             </button>
-          ))}
-        </div>
-      )}
-
-      {messages.length > 0 && (
-        <div className="chat-log" ref={logRef}>
-          {messages.map((bubble, index) => (
-            <div key={index} className={`bubble ${bubble.role}`}>
-              <div className="role">{bubble.role === "user" ? "You" : "DevLens"}</div>
-              <div className={bubble.streaming ? "blink" : undefined}>{bubble.content}</div>
-              {bubble.role === "assistant" && bubble.citations && bubble.citations.length > 0 && (
-                <Citations citations={bubble.citations} />
-              )}
-              {bubble.role === "assistant" && !bubble.streaming && bubble.noCitation && (
-                <div className="no-citation">No source lines matched this answer.</div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-
-      <form className="chat-form" onSubmit={onSend}>
-        <input
-          className="input"
-          aria-label={`Ask about ${repo.full_name}`}
-          placeholder={`Ask how something works in ${repo.full_name}`}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-        />
-        <button type="submit" className="button" disabled={busy || !input.trim()}>
-          {busy ? "Answering..." : "Ask"}
-        </button>
-      </form>
+          ) : (
+            <button type="submit" className="button" disabled={!input.trim()}>
+              Ask
+            </button>
+          )}
+        </form>
+      </div>
     </section>
   );
 }

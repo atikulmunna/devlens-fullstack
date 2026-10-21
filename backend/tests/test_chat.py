@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 import app.api.v1.chat as chat_module
 import app.services.chat_planner as chat_planner
-from app.db.models import AnalysisResult, ChatMessage, ChatSession, CodeChunk, Repository, User
+from app.db.models import AnalysisJob, AnalysisResult, ChatMessage, ChatSession, CodeChunk, Repository, User
 from app.db.session import engine
 from app.services.chat_synthesizer import ChatSynthesisError
 from app.services.tokens import create_access_token
@@ -640,6 +640,8 @@ def test_session_list_counts_messages_and_shows_the_latest_in_one_query(client, 
 
     listed = {item["id"]: item for item in four["sessions"]}
     assert (listed[first]["message_count"], listed[first]["last_message_preview"]) == (3, "message 2")
+    # The session's title in the list is the question that opened it.
+    assert listed[first]["first_question"] == "message 0"
     assert len(four["sessions"]) == 4
     assert sum(item["message_count"] for item in four["sessions"]) == 3
     # More sessions, same number of statements: no query per session.
@@ -663,3 +665,47 @@ def test_repo_wide_questions_route_to_summary_mode() -> None:
         "Where are the key components of the token signer tested?",
     ):
         assert not chat_planner._summary_question(question), question
+
+
+def test_citations_carry_the_commit_their_lines_come_from(client, db_session: Session, monkeypatch) -> None:
+    user, repo, chunk_id = _seed_user_and_repo(db_session)
+    job = AnalysisJob(id=uuid4(), repo_id=repo.id, status="done", progress=100, commit_sha="sha-indexed")
+    db_session.add(job)
+    db_session.flush()
+    db_session.add(AnalysisResult(id=uuid4(), repo_id=repo.id, job_id=job.id))
+    db_session.commit()
+    headers = {"Authorization": f"Bearer {create_access_token(user.id)}"}
+    session_id = client.post("/api/v1/chat/sessions", json={"repo_id": str(repo.id)}, headers=headers).json()[
+        "session_id"
+    ]
+    hit = {"chunk_id": chunk_id, "file_path": "src/auth/jwt.py", "start_line": 10, "end_line": 30, "rerank_score": 0.7}
+    monkeypatch.setattr(chat_module, "hybrid_search_chunks", lambda *_args, **_kwargs: [hit])
+    monkeypatch.setattr(chat_module, "synthesize_grounded_answer_stream", _recording_synthesizer([], "In jwt.py [1]."))
+
+    text = client.post(
+        f"/api/v1/chat/sessions/{session_id}/message", json={"content": "Where are tokens signed?"}, headers=headers
+    ).text
+
+    done = json.loads(text.split("event: done\ndata: ", 1)[1].split("\n", 1)[0])
+    assert done["commit_sha"] == "sha-indexed"
+    stored = client.get(f"/api/v1/chat/sessions/{session_id}", headers=headers).json()["messages"][-1]
+    assert stored["source_citations"]["commit_sha"] == "sha-indexed"
+
+
+def test_suggestions_skip_hidden_test_doc_and_config_files() -> None:
+    for path in (
+        ".devcontainer/setup.sh",
+        ".github/ISSUE_TEMPLATE/bug.md",
+        "tests/test_x.py",
+        "docs/index.rst",
+        "tox.ini",
+        "pyproject.toml",
+        "docs/conf.py",
+        "examples/app.py",
+        "src/.env",
+        "Makefile",
+        "backend/Dockerfile",
+    ):
+        assert not chat_planner._worth_suggesting(path), path
+    for path in ("src/itsdangerous/signer.py", "backend/app/main.py", "web/app/page.tsx"):
+        assert chat_planner._worth_suggesting(path), path

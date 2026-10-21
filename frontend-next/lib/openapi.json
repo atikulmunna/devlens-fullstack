@@ -3442,6 +3442,17 @@
             "title": "Message Count",
             "default": 0
           },
+          "first_question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Question"
+          },
           "last_message_preview": {
             "anyOf": [
               {
