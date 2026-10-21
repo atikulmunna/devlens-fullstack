@@ -29,9 +29,28 @@ export type TechDebtFlags = {
   test_file_count?: number;
 };
 
-// tech_debt_flags is a JSON column; this is the shape the analyze worker writes.
-export type DashboardAnalysis = Omit<Schemas["DashboardAnalysisResponse"], "tech_debt_flags"> & {
+// Contributors from the GitHub API; `error` is set when GitHub could not be reached.
+export type ContributorStats = {
+  top_contributors?: { username: string; commits: number }[];
+  error?: string;
+};
+
+// The file tree as the analyze worker writes it: one entry per indexed path.
+export type FileTreeFlags = {
+  files?: Record<string, { chunks: number; lines: number; language: string }>;
+};
+
+export type LanguageShare = Schemas["LanguageShareResponse"];
+export type DependencyGraph = Schemas["DependencyGraphResponse"];
+
+// These three are JSON columns; the types are the shapes the analyze worker writes.
+export type DashboardAnalysis = Omit<
+  Schemas["DashboardAnalysisResponse"],
+  "tech_debt_flags" | "contributor_stats" | "file_tree"
+> & {
   tech_debt_flags: TechDebtFlags | null;
+  contributor_stats: ContributorStats | null;
+  file_tree: FileTreeFlags | null;
 };
 
 export type DashboardResponse = Omit<Schemas["DashboardResponse"], "analysis"> & {
@@ -95,6 +114,13 @@ export async function getRecentRepos(limit = 6): Promise<RepoSummary[]> {
   const response = await fetch(`/api/v1/repos/recent?limit=${limit}`, { cache: "no-store" });
   const payload = await assertJson<Schemas["RecentReposResponse"]>(response, "Could not load recent repositories");
   return payload.repos;
+}
+
+export async function getDependencyGraph(repoId: string): Promise<DependencyGraph> {
+  const response = await fetch(`/api/v1/repos/${encodeURIComponent(repoId)}/dependency-graph`, {
+    cache: "no-store"
+  });
+  return assertJson<DependencyGraph>(response, "Could not load the import graph");
 }
 
 export async function getDashboard(repoId: string): Promise<DashboardResponse> {

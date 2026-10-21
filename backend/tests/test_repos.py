@@ -166,13 +166,16 @@ def test_get_repo_dashboard_returns_latest_analysis(client, db_session: Session)
         cache_key='old-cache-key',
         created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
+    job = AnalysisJob(id=uuid4(), repo_id=repo.id, status='done', progress=100, commit_sha='sha-analyzed')
+    db_session.add(job)
+    db_session.flush()
     newer = AnalysisResult(
         id=uuid4(),
         repo_id=repo.id,
-        job_id=None,
+        job_id=job.id,
         architecture_summary='new summary',
         quality_score=88,
-        language_breakdown={'Python': 80, 'TS': 20},
+        language_breakdown={'py': 70, 'ts': 20, 'md': 10},
         contributor_stats={'total': 2},
         tech_debt_flags={'todo': 1},
         file_tree={'type': 'dir', 'name': '/', 'children': []},
@@ -191,6 +194,13 @@ def test_get_repo_dashboard_returns_latest_analysis(client, db_session: Session)
     assert payload['has_analysis'] is True
     assert payload['analysis']['quality_score'] == 88
     assert payload['analysis']['architecture_summary'] == 'new summary'
+    # Links to exact lines use the commit the analysis read, not the repo's latest.
+    assert payload['analysis']['commit_sha'] == 'sha-analyzed'
+    assert payload['analysis']['languages'] == [
+        {'name': 'Python', 'share': 70.0, 'is_code': True},
+        {'name': 'TypeScript', 'share': 20.0, 'is_code': True},
+        {'name': 'Markdown', 'share': 10.0, 'is_code': False},
+    ]
 
 
 def test_get_repo_dashboard_without_analysis(client, db_session: Session):

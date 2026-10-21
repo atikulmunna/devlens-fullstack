@@ -13,64 +13,16 @@ from sqlalchemy.orm import Session
 from app.db.models import AnalysisResult, CodeChunk
 from app.services.chat_synthesizer import MAX_CONTEXTS, detect_intent
 from app.services.citations import format_citation, validate_citations_for_repo
+from app.services.languages import language_shares
 from app.services.retrieval_hybrid import load_chunk_content
-
-
-def _normalize_language(raw: str | None) -> str | None:
-    if not raw:
-        return None
-    key = raw.strip().lower()
-    aliases = {
-        "py": "Python",
-        "python": "Python",
-        "js": "JavaScript",
-        "javascript": "JavaScript",
-        "ts": "TypeScript",
-        "tsx": "TypeScript",
-        "jsx": "JavaScript (React JSX)",
-        "go": "Go",
-        "java": "Java",
-        "rb": "Ruby",
-        "rs": "Rust",
-        "c": "C",
-        "cpp": "C++",
-        "c++": "C++",
-        "cs": "C#",
-        "c#": "C#",
-        "php": "PHP",
-        "kt": "Kotlin",
-        "swift": "Swift",
-        "scala": "Scala",
-        "sh": "Shell",
-        "bash": "Shell",
-        "sql": "SQL",
-        "md": "Markdown",
-        "rst": "reStructuredText",
-        "toml": "TOML",
-        "makefile": "Makefile",
-        "yml": "YAML",
-        "yaml": "YAML",
-        "json": "JSON",
-    }
-    return aliases.get(key, raw.strip())
-
-
-# Documentation and configuration formats: present in most repos, but not what a project is "written in".
-NON_CODE_LANGUAGES = {"Markdown", "reStructuredText", "YAML", "JSON", "TOML", "txt", "unknown"}
 
 
 def _language_answer(breakdown: dict | None) -> str | None:
     """Describe the repo's code languages from the analysis breakdown (percent of indexed size)."""
-    shares: dict[str, float] = {}
-    for key, share in (breakdown or {}).items():
-        name = _normalize_language(key)
-        if name and name not in NON_CODE_LANGUAGES:
-            shares[name] = shares.get(name, 0.0) + float(share or 0)
-    total = sum(shares.values())
+    ranked = [(item["name"], item["share"]) for item in language_shares(breakdown) if item["is_code"]]
+    total = sum(share for _, share in ranked)
     if total <= 0:
         return None
-
-    ranked = sorted(shares.items(), key=lambda kv: kv[1], reverse=True)
 
     def _describe(name: str, share: float) -> str:
         percent = share / total * 100
