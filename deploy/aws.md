@@ -88,6 +88,8 @@ aws ec2 release-address --allocation-id <ALLOC_ID> --region us-east-1
   Authorization header, so the app's own JWT bearer auth works unchanged, chat and
   commit-diff require signing in with GitHub inside the app. So a tester needs the access
   key (to pass the gate) plus a GitHub login for chat.
+- Share links (`/share/...`) skip the gate, along with the share API and the app's static
+  files, so anyone with a link can read that one overview. Everything else still needs the key.
 - The reranker is forced off in prod (`RERANKER_ENABLED=false`) to keep the box light;
   dense + lexical retrieval still runs. Flip it on later if you size up.
 - The backend is never exposed directly; Caddy serves the Next.js frontend, which

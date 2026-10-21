@@ -8,7 +8,8 @@
 # Submitting the correct access key sets an httpOnly cookie, after which all traffic is
 # proxied to the Next.js frontend (which proxies /api/v1 to the backend internally). The
 # cookie gate does not touch the Authorization header, so the app's own JWT bearer auth
-# (GitHub login for chat/diff) works unchanged.
+# (GitHub login for chat/diff) works unchanged. Share links are the one exception: they open
+# without the access key, so a shared overview can be sent to anyone.
 
 {
 	email {$DEVLENS_TLS_EMAIL}
@@ -32,6 +33,14 @@
 			header Location "/?denied=1"
 			respond "" 302
 		}
+	}
+
+	# Share links skip the gate: the shared page, its scripts, styles, and fonts, and the share API,
+	# which only answers to a signed, unexpired, unrevoked token. The path matcher cleans the path
+	# before matching, so a request like /api/v1/share/../repos/... does not count as a share.
+	@shared path /share/* /api/v1/share/* /_next/static/*
+	handle @shared {
+		reverse_proxy frontend:3000
 	}
 
 	# No valid access cookie: serve the branded gate page.
