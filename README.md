@@ -1,7 +1,7 @@
 # DevLens
 
 DevLens reads a public GitHub repository and answers questions about its code. Each answer cites
-the files and lines it was built from. For the latest commit it shows what changed, which files
+the files and lines it was built from. For each analyzed commit it shows what changed, which files
 import the changed code, and any security-sensitive lines that were added or removed.
 
 ![Chat about pallets/itsdangerous: earlier chats on the left; an answer with inline code and superscript links to the cited lines, then its sources, with the ones the model did not use drawn dashed](assets/chat.png)
@@ -31,10 +31,13 @@ The tab also shows the language mix, contributors, the file tree, and an import 
 in the middle, what imports it on one side, what it imports on the other; choose any neighbor to
 move to it.
 
-**Changes.** The latest commit against its parent: the changed files, every file that imports
-them, and lines touching auth, tokens, secrets, crypto, or environment config, flagged separately
-when they were removed. The import graph follows Python packages, relative imports, `src/`
-layouts, and TypeScript path aliases. You can ask questions about the diff itself.
+**Changes.** An analyzed commit against its parent; pick any commit DevLens has analyzed. Each
+changed file opens to its diff with line numbers, and lines touching auth, tokens, secrets, crypto,
+or environment config are marked with what they touch. Files are ranked high, medium, or low:
+secrets and credentials are high, and so is removing an auth or token check. Docs and stylesheets
+are never flagged. The files that import the changes are drawn as rings, one ring per import step.
+The import graph follows Python packages, relative imports, `src/` layouts, and TypeScript path
+aliases. You can ask questions about the diff itself.
 
 ![The Overview tab for DevLens itself: architecture summary, language mix, contributors, and code health with links to the long functions](assets/repo-overview.png)
 
@@ -195,7 +198,7 @@ Everything is under `/api/v1`. The full contract is in
 |---|---|
 | Repositories | `POST /repos/analyze`, `GET /repos/{id}/status` (SSE), `GET /repos/{id}/dashboard`, `GET /repos/by-name/{owner}/{name}`, `GET /repos/recent`, `GET /repos/{id}/dependency-graph` |
 | Chat | `POST /chat/sessions`, `GET /chat/sessions`, `GET /chat/sessions/{id}`, `POST /chat/sessions/{id}/message` (SSE), `GET /chat/repos/{id}/suggestions` |
-| Commit diff | `GET /repos/{id}/diff`, `POST /repos/{id}/diff/ask` (SSE) |
+| Commit diff | `GET /repos/{id}/diffs`, `GET /repos/{id}/diff`, `POST /repos/{id}/diff/ask` (SSE) |
 | Auth | `GET /auth/github`, `GET /auth/callback`, `POST /auth/refresh`, `GET /auth/me`, `DELETE /auth/logout` |
 | Sharing | `POST /export/{repo_id}/share`, `GET /share/{token}`, `DELETE /export/share/{share_id}` |
 

@@ -2361,6 +2361,153 @@
         }
       }
     },
+    "/api/v1/repos/{repo_id}/diffs": {
+      "get": {
+        "tags": [
+          "diff"
+        ],
+        "summary": "List Commit Diffs",
+        "description": "The analyzed commits with a stored diff, newest first: what the commit picker offers.",
+        "operationId": "list_commit_diffs_api_v1_repos__repo_id__diffs_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "repo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Repo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitDiffListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/repos/{repo_id}/diff": {
       "get": {
         "tags": [
@@ -3331,6 +3478,17 @@
             "type": "integer",
             "title": "Impacted Count"
           },
+          "impacted_by_depth": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Impacted By Depth",
+            "default": []
+          },
           "graph_stats": {
             "additionalProperties": {
               "type": "integer"
@@ -3369,6 +3527,19 @@
           "hunks": {
             "type": "integer",
             "title": "Hunks"
+          },
+          "hunk_details": {
+            "items": {
+              "$ref": "#/components/schemas/HunkResponse"
+            },
+            "type": "array",
+            "title": "Hunk Details",
+            "default": []
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "default": false
           }
         },
         "type": "object",
@@ -3521,6 +3692,70 @@
           "created_at"
         ],
         "title": "ChatSessionResponse"
+      },
+      "CommitDiffEntry": {
+        "properties": {
+          "head_sha": {
+            "type": "string",
+            "title": "Head Sha"
+          },
+          "base_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Sha"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "changed_count": {
+            "type": "integer",
+            "title": "Changed Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "head_sha",
+          "base_sha",
+          "created_at",
+          "changed_count"
+        ],
+        "title": "CommitDiffEntry"
+      },
+      "CommitDiffListResponse": {
+        "properties": {
+          "repo_id": {
+            "type": "string",
+            "title": "Repo Id"
+          },
+          "diffs": {
+            "items": {
+              "$ref": "#/components/schemas/CommitDiffEntry"
+            },
+            "type": "array",
+            "title": "Diffs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo_id",
+          "diffs"
+        ],
+        "title": "CommitDiffListResponse"
       },
       "CommitDiffResponse": {
         "properties": {
@@ -4036,6 +4271,96 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HunkLineResponse": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "+",
+              "-",
+              " "
+            ],
+            "title": "Kind"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "old": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old"
+          },
+          "new": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Labels",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "text"
+        ],
+        "title": "HunkLineResponse"
+      },
+      "HunkResponse": {
+        "properties": {
+          "start": {
+            "type": "integer",
+            "title": "Start"
+          },
+          "end": {
+            "type": "integer",
+            "title": "End"
+          },
+          "old_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Start"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/HunkLineResponse"
+            },
+            "type": "array",
+            "title": "Lines",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "HunkResponse"
+      },
       "HybridSearchChunk": {
         "properties": {
           "chunk_id": {
@@ -4357,12 +4682,22 @@
             },
             "type": "array",
             "title": "Categories"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Severity"
           }
         },
         "type": "object",
         "required": [
           "path",
-          "categories"
+          "categories",
+          "severity"
         ],
         "title": "SecurityFlagResponse"
       },

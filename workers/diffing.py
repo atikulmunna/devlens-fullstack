@@ -12,9 +12,12 @@ import subprocess
 logger = logging.getLogger(__name__)
 
 _DIFF_GIT_RE = re.compile(r"^diff --git a/(.+?) b/(.+)$")
-_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+_HUNK_RE = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 # Stored line content per file and side, to keep rows bounded.
 MAX_STORED_LINES = 200
+# Hunk lines (with context) kept for the diff viewer, per file and per commit.
+MAX_HUNK_LINES_PER_FILE = 300
+MAX_HUNK_LINES_PER_DIFF = 3000
 
 
 def _term(body: str, whole: bool = True) -> re.Pattern:
@@ -42,10 +45,19 @@ def parse_unified_diff(diff_text: str) -> list[dict]:
     """Parse `git diff` unified output into per-file change records."""
     files: list[dict] = []
     current: dict | None = None
+    old_no = new_no = 0
 
     def flush() -> None:
         if current is not None:
             files.append(current)
+
+    def keep(line: dict) -> None:
+        """Record a hunk line for the viewer, until the file's cap."""
+        if current["hunk_line_count"] >= MAX_HUNK_LINES_PER_FILE:
+            current["truncated"] = True
+            return
+        current["hunks"][-1]["lines"].append(line)
+        current["hunk_line_count"] += 1
 
     for line in diff_text.splitlines():
         header = _DIFF_GIT_RE.match(line)
@@ -60,6 +72,8 @@ def parse_unified_diff(diff_text: str) -> list[dict]:
                 "hunks": [],
                 "added_lines": [],
                 "removed_lines": [],
+                "hunk_line_count": 0,
+                "truncated": False,
             }
             continue
         if current is None:
@@ -76,16 +90,27 @@ def parse_unified_diff(diff_text: str) -> list[dict]:
         elif line.startswith("@@"):
             hunk = _HUNK_RE.match(line)
             if hunk:
-                start = int(hunk.group(1))
-                count = int(hunk.group(2)) if hunk.group(2) is not None else 1
+                old_no = int(hunk.group(1))
+                start = new_no = int(hunk.group(2))
+                count = int(hunk.group(3)) if hunk.group(3) is not None else 1
                 end = start + max(count, 1) - 1
-                current["hunks"].append({"start": start, "end": end})
+                current["hunks"].append({"start": start, "end": end, "old_start": old_no, "lines": []})
         elif line.startswith("+") and not line.startswith("+++"):
             current["added"] += 1
             current["added_lines"].append(line[1:])
+            if current["hunks"]:
+                keep({"kind": "+", "text": line[1:], "new": new_no})
+                new_no += 1
         elif line.startswith("-") and not line.startswith("---"):
             current["removed"] += 1
             current["removed_lines"].append(line[1:])
+            if current["hunks"]:
+                keep({"kind": "-", "text": line[1:], "old": old_no})
+                old_no += 1
+        elif line.startswith(" ") and current["hunks"]:
+            keep({"kind": " ", "text": line[1:], "old": old_no, "new": new_no})
+            old_no += 1
+            new_no += 1
 
     flush()
     return files
@@ -93,6 +118,42 @@ def parse_unified_diff(diff_text: str) -> list[dict]:
 
 def _security_labels(text: str) -> set[str]:
     return {label for label, pattern in _SECURITY_PATTERNS if pattern.search(text)}
+
+
+# Documentation describes secrets and sign-in, and stylesheets name classes like `.auth`, without
+# either being a security change; flagging them buries the changes that are.
+NOT_FLAGGED_EXTENSIONS = (".md", ".rst", ".txt", ".adoc", ".css", ".scss", ".sass", ".less")
+
+
+def _never_flagged(path: str) -> bool:
+    return path.lower().endswith(NOT_FLAGGED_EXTENSIONS)
+
+
+def label_security_lines(changed_files: list[dict]) -> None:
+    """Mark each added or removed hunk line that matches a security pattern, for the viewer."""
+    for entry in changed_files:
+        if _never_flagged(entry.get("path") or ""):
+            continue
+        for hunk in entry.get("hunks") or []:
+            for line in hunk.get("lines") or []:
+                if line["kind"] != " ":
+                    labels = _security_labels(line["text"])
+                    if labels:
+                        line["labels"] = sorted(labels)
+
+
+def _cap_hunk_lines(changed_files: list[dict]) -> None:
+    """Keep the stored diff bounded: once the commit's line budget is spent, later files keep only counts."""
+    budget = MAX_HUNK_LINES_PER_DIFF
+    for entry in changed_files:
+        count = entry.pop("hunk_line_count", 0)
+        if count > budget:
+            for hunk in entry.get("hunks") or []:
+                hunk["lines"] = []
+            entry["truncated"] = True
+            budget = 0
+        else:
+            budget -= count
 
 
 def detect_security_touches(changed_files: list[dict]) -> list[dict]:
@@ -104,6 +165,8 @@ def detect_security_touches(changed_files: list[dict]) -> list[dict]:
     flags: list[dict] = []
     for entry in changed_files:
         path = entry.get("path") or ""
+        if _never_flagged(path):
+            continue
         added = _security_labels(path + "\n" + "\n".join(entry.get("added_lines") or []))
         removed = _security_labels("\n".join(entry.get("removed_lines") or []))
         matched = sorted(added) + [f"removed: {label}" for label in sorted(removed)]
@@ -157,6 +220,8 @@ def compute_commit_diff(repo_path: str, head_sha: str, timeout: int = 60) -> dic
     for entry in changed_files:
         entry["added_lines"] = entry.get("added_lines", [])[:MAX_STORED_LINES]
         entry["removed_lines"] = entry.get("removed_lines", [])[:MAX_STORED_LINES]
+    _cap_hunk_lines(changed_files)
+    label_security_lines(changed_files)
 
     return {
         "base_sha": base_sha,

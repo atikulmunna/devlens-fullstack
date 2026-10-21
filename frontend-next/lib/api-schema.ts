@@ -331,6 +331,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/repos/{repo_id}/diffs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Commit Diffs
+         * @description The analyzed commits with a stored diff, newest first: what the commit picker offers.
+         */
+        get: operations["list_commit_diffs_api_v1_repos__repo_id__diffs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/repos/{repo_id}/diff": {
         parameters: {
             query?: never;
@@ -504,6 +524,11 @@ export interface components {
             impacted_files: string[];
             /** Impacted Count */
             impacted_count: number;
+            /**
+             * Impacted By Depth
+             * @default []
+             */
+            impacted_by_depth: string[][];
             /** Graph Stats */
             graph_stats: {
                 [key: string]: number;
@@ -521,6 +546,16 @@ export interface components {
             removed: number;
             /** Hunks */
             hunks: number;
+            /**
+             * Hunk Details
+             * @default []
+             */
+            hunk_details: components["schemas"]["HunkResponse"][];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /** ChatMessageResponse */
         ChatMessageResponse: {
@@ -581,6 +616,24 @@ export interface components {
             created_at: string;
             /** Messages */
             messages?: components["schemas"]["ChatMessageResponse"][];
+        };
+        /** CommitDiffEntry */
+        CommitDiffEntry: {
+            /** Head Sha */
+            head_sha: string;
+            /** Base Sha */
+            base_sha: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Changed Count */
+            changed_count: number;
+        };
+        /** CommitDiffListResponse */
+        CommitDiffListResponse: {
+            /** Repo Id */
+            repo_id: string;
+            /** Diffs */
+            diffs: components["schemas"]["CommitDiffEntry"][];
         };
         /** CommitDiffResponse */
         CommitDiffResponse: {
@@ -746,6 +799,39 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HunkLineResponse */
+        HunkLineResponse: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "+" | "-" | " ";
+            /** Text */
+            text: string;
+            /** Old */
+            old?: number | null;
+            /** New */
+            new?: number | null;
+            /**
+             * Labels
+             * @default []
+             */
+            labels: string[];
+        };
+        /** HunkResponse */
+        HunkResponse: {
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
+            /** Old Start */
+            old_start?: number | null;
+            /**
+             * Lines
+             * @default []
+             */
+            lines: components["schemas"]["HunkLineResponse"][];
+        };
         /** HybridSearchChunk */
         HybridSearchChunk: {
             /** Chunk Id */
@@ -849,6 +935,11 @@ export interface components {
             path: string;
             /** Categories */
             categories: string[];
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "high" | "medium" | "low";
         };
         /** SendMessageRequest */
         SendMessageRequest: {
@@ -2175,6 +2266,83 @@ export interface operations {
                      *
                      *      */
                     "text/event-stream": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @example {
+                         *       "code": "BAD_REQUEST",
+                         *       "message": "Invalid GitHub URL",
+                         *       "details": {}
+                         *     } */
+                        error: {
+                            /** @example BAD_REQUEST */
+                            code: string;
+                            /** @example Invalid GitHub URL */
+                            message: string;
+                            /** @example {} */
+                            details: Record<string, never>;
+                        };
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @example {
+                         *       "code": "BAD_REQUEST",
+                         *       "message": "Invalid GitHub URL",
+                         *       "details": {}
+                         *     } */
+                        error: {
+                            /** @example BAD_REQUEST */
+                            code: string;
+                            /** @example Invalid GitHub URL */
+                            message: string;
+                            /** @example {} */
+                            details: Record<string, never>;
+                        };
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_commit_diffs_api_v1_repos__repo_id__diffs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommitDiffListResponse"];
                 };
             };
             /** @description Unauthorized */

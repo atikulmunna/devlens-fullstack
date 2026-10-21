@@ -2,14 +2,31 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { SignInLink, useAuth } from "@/components/auth";
+import { BlastMap } from "@/components/changes/blast-map";
+import { FileDiff } from "@/components/changes/file-diff";
+import { SEVERITY_ORDER, SeverityBadge } from "@/components/changes/severity";
+import { Answer } from "@/components/chat/answer";
 import { useRepo } from "@/components/repo-context";
-import { askAboutDiffStream, CommitDiffSummary, getCommitDiff } from "@/lib/api";
+import {
+  askAboutDiffStream,
+  CommitDiffEntry,
+  CommitDiffSummary,
+  getCommitDiff,
+  listCommitDiffs
+} from "@/lib/api";
+import { friendlyChatError } from "@/lib/errors";
 import { plural } from "@/lib/format";
 
-// The latest commit's changes, what they affect, and a question box about them.
+function shortDate(iso: string | null | undefined): string {
+  return iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+}
+
+// An analyzed commit's changes: which files, which lines, how risky, and how far they reach.
 export function RepoChanges() {
   const repo = useRepo();
   const { status } = useAuth();
+  const [commits, setCommits] = useState<CommitDiffEntry[]>([]);
+  const [head, setHead] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [diff, setDiff] = useState<CommitDiffSummary | null>(null);
@@ -21,10 +38,20 @@ export function RepoChanges() {
     if (status !== "signed-in") {
       return;
     }
+    listCommitDiffs(repo.repo_id)
+      .then(setCommits)
+      .catch(() => setCommits([]));
+  }, [repo.repo_id, status]);
+
+  useEffect(() => {
+    if (status !== "signed-in") {
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(null);
-    getCommitDiff(repo.repo_id)
+    setAnswer("");
+    getCommitDiff(repo.repo_id, head ?? undefined)
       .then((summary) => {
         if (!cancelled) {
           setDiff(summary);
@@ -32,7 +59,8 @@ export function RepoChanges() {
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Could not load the commit changes");
+          setDiff(null);
+          setError(friendlyChatError(err));
         }
       })
       .finally(() => {
@@ -43,24 +71,26 @@ export function RepoChanges() {
     return () => {
       cancelled = true;
     };
-  }, [repo.repo_id, status]);
+  }, [repo.repo_id, status, head]);
 
   async function onAsk(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const q = question.trim();
-    if (!q || asking) {
+    if (!q || asking || !diff) {
       return;
     }
     setAsking(true);
     setAnswer("");
     setError(null);
     try {
-      await askAboutDiffStream(repo.repo_id, q, {
-        onToken: (token) => setAnswer((prev) => prev + token),
-        onDone: () => undefined
-      });
+      await askAboutDiffStream(
+        repo.repo_id,
+        q,
+        { onToken: (token) => setAnswer((prev) => prev + token), onDone: () => undefined },
+        diff.head_sha
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "The question could not be answered");
+      setError(friendlyChatError(err));
     } finally {
       setAsking(false);
     }
@@ -78,71 +108,106 @@ export function RepoChanges() {
       </article>
     );
   }
-  if (loading) {
-    return <p className="notice">Loading the latest commit...</p>;
-  }
+
+  const flags = [...(diff?.security_flags ?? [])].sort(
+    (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || a.path.localeCompare(b.path)
+  );
+  const flagByPath = new Map(flags.map((flag) => [flag.path, flag]));
+  const byDepth = diff?.blast_radius.impacted_by_depth ?? [];
+  const compareUrl = diff?.base_sha ? `${repo.github_url}/compare/${diff.base_sha}...${diff.head_sha}` : null;
 
   return (
-    <section className="grid">
+    <section className="changes">
+      <div className="commit-bar">
+        {commits.length > 1 && (
+          <label className="commit-picker">
+            <span>Commit</span>
+            <select className="input" value={diff?.head_sha ?? ""} onChange={(event) => setHead(event.target.value)}>
+              {commits.map((commit) => (
+                <option key={commit.head_sha} value={commit.head_sha}>
+                  {commit.head_sha.slice(0, 7)}, {plural(commit.changed_count, "file")}, analyzed {shortDate(commit.created_at)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {diff && (
+          <p className="commit-line">
+            <a className="mono" href={`${repo.github_url}/commit/${diff.head_sha}`} target="_blank" rel="noreferrer">
+              {diff.head_sha.slice(0, 10)}
+            </a>
+            {compareUrl && (
+              <>
+                {" "}
+                <span className="muted">against its parent</span>{" "}
+                <a href={compareUrl} target="_blank" rel="noreferrer">
+                  compare on GitHub
+                </a>
+              </>
+            )}
+          </p>
+        )}
+      </div>
+
       {error && (
         <p className="error" role="alert">
           {error}
         </p>
       )}
+      {loading && <p className="notice">Loading the commit...</p>}
 
-      {diff && (
+      {diff && !loading && (
         <>
-          <article className="card">
-            <h2>Latest commit</h2>
-            <p className="mono">
-              {diff.base_sha ? `${diff.base_sha.slice(0, 10)} to ` : ""}
-              {diff.head_sha.slice(0, 10)}
-            </p>
-            <p className="muted">
-              {plural(diff.changed_files.length, "file")} changed, {plural(diff.blast_radius.impacted_count, "other file")}{" "}
-              import them.
-            </p>
-          </article>
+          <p className="changes-summary">
+            {plural(diff.changed_files.length, "file")} changed. {plural(diff.blast_radius.impacted_count, "other file")}{" "}
+            import them{byDepth.length > 1 ? `, up to ${plural(byDepth.length, "import")} away` : ""}.
+            {flags.length > 0 && ` ${plural(flags.length, "file")} touch security-sensitive code.`}
+          </p>
 
-          {diff.security_flags.length > 0 && (
-            <article className="error">
-              <strong>Touches sign-in, tokens, or secrets</strong>
-              <div className="citations">
-                {diff.security_flags.map((flag) => (
-                  <span key={flag.path} className="citation-pill mono">
-                    {flag.path} ({flag.categories.join(", ")})
-                  </span>
+          {flags.length > 0 && (
+            <article className="card">
+              <h2>Security-sensitive changes</h2>
+              <ul className="flags">
+                {flags.map((flag) => (
+                  <li key={flag.path}>
+                    <SeverityBadge level={flag.severity} />
+                    <span className="mono">{flag.path}</span>
+                    <span className="muted">{flag.categories.join(", ")}</span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </article>
           )}
 
           <article className="card">
             <h2>Changed files</h2>
-            <div className="grid">
+            <div className="file-diffs">
               {diff.changed_files.map((file) => (
-                <div key={file.path} className="changed-file">
-                  <span className="mono">{file.path}</span>
-                  <span className="muted">
-                    {file.status}, +{file.added} / -{file.removed}, {plural(file.hunks, "hunk")}
-                  </span>
-                </div>
+                <FileDiff key={file.path} file={file} flag={flagByPath.get(file.path)} />
               ))}
             </div>
           </article>
 
-          {diff.blast_radius.impacted_files.length > 0 && (
-            <article className="card">
-              <h2>Files that import the changes</h2>
-              <div className="citations">
-                {diff.blast_radius.impacted_files.map((path) => (
-                  <span key={path} className="citation-pill mono">
-                    {path}
-                  </span>
-                ))}
-              </div>
-            </article>
-          )}
+          <article className="card">
+            <h2>How far it reaches</h2>
+            {diff.blast_radius.impacted_count === 0 ? (
+              <p className="muted">No other indexed file imports the changed files.</p>
+            ) : (
+              <>
+                <BlastMap changed={diff.blast_radius.changed_files} byDepth={byDepth} />
+                <ol className="reach-list">
+                  {byDepth.map((level, index) => (
+                    <li key={index}>
+                      <span className="muted">
+                        {index === 0 ? "Import a changed file" : `${index + 1} imports away`} ({level.length})
+                      </span>
+                      <span className="mono">{level.join(", ")}</span>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            )}
+          </article>
 
           <article className="card">
             <h2>Ask about this commit</h2>
@@ -151,16 +216,15 @@ export function RepoChanges() {
                 className="input"
                 aria-label="Question about this commit"
                 value={question}
-                onChange={(e) => setQuestion(e.target.value)}
+                onChange={(event) => setQuestion(event.target.value)}
               />
               <button type="submit" className="button" disabled={asking || !question.trim()}>
                 {asking ? "Answering..." : "Ask"}
               </button>
             </form>
-            {(answer || asking) && (
-              <div className="bubble assistant diff-answer">
-                <div className="role">DevLens</div>
-                <div className={asking && !answer ? "blink" : undefined}>{answer}</div>
+            {answer && (
+              <div className={`diff-answer${asking ? " blink" : ""}`}>
+                <Answer content={answer} citations={[]} githubUrl={repo.github_url} />
               </div>
             )}
           </article>

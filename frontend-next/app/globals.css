@@ -8,6 +8,7 @@
   --pine: #2d5a47;
   --pine-deep: #234637;
   --ochre: #a86f24;
+  --ochre-deep: #8a5a17;
   --brick: #9c3b2e;
   --brick-wash: #f6e9e5;
   --pine-wash: #e2ebe3;
@@ -381,31 +382,36 @@ a.citation-pill:hover {
   justify-self: end;
 }
 
-.contours .ring {
+.contours .ring,
+.blast-map .ring {
   fill: none;
   stroke: var(--ochre);
   stroke-width: 1.4;
 }
 
-.contours .ring-faint {
+.contours .ring-faint,
+.blast-map .ring-faint {
   fill: none;
   stroke: var(--ochre);
   stroke-width: 1;
   opacity: 0.45;
 }
 
-.contours .node {
+.contours .node,
+.blast-map .node {
   fill: var(--pine);
 }
 
-.contours .node-changed {
+.contours .node-changed,
+.blast-map .node-changed {
   fill: var(--surface);
   stroke: var(--pine);
   stroke-width: 2.5;
 }
 
 /* Map lettering gets a paper-colored halo so it stays legible where it crosses a contour. */
-.contours .label {
+.contours .label,
+.blast-map .label {
   font-family: var(--font-code);
   font-size: 13px;
   fill: var(--ink);
@@ -1085,11 +1091,235 @@ a.citation-pill:hover {
   font-size: 0.9em;
 }
 
-.changed-file {
-  display: flex;
-  justify-content: space-between;
+/* --- Changes -------------------------------------------------------------- */
+
+.changes {
+  display: grid;
   gap: 12px;
+}
+
+.changes > *,
+.changes .card {
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.commit-bar {
+  display: flex;
   flex-wrap: wrap;
+  align-items: end;
+  gap: 8px 20px;
+}
+
+.commit-picker {
+  display: grid;
+  gap: 4px;
+  font-size: var(--step--1);
+  color: var(--lichen);
+}
+
+.commit-picker .input {
+  font-family: var(--font-code);
+  font-size: var(--step--1);
+  padding: 6px 10px;
+}
+
+.commit-line {
+  margin: 0;
+}
+
+.changes-summary {
+  margin: 0;
+}
+
+/* Severity: shape and word, plus a reserved color (not used for data series). */
+.severity {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--step--1);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.severity svg {
+  fill: currentColor;
+}
+
+.severity-high {
+  color: var(--brick);
+}
+
+.severity-medium {
+  color: var(--ochre-deep);
+}
+
+.severity-low {
+  color: var(--lichen);
+}
+
+.flags {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.flags li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  overflow-wrap: anywhere;
+}
+
+.flags .muted {
+  font-size: var(--step--1);
+}
+
+/* Diff viewer */
+.file-diffs {
+  display: grid;
+  gap: 6px;
+}
+
+/* Long code lines scroll inside the hunk instead of widening the page. */
+.file-diffs > * {
+  min-width: 0;
+}
+
+.file-diff {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.file-diff summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 14px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.file-diff-path {
+  overflow-wrap: anywhere;
+  font-size: var(--step--1);
+}
+
+.file-diff-meta {
+  display: inline-flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: var(--step--1);
+}
+
+.file-diff-meta .added {
+  color: var(--pine);
+}
+
+.file-diff-meta .removed {
+  color: var(--brick);
+}
+
+.file-diff-note {
+  margin: 0;
+  padding: 0 10px 10px;
+  font-size: var(--step--1);
+}
+
+.hunks {
+  border-top: 1px solid var(--rule);
+  overflow-x: auto;
+}
+
+.hunk {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-code);
+  font-size: 0.8rem;
+}
+
+.hunk + .hunk {
+  border-top: 1px dashed var(--rule);
+}
+
+.hunk td {
+  padding: 1px 6px;
+  vertical-align: top;
+}
+
+.line-no {
+  width: 1%;
+  min-width: 3ch;
+  text-align: right;
+  color: var(--lichen);
+  user-select: none;
+}
+
+.line-sign {
+  width: 1%;
+  user-select: none;
+}
+
+.line-text code {
+  white-space: pre;
+}
+
+.line-added {
+  background: #e7f1e9;
+}
+
+.line-removed {
+  background: var(--brick-wash);
+}
+
+/* A flagged line: an ochre rule at the edge and its labels, readable without the color. */
+.flagged td:first-child {
+  box-shadow: inset 3px 0 0 var(--ochre);
+}
+
+.line-labels {
+  margin-left: 12px;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ochre-deep);
+  white-space: nowrap;
+}
+
+/* Blast radius */
+.blast {
+  margin: 0;
+}
+
+.blast-map {
+  display: block;
+  width: 100%;
+  max-width: 560px;
+  height: auto;
+  margin: 0 auto;
+}
+
+.blast figcaption {
+  text-align: center;
+  font-size: var(--step--1);
+  margin-top: 4px;
+}
+
+.reach-list {
+  margin: 14px 0 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: 6px;
+  font-size: var(--step--1);
+}
+
+.reach-list li > span {
+  display: block;
+  overflow-wrap: anywhere;
 }
 
 .diff-answer {

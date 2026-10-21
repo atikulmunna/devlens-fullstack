@@ -83,3 +83,20 @@ def test_relative_javascript_imports_are_followed() -> None:
 
     assert blast["impacted_files"] == ["src/app.ts", "src/page.tsx"]
     assert blast["graph_stats"] == {"files_considered": 4, "edges_detected": 2}
+
+
+def test_impacted_files_are_grouped_by_import_distance() -> None:
+    files = _chunks(
+        {
+            "app/core.py": "def run(): ...",
+            "app/service.py": "from app.core import run",
+            "app/worker.py": "from app.core import run",
+            "app/api.py": "from app.service import handler",
+            "app/main.py": "from app.api import router\nfrom app.core import run",
+        }
+    )
+
+    blast = compute_blast_radius(files, ["app/core.py"])
+
+    # main.py imports core.py directly too, so it sits at distance one, not three.
+    assert blast["impacted_by_depth"] == [["app/main.py", "app/service.py", "app/worker.py"], ["app/api.py"]]
