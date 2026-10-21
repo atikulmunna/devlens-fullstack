@@ -628,6 +628,8 @@ export interface components {
         };
         /** DashboardAnalysisResponse */
         DashboardAnalysisResponse: {
+            /** Commit Sha */
+            commit_sha?: string | null;
             /** Quality Score */
             quality_score?: number | null;
             /** Architecture Summary */
@@ -636,6 +638,11 @@ export interface components {
             language_breakdown?: {
                 [key: string]: number;
             } | null;
+            /**
+             * Languages
+             * @default []
+             */
+            languages: components["schemas"]["LanguageShareResponse"][];
             /** Contributor Stats */
             contributor_stats?: {
                 [key: string]: unknown;
@@ -766,6 +773,15 @@ export interface components {
             total: number;
             /** Results */
             results: components["schemas"]["HybridSearchChunk"][];
+        };
+        /** LanguageShareResponse */
+        LanguageShareResponse: {
+            /** Name */
+            name: string;
+            /** Share */
+            share: number;
+            /** Is Code */
+            is_code: boolean;
         };
         /** LexicalSearchChunk */
         LexicalSearchChunk: {

@@ -634,35 +634,280 @@ a:hover {
   flex: 1;
 }
 
-.health {
+/* --- Overview ------------------------------------------------------------- */
+
+.overview {
+  display: grid;
+  gap: 12px;
+}
+
+.overview > *,
+.overview-pair > * {
+  min-width: 0;
+}
+
+.overview .card {
+  margin-bottom: 0;
+}
+
+.overview-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 12px;
+}
+
+.summary-text {
   margin: 0;
-  padding-left: 1.2em;
+  max-width: 75ch;
+}
+
+.card h3 {
+  font-size: var(--step-0);
+  margin: 0 0 6px;
+}
+
+/* Languages: one bar, 2px surface gaps between segments, rounded only at the ends. */
+.language-bar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 4px 0 12px;
+}
+
+.language-segment {
+  min-width: 3px;
+  transition: opacity 120ms ease;
+}
+
+.language-segment.dimmed {
+  opacity: 0.35;
+}
+
+.language-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+}
+
+.language-legend li.active {
+  font-weight: 700;
+}
+
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: baseline;
+}
+
+.language-docs {
+  margin: 10px 0 0;
+  font-size: var(--step--1);
+}
+
+/* Contributors */
+.contributors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: grid;
   gap: 8px;
 }
 
-.long-functions {
-  list-style: none;
-  margin: 8px 0 0;
-  padding: 0;
+.contributors li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.contributors img {
+  border-radius: 999px;
+  background: var(--pine-wash);
+}
+
+.contributors .muted {
+  margin-left: auto;
+  font-size: var(--step--1);
+}
+
+/* Code health */
+.health-facts {
+  margin: 0 0 12px;
+  padding-left: 1.2em;
   display: grid;
   gap: 4px;
 }
 
-.long-functions li {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
+.long-functions {
+  width: 100%;
+  border-collapse: collapse;
   font-size: var(--step--1);
 }
 
-.long-functions .mono {
+.long-functions th {
+  text-align: left;
+  font-weight: 700;
+  color: var(--lichen);
+  border-bottom: 1px solid var(--rule);
+  padding: 4px 8px 6px 0;
+}
+
+.long-functions td {
+  border-bottom: 1px solid var(--rule);
+  padding: 6px 8px 6px 0;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.long-functions .numeric {
+  text-align: right;
+  padding-right: 0;
+  white-space: nowrap;
+}
+
+.health .link-button {
+  margin-top: 10px;
+  font-size: var(--step--1);
+}
+
+/* Imports: the neighborhood graph, then the same neighbors as lists. */
+.dependencies > p {
+  margin: 0 0 10px;
+}
+
+.dep-picker {
+  display: block;
+  max-width: 28rem;
+  margin-bottom: 12px;
+}
+
+.dep-picker .input {
+  font-family: var(--font-code);
+  font-size: var(--step--1);
+}
+
+.dep-graph {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.dep-edge {
+  fill: none;
+  stroke: var(--rule);
+  stroke-width: 1.5;
+}
+
+.dep-dot {
+  fill: var(--pine);
+}
+
+.dep-hit {
+  fill: transparent;
+}
+
+.dep-label {
+  font-family: var(--font-code);
+  font-size: 13px;
+  fill: var(--ink);
+}
+
+.dep-node {
+  cursor: pointer;
+  outline: none;
+}
+
+.dep-node:hover .dep-edge,
+.dep-node:focus-visible .dep-edge {
+  stroke: var(--ochre);
+  stroke-width: 2;
+}
+
+.dep-node:hover .dep-label,
+.dep-node:focus-visible .dep-label {
+  fill: var(--pine-deep);
+  text-decoration: underline;
+}
+
+.dep-node:focus-visible .dep-hit {
+  stroke: var(--ochre);
+  stroke-width: 2;
+}
+
+.dep-center {
+  fill: var(--surface);
+  stroke: var(--pine);
+  stroke-width: 2.5;
+}
+
+.dep-center-label {
+  font-family: var(--font-code);
+  font-size: 13px;
+  font-weight: 500;
+  fill: var(--ink);
+}
+
+.dep-current {
+  margin: 0 0 10px;
+  font-size: var(--step--1);
   overflow-wrap: anywhere;
 }
 
-.health p {
-  margin: 4px 0 0;
+.dep-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.dep-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
   font-size: var(--step--1);
+}
+
+.dep-list .link-button {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+/* Files */
+.file-tree > p {
+  margin: 0 0 8px;
+}
+
+.file-tree ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.file-tree > ul {
+  padding-left: 0;
+}
+
+.file-tree li {
+  margin: 2px 0;
+  font-size: var(--step--1);
+  overflow-wrap: anywhere;
+}
+
+.file-tree summary {
+  cursor: pointer;
+}
+
+.file-tree summary .muted {
+  font-size: 0.9em;
 }
 
 .no-citation {
@@ -708,6 +953,17 @@ a:hover {
     flex-direction: column;
   }
 
+  .overview-pair,
+  .dep-columns {
+    grid-template-columns: 1fr;
+  }
+
+  /* Too narrow for readable labels; the lists below carry the same neighbors. */
+  .dep-graph,
+  .dep-graph-note {
+    display: none;
+  }
+
   .features {
     grid-template-columns: 1fr;
     gap: 20px;
@@ -718,5 +974,9 @@ a:hover {
   .blink::after,
   .step-current::before {
     animation: none;
+  }
+
+  .language-segment {
+    transition: none;
   }
 }

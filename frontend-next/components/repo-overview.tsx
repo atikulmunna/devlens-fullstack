@@ -1,59 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CodeHealth } from "@/components/overview/code-health";
+import { Contributors } from "@/components/overview/contributors";
+import { DependencyView } from "@/components/overview/dependency-view";
+import { FileTree } from "@/components/overview/file-tree";
+import { LanguageBar } from "@/components/overview/language-bar";
 import { useRepo } from "@/components/repo-context";
-import { DashboardAnalysis, getDashboard, TechDebtFlags } from "@/lib/api";
-import { plural } from "@/lib/format";
+import { DashboardAnalysis, getDashboard } from "@/lib/api";
 
-const LISTED_LONG_FUNCTIONS = 5;
-
-function pretty(value: unknown): string {
-  return JSON.stringify(value, null, 2);
-}
-
-// Facts, not a score: which functions are long, how many notes are left, whether tests exist.
-function CodeHealth({ debt }: { debt: TechDebtFlags | null }) {
-  if (!debt?.measured) {
-    return <p className="muted">This analysis predates code health checks. Analyze the repository again to see them.</p>;
-  }
-  const longFunctions = debt.long_functions ?? [];
-  const longCount = debt.long_function_count ?? 0;
-  const todoCount = debt.todo_count ?? 0;
-  const testFiles = debt.test_file_count ?? 0;
-  return (
-    <ul className="health">
-      <li>
-        {longCount === 0
-          ? `No functions over ${debt.long_function_lines} lines.`
-          : `${plural(longCount, "function")} over ${debt.long_function_lines} lines.`}
-        {longFunctions.length > 0 && (
-          <ul className="long-functions">
-            {longFunctions.slice(0, LISTED_LONG_FUNCTIONS).map((fn) => (
-              <li key={`${fn.file}:${fn.line}`}>
-                <span className="mono">{fn.name}</span>
-                <span className="mono muted">
-                  {fn.file}:{fn.line}
-                </span>
-                <span className="muted">{fn.length} lines</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        {longCount > LISTED_LONG_FUNCTIONS && (
-          <p className="muted">And {(longCount - LISTED_LONG_FUNCTIONS).toLocaleString("en-US")} more.</p>
-        )}
-      </li>
-      <li>
-        {todoCount === 0
-          ? "No TODO or FIXME notes in the code."
-          : `${plural(todoCount, "TODO or FIXME note")} in ${plural(debt.todo_file_count ?? 0, "file")}.`}
-      </li>
-      <li>{testFiles === 0 ? "No test files found." : `${plural(testFiles, "test file")}.`}</li>
-    </ul>
-  );
-}
-
-// The analysis results for the current repository (the old dashboard, minus its own header).
+// The analysis of the current repository: what it is, how it is built, and where to look first.
 export function RepoOverview() {
   const repo = useRepo();
   const [loading, setLoading] = useState(true);
@@ -99,26 +55,38 @@ export function RepoOverview() {
     return <p className="notice">The analysis of this repository has not finished yet.</p>;
   }
 
+  const filePaths = Object.keys(analysis.file_tree?.files ?? {});
   return (
-    <section className="grid">
+    <section className="overview">
       <article className="card">
         <h2>Architecture summary</h2>
-        <p className="muted">{analysis.architecture_summary || "Not available"}</p>
+        <p className="summary-text">{analysis.architecture_summary || "Not available"}</p>
       </article>
+
+      <div className="overview-pair">
+        <article className="card">
+          <h2>Languages</h2>
+          <LanguageBar languages={analysis.languages ?? []} />
+        </article>
+        <article className="card">
+          <h2>Contributors</h2>
+          <Contributors stats={analysis.contributor_stats} />
+        </article>
+      </div>
 
       <article className="card">
         <h2>Code health</h2>
-        <CodeHealth debt={analysis.tech_debt_flags} />
+        <CodeHealth debt={analysis.tech_debt_flags} githubUrl={repo.github_url} commitSha={analysis.commit_sha} />
       </article>
 
       <article className="card">
-        <h2>Contributors</h2>
-        <pre className="mono">{pretty(analysis.contributor_stats)}</pre>
+        <h2>Imports</h2>
+        <DependencyView repoId={repo.repo_id} />
       </article>
 
       <article className="card">
-        <h2>File tree</h2>
-        <pre className="mono">{pretty(analysis.file_tree)}</pre>
+        <h2>Files</h2>
+        <FileTree paths={filePaths} githubUrl={repo.github_url} commitSha={analysis.commit_sha} />
       </article>
     </section>
   );

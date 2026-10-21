@@ -23,16 +23,18 @@ previous three turns, and questions about the whole repository ("what are the ma
 start from the README.
 
 **Overview.** An architecture summary written from the README, the package manifest, and the
-entry-point code. Code health is reported as facts, not a score: functions over 50 lines (with
-name, file, and line), TODO and FIXME notes, and test files. Contributors and the file tree are on
-the same page.
+entry-point code. Code health is reported as facts, not a score: functions over 50 lines, each
+linked to its lines on GitHub at the analyzed commit, plus TODO and FIXME notes and test files.
+The tab also shows the language mix, contributors, the file tree, and an import explorer: one file
+in the middle, what imports it on one side, what it imports on the other; choose any neighbor to
+move to it.
 
 **Changes.** The latest commit against its parent: the changed files, every file that imports
 them, and lines touching auth, tokens, secrets, crypto, or environment config, flagged separately
 when they were removed. The import graph follows Python packages, relative imports, `src/`
 layouts, and TypeScript path aliases. You can ask questions about the diff itself.
 
-![The Overview tab for pallets/markupsafe: architecture summary and code health](assets/repo-overview.png)
+![The Overview tab for DevLens itself: architecture summary, language mix, contributors, and code health with links to the long functions](assets/repo-overview.png)
 
 ## How it works
 

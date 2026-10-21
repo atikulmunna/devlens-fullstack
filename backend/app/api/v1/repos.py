@@ -17,6 +17,7 @@ from app.deps import get_db_session, get_repo_or_404
 from app.observability import observe_sse_startup, trace_span
 from app.services.dependency_graph import build_dependency_graph
 from app.services.github_repos import resolve_public_repo_snapshot
+from app.services.languages import language_shares
 from app.services.retrieval_hybrid import hybrid_search_chunks
 from app.services.retrieval_lexical import lexical_search_chunks
 
@@ -108,10 +109,21 @@ class DashboardRepositoryResponse(BaseModel):
     size_kb: int | None = None
 
 
+class LanguageShareResponse(BaseModel):
+    name: str
+    # Percent of the indexed code by size.
+    share: float
+    # False for documentation and configuration formats (Markdown, YAML, ...).
+    is_code: bool
+
+
 class DashboardAnalysisResponse(BaseModel):
+    # The commit this analysis read, for links to exact lines on GitHub.
+    commit_sha: str | None = None
     quality_score: int | None = None
     architecture_summary: str | None = None
     language_breakdown: dict[str, float] | None = None
+    languages: list[LanguageShareResponse] = []
     # JSON columns written by the analyze worker (workers/analyze_worker.py), passed through as stored.
     contributor_stats: dict | None = None
     tech_debt_flags: dict | None = None
@@ -471,10 +483,13 @@ def get_repo_dashboard(repo_id: UUID, db: Session = Depends(get_db_session)) -> 
 
     analysis_payload = None
     if result is not None:
+        job = db.get(AnalysisJob, result.job_id) if result.job_id else None
         analysis_payload = DashboardAnalysisResponse(
+            commit_sha=job.commit_sha if job else None,
             quality_score=result.quality_score,
             architecture_summary=result.architecture_summary,
             language_breakdown=result.language_breakdown,
+            languages=language_shares(result.language_breakdown),
             contributor_stats=result.contributor_stats,
             tech_debt_flags=result.tech_debt_flags,
             file_tree=result.file_tree,
