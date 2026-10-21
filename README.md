@@ -4,7 +4,7 @@ DevLens reads a public GitHub repository and answers questions about its code. E
 the files and lines it was built from. For the latest commit it shows what changed, which files
 import the changed code, and any security-sensitive lines that were added or removed.
 
-![Chat about pallets/itsdangerous: an answer that cites timed.rst, test_timed.py, and exc.py inline, with two retrieved sources the model did not use drawn dashed](assets/chat.png)
+![Chat about pallets/itsdangerous: earlier chats on the left; an answer with inline code and superscript links to the cited lines, then its sources, with the ones the model did not use drawn dashed](assets/chat.png)
 
 **Live demo.** DevLens runs as a private alpha on a single AWS instance that is started on request.
 [aimunna.me/devlens-fullstack](https://aimunna.me/devlens-fullstack/) explains how to get a demo
@@ -18,9 +18,11 @@ with three tabs.
 
 **Chat.** Ask how something works. Up to six retrieved code sections go to the model, numbered
 `[1]` to `[6]`. The answer cites them inline, and each source is listed under the answer as
-`file:line`; sources the model saw but did not cite are drawn dashed. Follow-up questions see the
-previous three turns, and questions about the whole repository ("what are the main components?")
-start from the README.
+`file:line`; both open the exact lines on GitHub at the analyzed commit, and sources the model saw
+but did not cite are drawn dashed. Answers render as Markdown (lists, code blocks). Follow-up
+questions see the previous three turns, questions about the whole repository ("what are the main
+components?") start from the README, and earlier chats are listed beside the conversation. You can
+stop an answer mid-stream or copy it.
 
 **Overview.** An architecture summary written from the README, the package manifest, and the
 entry-point code. Code health is reported as facts, not a score: functions over 50 lines, each

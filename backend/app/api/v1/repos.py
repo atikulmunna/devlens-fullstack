@@ -11,10 +11,11 @@ from sqlalchemy.orm import Session
 
 from app.api.error_schema import ERROR_RESPONSE_SCHEMA
 from app.api.sse import SSE_HEADERS, sse_event
-from app.db.models import AnalysisJob, AnalysisResult, CodeChunk, Repository
+from app.db.models import AnalysisJob, CodeChunk, Repository
 from app.db.session import SessionLocal
 from app.deps import get_db_session, get_repo_or_404
 from app.observability import observe_sse_startup, trace_span
+from app.services.analysis import analysis_commit_sha, latest_analysis
 from app.services.dependency_graph import build_dependency_graph
 from app.services.github_repos import resolve_public_repo_snapshot
 from app.services.languages import language_shares
@@ -470,22 +471,12 @@ def search_repo_hybrid(
 def get_repo_dashboard(repo_id: UUID, db: Session = Depends(get_db_session)) -> DashboardResponse:
     repo = get_repo_or_404(db, repo_id)
 
-    result = (
-        db.execute(
-            select(AnalysisResult)
-            .where(AnalysisResult.repo_id == repo.id)
-            .order_by(AnalysisResult.created_at.desc())
-            .limit(1)
-        )
-        .scalars()
-        .first()
-    )
+    result = latest_analysis(db, repo.id)
 
     analysis_payload = None
     if result is not None:
-        job = db.get(AnalysisJob, result.job_id) if result.job_id else None
         analysis_payload = DashboardAnalysisResponse(
-            commit_sha=job.commit_sha if job else None,
+            commit_sha=analysis_commit_sha(db, result),
             quality_score=result.quality_score,
             architecture_summary=result.architecture_summary,
             language_breakdown=result.language_breakdown,

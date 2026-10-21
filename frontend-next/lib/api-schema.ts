@@ -556,6 +556,8 @@ export interface components {
              * @default 0
              */
             message_count: number;
+            /** First Question */
+            first_question?: string | null;
             /** Last Message Preview */
             last_message_preview?: string | null;
         };

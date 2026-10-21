@@ -10,11 +10,12 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import AnalysisResult, CodeChunk
+from app.db.models import CodeChunk
+from app.services.analysis import latest_analysis
 from app.services.chat_synthesizer import MAX_CONTEXTS, detect_intent
 from app.services.citations import format_citation, validate_citations_for_repo
-from app.services.languages import language_shares
-from app.services.retrieval_hybrid import load_chunk_content
+from app.services.languages import LANGUAGE_NAMES, NON_CODE_LANGUAGES, language_shares
+from app.services.retrieval_hybrid import TEST_PATH_RE, TOOLING_PATH_RE, load_chunk_content
 
 
 def _language_answer(breakdown: dict | None) -> str | None:
@@ -158,15 +159,7 @@ def plan_answer(db: Session, repo_id: UUID, query: str, results: list[dict]) -> 
     summary mode.
     """
     if _language_question(query):
-        analysis = (
-            db.execute(
-                select(AnalysisResult)
-                .where(AnalysisResult.repo_id == repo_id)
-                .order_by(AnalysisResult.created_at.desc())
-            )
-            .scalars()
-            .first()
-        )
+        analysis = latest_analysis(db, repo_id)
         answer = _language_answer(analysis.language_breakdown if analysis else None)
         if answer:
             # Whole-repository statistics, so there are no specific lines to cite.
@@ -269,15 +262,26 @@ def snippet_fallback_text(db: Session, repo_id: UUID, top: list[dict], refs: lis
     return "Relevant code context was found in: " + ", ".join(refs) + "."
 
 
+NOT_SUGGESTED_FOLDERS = {"docs", "doc", "examples", "example"}
+
+
+def _worth_suggesting(path: str) -> bool:
+    """Source files only: not hidden or tooling folders, tests, docs, or config."""
+    parts = path.split("/")
+    if any(part.startswith(".") for part in parts) or any(part in NOT_SUGGESTED_FOLDERS for part in parts[:-1]):
+        return False
+    if TEST_PATH_RE.search(path) or TOOLING_PATH_RE.search(path):
+        return False
+    # Code files only, by extension: no Makefile, Dockerfile, docs, or config.
+    extension = parts[-1].rsplit(".", 1)[-1].lower() if "." in parts[-1] else ""
+    return extension in LANGUAGE_NAMES and LANGUAGE_NAMES[extension] not in NON_CODE_LANGUAGES
+
+
 def build_suggested_questions(db: Session, repo_id: UUID, limit: int) -> list[str]:
-    file_rows = db.execute(
-        select(CodeChunk.file_path)
-        .where(CodeChunk.repo_id == repo_id)
-        .distinct()
-        .order_by(CodeChunk.file_path.asc())
-        .limit(3)
-    ).all()
-    files = [row[0] for row in file_rows if row and row[0]]
+    paths = db.execute(
+        select(CodeChunk.file_path).where(CodeChunk.repo_id == repo_id).distinct().order_by(CodeChunk.file_path.asc())
+    ).scalars()
+    files = [path for path in paths if path and _worth_suggesting(path)][:3]
 
     suggestions = [
         "What are the main architecture components in this repository?",

@@ -10,6 +10,7 @@ from app.api.error_schema import ERROR_RESPONSE_SCHEMA
 from app.config import settings
 from app.db.models import AnalysisResult, Repository, ShareToken, User
 from app.deps import get_current_user, get_db_session, get_repo_or_404
+from app.services.analysis import latest_analysis
 from app.services.share_tokens import create_share_token, decode_share_token, new_share_token_id, share_token_expiry
 
 router = APIRouter(prefix="/export", tags=["export"])
@@ -81,16 +82,7 @@ def _get_repo_or_404(db: Session, repo_id: UUID) -> Repository:
 
 
 def _get_latest_result_or_404(db: Session, repo_id: UUID) -> AnalysisResult:
-    result = (
-        db.execute(
-            select(AnalysisResult)
-            .where(AnalysisResult.repo_id == repo_id)
-            .order_by(AnalysisResult.created_at.desc())
-            .limit(1)
-        )
-        .scalars()
-        .first()
-    )
+    result = latest_analysis(db, repo_id)
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis result not found")
     return result

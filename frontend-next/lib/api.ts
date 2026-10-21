@@ -1,5 +1,6 @@
 import type { components } from "./api-schema";
 import { authFetch } from "./auth";
+import { ApiError } from "./errors";
 
 // Request and response shapes come from the backend's OpenAPI schema (lib/api-schema.ts, generated
 // by `npm run gen:api` from lib/openapi.json), so a backend change that breaks the frontend fails
@@ -74,16 +75,18 @@ export function getBackendBase(): string {
   return (process.env.NEXT_PUBLIC_API_URL || defaultApiBase).replace(/\/+$/, "");
 }
 
-async function assertJson<T>(response: Response, fallbackMessage: string): Promise<T> {
+async function errorFrom(response: Response, fallbackMessage: string): Promise<ApiError> {
   const payload = await response.json().catch(() => null);
+  const message = payload?.error?.message || payload?.detail || `${fallbackMessage} (status ${response.status})`;
+  const retryAfter = Number(response.headers.get("Retry-After"));
+  return new ApiError(message, response.status, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null);
+}
+
+async function assertJson<T>(response: Response, fallbackMessage: string): Promise<T> {
   if (!response.ok) {
-    const message =
-      payload?.error?.message ||
-      payload?.detail ||
-      `${fallbackMessage} (status ${response.status})`;
-    throw new Error(message);
+    throw await errorFrom(response, fallbackMessage);
   }
-  return payload as T;
+  return (await response.json()) as T;
 }
 
 export async function postAnalyze(payload: AnalyzeRequest): Promise<AnalyzeResponse> {
@@ -147,7 +150,23 @@ export type ChatDoneMeta = {
   message_id: string;
   citations: ChatCitation[];
   no_citation: boolean;
+  // The commit the cited lines come from; links to them stay valid after a re-analysis.
+  commit_sha?: string | null;
 };
+
+export type ChatSessionSummary = Schemas["ChatSessionListItem"];
+export type ChatSessionDetail = Schemas["ChatSessionResponse"];
+
+export async function listChatSessions(repoId: string): Promise<ChatSessionSummary[]> {
+  const response = await authFetch(`/api/v1/chat/sessions?repo_id=${encodeURIComponent(repoId)}`);
+  const payload = await assertJson<Schemas["ChatSessionListResponse"]>(response, "Could not load earlier chats");
+  return payload.sessions ?? [];
+}
+
+export async function getChatSession(sessionId: string): Promise<ChatSessionDetail> {
+  const response = await authFetch(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}`);
+  return assertJson<ChatSessionDetail>(response, "Could not load the chat");
+}
 
 export type CreateSessionResponse = Schemas["CreateChatSessionResponse"];
 
@@ -218,28 +237,31 @@ async function postSseStream<TDone>(
   url: string,
   body: unknown,
   failureLabel: string,
-  handlers: StreamHandlers<TDone>
+  handlers: StreamHandlers<TDone>,
+  signal?: AbortSignal
 ): Promise<void> {
   const response = await authFetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal
   });
   if (!response.ok || !response.body) {
-    const payload = await response.json().catch(() => null);
-    throw new Error(payload?.error?.message || payload?.detail || `${failureLabel} (status ${response.status})`);
+    throw await errorFrom(response, failureLabel);
   }
   await readSseStream(response.body.getReader(), handlers);
 }
 
+// `signal` stops the answer mid-stream (the Stop button); the reader then throws an AbortError.
 export function sendChatMessageStream(
   sessionId: string,
   content: string,
   topK: number,
-  handlers: StreamHandlers<ChatDoneMeta>
+  handlers: StreamHandlers<ChatDoneMeta>,
+  signal?: AbortSignal
 ): Promise<void> {
   const url = `/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/message`;
-  return postSseStream(url, { content, top_k: topK }, "Chat request failed", handlers);
+  return postSseStream(url, { content, top_k: topK }, "Chat request failed", handlers, signal);
 }
 
 // --- Commit-diff intelligence ------------------------------------------------

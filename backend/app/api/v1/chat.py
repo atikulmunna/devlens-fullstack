@@ -12,6 +12,7 @@ from app.api.sse import SSE_HEADERS, sse_event, stream_answer, stream_text
 from app.db.models import ChatMessage, ChatSession, User
 from app.db.session import SessionLocal
 from app.deps import get_current_user, get_db_session, get_repo_or_404
+from app.services.analysis import analysis_commit_sha, latest_analysis
 from app.services.chat_planner import build_suggested_questions, plan_answer, snippet_fallback_text
 from app.services.chat_synthesizer import (
     synthesize_grounded_answer_stream,
@@ -68,6 +69,8 @@ class ChatSessionListItem(BaseModel):
     repo_id: str
     created_at: datetime
     message_count: int = 0
+    # The question that opened the session: what the session list shows as its title.
+    first_question: str | None = None
     last_message_preview: str | None = None
 
 
@@ -133,8 +136,16 @@ def list_chat_sessions(
         .correlate(ChatSession)
         .scalar_subquery()
     )
+    first_question = (
+        select(ChatMessage.content)
+        .where(in_session, ChatMessage.role == "user")
+        .order_by(ChatMessage.created_at.asc())
+        .limit(1)
+        .correlate(ChatSession)
+        .scalar_subquery()
+    )
     query = (
-        select(ChatSession, message_count, latest_message)
+        select(ChatSession, message_count, first_question, latest_message)
         .where(ChatSession.user_id == current_user.id)
         .order_by(ChatSession.created_at.desc())
     )
@@ -147,9 +158,10 @@ def list_chat_sessions(
             repo_id=str(row.repo_id),
             created_at=row.created_at,
             message_count=count,
+            first_question=first[:120] if first else None,
             last_message_preview=latest[:120] if latest else None,
         )
-        for row, count, latest in db.execute(query).all()
+        for row, count, first, latest in db.execute(query).all()
     ]
     return ChatSessionListResponse(sessions=sessions)
 
@@ -304,6 +316,8 @@ def send_chat_message(
     session_row = _ensure_owned_session(db, session_id, current_user.id)
     # Read before saving this question, so the history holds earlier turns only.
     history = _recent_history(db, session_row.id)
+    # Citations link to the lines at this commit, so they stay valid after a re-analysis.
+    commit_sha = analysis_commit_sha(db, latest_analysis(db, session_row.repo_id))
 
     user_msg = ChatMessage(
         id=uuid4(),
@@ -350,7 +364,11 @@ def send_chat_message(
                 f"Chat LLM synthesis failed for session {session_id}",
             )
 
-        final_citations = {**citations, "citations": mark_cited(citations.get("citations", []), final_text)}
+        final_citations = {
+            **citations,
+            "citations": mark_cited(citations.get("citations", []), final_text),
+            "commit_sha": commit_sha,
+        }
         message_id = uuid4()
         with SessionLocal() as stream_db:
             stream_db.add(
@@ -368,6 +386,7 @@ def send_chat_message(
             "message_id": str(message_id),
             "citations": final_citations["citations"],
             "no_citation": bool(final_citations.get("no_citation")),
+            "commit_sha": commit_sha,
         }
         yield sse_event("done", final)
 
