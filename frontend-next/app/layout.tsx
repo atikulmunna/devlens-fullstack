@@ -3,6 +3,9 @@ import { Atkinson_Hyperlegible, IBM_Plex_Mono } from "next/font/google";
 import Link from "next/link";
 import { AuthProvider, AuthStatus } from "@/components/auth";
 import { FrontendTelemetry } from "@/components/frontend-telemetry";
+import { LogoMark } from "@/components/logo-mark";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { THEME_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 const atkinson = Atkinson_Hyperlegible({
@@ -26,18 +29,24 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${atkinson.variable} ${plexMono.variable}`}>
+    // The head script sets data-theme before React loads, so the server markup differs on purpose.
+    <html lang="en" className={`${atkinson.variable} ${plexMono.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body>
         <AuthProvider>
           <header className="site-header">
             <div className="site-header-inner">
               <Link href="/" className="wordmark">
+                <LogoMark />
                 DevLens
               </Link>
               <nav className="nav" aria-label="Main">
                 <span className="auth">
                   <AuthStatus />
                 </span>
+                <ThemeToggle />
               </nav>
             </div>
           </header>

@@ -4,6 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>DevLens (private alpha)</title>
+<!-- The theme the visitor chose in the app (frontend-next/lib/theme.ts), applied before paint. -->
+<script>try{if(localStorage.getItem("devlens-theme")==="dark")document.documentElement.dataset.theme="dark"}catch(e){/* storage blocked: stay light */}</script>
 <!-- Before the gate, Caddy answers every path with this page, so the app's self-hosted fonts are
      out of reach; the same two families come from Google Fonts, with system fallbacks. -->
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -30,23 +32,22 @@
     --font-code: "IBM Plex Mono", ui-monospace, monospace;
     --radius: 6px;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      color-scheme: dark;
-      --paper: #121a16;
-      --surface: #1b2520;
-      --field: #222d27;
-      --ink: #e2e8e2;
-      --lichen: #9eaba3;
-      --rule: #34423a;
-      --pine: #7cc3a0;
-      --pine-deep: #a3d8bd;
-      --on-pine: #0f1a15;
-      --ochre: #d49a45;
-      --brick: #ef8f7f;
-      --brick-wash: #3a221e;
-      --brick-rule: #6e3d35;
-    }
+  /* Dark only when chosen in the app (same "devlens-theme" key); light is the default. */
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #121a16;
+    --surface: #1b2520;
+    --field: #222d27;
+    --ink: #e2e8e2;
+    --lichen: #9eaba3;
+    --rule: #34423a;
+    --pine: #7cc3a0;
+    --pine-deep: #a3d8bd;
+    --on-pine: #0f1a15;
+    --ochre: #d49a45;
+    --brick: #ef8f7f;
+    --brick-wash: #3a221e;
+    --brick-rule: #6e3d35;
   }
   * { box-sizing: border-box; }
   body {
@@ -63,7 +64,10 @@
 
   .site-header { border-bottom: 1px solid var(--rule); background: var(--surface); }
   .site-header-inner { max-width: 1040px; margin: 0 auto; padding: 14px 16px; }
-  .wordmark { font-weight: 700; font-size: 1.3rem; letter-spacing: -0.01em; }
+  .wordmark { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 1.3rem; letter-spacing: -0.01em; }
+  .logo-mark { flex: none; }
+  .logo-mark .ring { fill: none; stroke: var(--ochre); stroke-width: 2; }
+  .logo-mark .summit { fill: var(--pine); }
 
   .shell { max-width: 1040px; margin: 0 auto; padding: 32px 16px 56px; }
   .hero {
@@ -145,7 +149,16 @@
 </head>
 <body>
   <header class="site-header">
-    <div class="site-header-inner"><span class="wordmark">DevLens</span></div>
+    <div class="site-header-inner">
+      <span class="wordmark">
+        <svg class="logo-mark" viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">
+          <path class="ring" d="M16 3.5 C24 3 29 9 28.5 16.5 C28 24 22.5 28.8 15.5 28.5 C8 28.2 3.4 22.5 3.8 15.6 C4.2 8.6 9 4 16 3.5 Z"/>
+          <path class="ring" d="M16.2 9 C21 8.8 23.6 12.2 23.3 16.4 C23 20.8 19.8 23.4 15.7 23.2 C11.4 23 8.8 19.8 9 15.7 C9.2 11.6 12 9.2 16.2 9 Z"/>
+          <circle class="summit" cx="16" cy="16" r="3.4"/>
+        </svg>
+        DevLens
+      </span>
+    </div>
   </header>
   <main class="shell">
     <section class="hero">

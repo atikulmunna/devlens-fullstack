@@ -1,4 +1,4 @@
-# DevLens
+# <img src="frontend-next/app/icon.svg" alt="" width="36" height="36" align="top"> DevLens
 
 DevLens reads a public GitHub repository and answers questions about its code. Each answer cites
 the files and lines it was built from. For each analyzed commit it shows what changed, which files
@@ -30,8 +30,8 @@ linked to its lines on GitHub at the analyzed commit, plus TODO and FIXME notes 
 The tab also shows the language mix, contributors, the file tree, and an import explorer: one file
 in the middle, what imports it on one side, what it imports on the other; choose any neighbor to
 move to it. Signed in, **Share** makes a read-only link to the Overview that opens without a
-sign-in for 7 days (`SHARE_TOKEN_TTL_DAYS`); Stop sharing turns it off. The interface follows the
-system's light or dark setting.
+sign-in for 7 days (`SHARE_TOKEN_TTL_DAYS`); Stop sharing turns it off. The interface is light by
+default; the moon button in the header switches to dark, and the browser remembers the choice.
 
 **Changes.** An analyzed commit against its parent; pick any commit DevLens has analyzed. Each
 changed file opens to its diff with line numbers, and lines touching auth, tokens, secrets, crypto,

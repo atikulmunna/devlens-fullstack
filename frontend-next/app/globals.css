@@ -39,35 +39,34 @@
   --radius: 6px;
 }
 
-/* The same map at night: spruce-dark paper, lighter pine and ochre so links and accents keep their contrast. */
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --paper: #121a16;
-    --surface: #1b2520;
-    --field: #222d27;
-    --ink: #e2e8e2;
-    --lichen: #9eaba3;
-    --rule: #34423a;
-    --pine: #7cc3a0;
-    --pine-deep: #a3d8bd;
-    --on-pine: #0f1a15;
-    --ochre: #d49a45;
-    --ochre-deep: #e2b06a;
-    --brick: #ef8f7f;
-    --brick-wash: #3a221e;
-    --brick-rule: #6e3d35;
-    --pine-wash: #1e3329;
-    --added-wash: #1b3327;
+/* The same map at night, chosen with the header toggle (light is the default). Lighter pine and
+   ochre keep links and accents at their contrast. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #121a16;
+  --surface: #1b2520;
+  --field: #222d27;
+  --ink: #e2e8e2;
+  --lichen: #9eaba3;
+  --rule: #34423a;
+  --pine: #7cc3a0;
+  --pine-deep: #a3d8bd;
+  --on-pine: #0f1a15;
+  --ochre: #d49a45;
+  --ochre-deep: #e2b06a;
+  --brick: #ef8f7f;
+  --brick-wash: #3a221e;
+  --brick-rule: #6e3d35;
+  --pine-wash: #1e3329;
+  --added-wash: #1b3327;
 
-    /* Same hues stepped for the dark card (validated with --mode dark against #1b2520). */
-    --series-1: #349a78;
-    --series-2: #b98724;
-    --series-3: #5689cf;
-    --series-4: #d2754d;
-    --series-5: #8e7ae0;
-    --series-other: #6f7a73;
-  }
+  /* Same hues stepped for the dark card (validated with --mode dark against #1b2520). */
+  --series-1: #349a78;
+  --series-2: #b98724;
+  --series-3: #5689cf;
+  --series-4: #d2754d;
+  --series-5: #8e7ae0;
+  --series-other: #6f7a73;
 }
 
 * {
@@ -115,6 +114,9 @@ a:hover {
 }
 
 .wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 700;
   font-size: var(--step-1);
   color: var(--ink);
@@ -142,6 +144,45 @@ a:hover {
   margin-left: auto;
   display: flex;
   align-items: center;
+}
+
+.logo-mark {
+  flex: none;
+}
+
+.logo-mark .ring {
+  fill: none;
+  stroke: var(--ochre);
+  stroke-width: 2;
+}
+
+.logo-mark .summit {
+  fill: var(--pine);
+}
+
+.theme-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  background: var(--pine-wash);
+}
+
+.theme-toggle svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .avatar {
