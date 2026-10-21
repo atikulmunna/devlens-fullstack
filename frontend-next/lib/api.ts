@@ -268,6 +268,16 @@ export function sendChatMessageStream(
 
 export type CommitDiffSummary = Schemas["CommitDiffResponse"];
 
+export type CommitDiffEntry = Schemas["CommitDiffEntry"];
+export type ChangedFile = CommitDiffSummary["changed_files"][number];
+export type SecurityFlag = CommitDiffSummary["security_flags"][number];
+
+export async function listCommitDiffs(repoId: string): Promise<CommitDiffEntry[]> {
+  const response = await authFetch(`/api/v1/repos/${encodeURIComponent(repoId)}/diffs`);
+  const payload = await assertJson<Schemas["CommitDiffListResponse"]>(response, "Could not load analyzed commits");
+  return payload.diffs;
+}
+
 export async function getCommitDiff(repoId: string, head?: string): Promise<CommitDiffSummary> {
   const suffix = head ? `?head=${encodeURIComponent(head)}` : "";
   const response = await authFetch(`/api/v1/repos/${encodeURIComponent(repoId)}/diff${suffix}`);
@@ -283,9 +293,11 @@ export type DiffDoneMeta = {
 export function askAboutDiffStream(
   repoId: string,
   question: string,
-  handlers: StreamHandlers<DiffDoneMeta>
+  handlers: StreamHandlers<DiffDoneMeta>,
+  head?: string
 ): Promise<void> {
-  const url = `/api/v1/repos/${encodeURIComponent(repoId)}/diff/ask`;
+  const suffix = head ? `?head=${encodeURIComponent(head)}` : "";
+  const url = `/api/v1/repos/${encodeURIComponent(repoId)}/diff/ask${suffix}`;
   return postSseStream(url, { question }, "Diff question failed", handlers);
 }
 

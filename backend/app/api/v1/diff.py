@@ -1,11 +1,12 @@
 import re
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.api.error_schema import ERROR_RESPONSE_SCHEMA
@@ -22,25 +23,80 @@ class DiffAskRequest(BaseModel):
     question: str
 
 
+class HunkLineResponse(BaseModel):
+    # "+" added, "-" removed, " " unchanged context.
+    kind: Literal["+", "-", " "]
+    text: str
+    old: int | None = None
+    new: int | None = None
+    # Security patterns this line matches, e.g. ["token"].
+    labels: list[str] = []
+
+
+class HunkResponse(BaseModel):
+    start: int
+    end: int
+    old_start: int | None = None
+    lines: list[HunkLineResponse] = []
+
+
 class ChangedFileResponse(BaseModel):
     path: str
     status: str
     added: int
     removed: int
     hunks: int
+    # Line detail for the diff viewer; empty for diffs stored before it was captured.
+    hunk_details: list[HunkResponse] = []
+    # True when some lines were left out to keep the stored diff bounded.
+    truncated: bool = False
 
 
 class SecurityFlagResponse(BaseModel):
     path: str
     # e.g. "auth", "token", or "removed: token" for a match in removed lines.
     categories: list[str]
+    severity: Literal["high", "medium", "low"]
 
 
 class BlastRadiusResponse(BaseModel):
     changed_files: list[str]
     impacted_files: list[str]
     impacted_count: int
+    # impacted_by_depth[0] imports a changed file directly, [1] imports one of those, and so on.
+    impacted_by_depth: list[list[str]] = []
     graph_stats: dict[str, int]
+
+
+class CommitDiffEntry(BaseModel):
+    head_sha: str
+    base_sha: str | None
+    created_at: datetime | None
+    changed_count: int
+
+
+class CommitDiffListResponse(BaseModel):
+    repo_id: str
+    diffs: list[CommitDiffEntry]
+
+
+# Secrets and keys are exposed the moment they land; removing an auth or token check is as serious.
+HIGH_RISK = {"secret", "credential", "password", "api_key"}
+MEDIUM_RISK = {"auth", "token", "jwt", "oauth", "crypto"}
+
+
+def _flag_severity(categories: list[str]) -> str:
+    plain = {category.removeprefix("removed: ") for category in categories}
+    removed = {category.removeprefix("removed: ") for category in categories if category.startswith("removed: ")}
+    if plain & HIGH_RISK or removed & MEDIUM_RISK:
+        return "high"
+    if plain & MEDIUM_RISK:
+        return "medium"
+    return "low"
+
+
+def _with_severity(flags: list[dict]) -> list[dict]:
+    return [{**flag, "severity": _flag_severity(flag.get("categories") or [])} for flag in flags]
 
 
 class CommitDiffResponse(BaseModel):
@@ -83,6 +139,8 @@ def _summarize_changed(changed_files: list[dict]) -> list[dict]:
                 "added": entry.get("added", 0),
                 "removed": entry.get("removed", 0),
                 "hunks": len(entry.get("hunks") or []),
+                "hunk_details": [hunk for hunk in entry.get("hunks") or [] if hunk.get("lines")],
+                "truncated": bool(entry.get("truncated")),
             }
         )
     return summary
@@ -123,6 +181,40 @@ def _diff_contexts(changed_files: list[dict], limit: int = 6, lines_per_side: in
 
 
 @router.get(
+    "/{repo_id}/diffs",
+    response_model=CommitDiffListResponse,
+    responses={
+        401: {"content": {"application/json": {"schema": ERROR_RESPONSE_SCHEMA}}},
+        404: {"content": {"application/json": {"schema": ERROR_RESPONSE_SCHEMA}}},
+    },
+)
+def list_commit_diffs(
+    repo_id: UUID,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> CommitDiffListResponse:
+    """The analyzed commits with a stored diff, newest first: what the commit picker offers."""
+    get_repo_or_404(db, repo_id)
+    rows = db.execute(
+        select(
+            CommitDiff.head_sha,
+            CommitDiff.base_sha,
+            CommitDiff.created_at,
+            func.coalesce(func.jsonb_array_length(CommitDiff.changed_files), 0),
+        )
+        .where(CommitDiff.repo_id == repo_id)
+        .distinct(CommitDiff.head_sha)
+        .order_by(CommitDiff.head_sha, CommitDiff.created_at.desc())
+    ).all()
+    entries = [
+        CommitDiffEntry(head_sha=head, base_sha=base, created_at=created, changed_count=count)
+        for head, base, created, count in rows
+    ]
+    entries.sort(key=lambda entry: entry.created_at or datetime.min, reverse=True)
+    return CommitDiffListResponse(repo_id=str(repo_id), diffs=entries[:20])
+
+
+@router.get(
     "/{repo_id}/diff",
     response_model=CommitDiffResponse,
     responses={
@@ -153,7 +245,7 @@ def get_commit_diff(
         "base_sha": diff.base_sha,
         "head_sha": diff.head_sha,
         "changed_files": _summarize_changed(changed_files),
-        "security_flags": diff.security_flags or [],
+        "security_flags": _with_severity(diff.security_flags or []),
         "blast_radius": blast,
         "created_at": diff.created_at,
     }

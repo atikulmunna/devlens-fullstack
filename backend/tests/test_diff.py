@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
@@ -105,9 +106,17 @@ def test_get_diff_returns_summary_flags_and_blast_radius(client, db_session: Ses
     payload = response.json()
     assert (payload["base_sha"], payload["head_sha"]) == ("sha-base", "sha-head")
     assert payload["changed_files"] == [
-        {"path": "src/auth.py", "status": "modified", "added": 1, "removed": 0, "hunks": 1}
+        {
+            "path": "src/auth.py",
+            "status": "modified",
+            "added": 1,
+            "removed": 0,
+            "hunks": 1,
+            "hunk_details": [],
+            "truncated": False,
+        }
     ]
-    assert payload["security_flags"] == [{"path": "src/auth.py", "categories": ["auth", "token"]}]
+    assert payload["security_flags"] == [{"path": "src/auth.py", "categories": ["auth", "token"], "severity": "medium"}]
     assert payload["blast_radius"]["impacted_files"] == ["src/api.py", "src/cli.py"]
 
 
@@ -211,3 +220,102 @@ def test_files_named_in_the_question_come_first() -> None:
     assert ranked[0]["path"] == "workers/embed_worker.py"
     # Everything else keeps diff order.
     assert [f["path"] for f in ranked[1:]] == [f"backend/app/m{n}.py" for n in range(8)]
+
+
+def test_flag_severity_rates_secrets_and_removed_checks_highest() -> None:
+    severity = diff_module._flag_severity
+    assert severity(["secret"]) == "high"
+    assert severity(["removed: api_key"]) == "high"
+    assert severity(["auth", "removed: token"]) == "high"
+    assert severity(["auth", "token"]) == "medium"
+    assert severity(["removed: env"]) == "low"
+    assert severity(["env"]) == "low"
+
+
+def _diff(repo_id, head: str, created: datetime, files: int = 1) -> CommitDiff:
+    return CommitDiff(
+        id=uuid4(),
+        repo_id=repo_id,
+        base_sha=f"{head}-base",
+        head_sha=head,
+        changed_files=[
+            {"path": f"f{n}.py", "status": "modified", "added": 1, "removed": 0, "hunks": []} for n in range(files)
+        ],
+        security_flags=[],
+        created_at=created,
+    )
+
+
+def test_commit_list_has_one_entry_per_commit_newest_first(client, db_session: Session) -> None:
+    user, repo = _seed_repo_with_diff(db_session)
+    day = lambda n: datetime(2099, 1, n, tzinfo=timezone.utc)  # noqa: E731
+    db_session.add_all(
+        [
+            _diff(repo.id, "sha-old", day(1), files=2),
+            _diff(repo.id, "sha-new", day(3), files=3),
+            _diff(repo.id, "sha-old", day(2), files=4),
+        ]
+    )
+    db_session.commit()
+    headers = {"Authorization": f"Bearer {create_access_token(user.id)}"}
+
+    diffs = client.get(f"/api/v1/repos/{repo.id}/diffs", headers=headers).json()["diffs"]
+
+    assert [(d["head_sha"], d["changed_count"]) for d in diffs[:2]] == [("sha-new", 3), ("sha-old", 4)]
+    assert len({d["head_sha"] for d in diffs}) == len(diffs)
+
+
+def test_diff_includes_hunk_lines_and_severity(client, db_session: Session) -> None:
+    user, repo = _seed_repo_with_diff(db_session)
+    db_session.add(
+        CommitDiff(
+            id=uuid4(),
+            repo_id=repo.id,
+            base_sha="b",
+            head_sha="sha-lines",
+            changed_files=[
+                {
+                    "path": "app/views.py",
+                    "status": "modified",
+                    "added": 1,
+                    "removed": 1,
+                    "truncated": False,
+                    "hunks": [
+                        {
+                            "start": 20,
+                            "end": 21,
+                            "old_start": 20,
+                            "lines": [
+                                {"kind": " ", "text": "user = load()", "old": 20, "new": 20},
+                                {"kind": "-", "text": "check_password(user)", "old": 21, "labels": ["password"]},
+                                {"kind": "+", "text": "log(user)", "new": 21},
+                            ],
+                        }
+                    ],
+                }
+            ],
+            security_flags=[{"path": "app/views.py", "categories": ["removed: password"]}],
+        )
+    )
+    db_session.commit()
+    headers = {"Authorization": f"Bearer {create_access_token(user.id)}"}
+
+    payload = client.get(f"/api/v1/repos/{repo.id}/diff?head=sha-lines", headers=headers).json()
+
+    lines = payload["changed_files"][0]["hunk_details"][0]["lines"]
+    assert [line["kind"] for line in lines] == [" ", "-", "+"]
+    assert lines[1]["labels"] == ["password"]
+    assert payload["security_flags"] == [
+        {"path": "app/views.py", "categories": ["removed: password"], "severity": "high"}
+    ]
+
+
+def test_diff_stored_before_line_capture_has_no_hunk_details(client, db_session: Session) -> None:
+    user, repo = _seed_repo_with_diff(db_session)
+    headers = {"Authorization": f"Bearer {create_access_token(user.id)}"}
+
+    payload = client.get(f"/api/v1/repos/{repo.id}/diff", headers=headers).json()
+
+    assert payload["changed_files"][0]["hunks"] == 1
+    assert payload["changed_files"][0]["hunk_details"] == []
+    assert payload["security_flags"][0]["severity"] == "medium"
