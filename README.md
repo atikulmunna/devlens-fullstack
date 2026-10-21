@@ -187,7 +187,7 @@ npm --prefix frontend-next run gen:api
 
 The demo runs the whole stack on one EC2 instance with `docker-compose.prod.yml`. Caddy serves it
 over HTTPS with a Let's Encrypt certificate for an sslip.io hostname, and an access-key page gates
-the whole site, share links included; chat still needs a GitHub sign-in behind it. The runbook,
+the whole site except share links; chat still needs a GitHub sign-in behind it. The runbook,
 [`deploy/aws.md`](deploy/aws.md), covers provisioning, first boot, updates, backups, and teardown.
 When updating, run the migrations before the new worker starts; the runbook gives the order.
 
