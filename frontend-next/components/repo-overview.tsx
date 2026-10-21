@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CodeHealth } from "@/components/overview/code-health";
-import { Contributors } from "@/components/overview/contributors";
+import { useCallback, useEffect, useState } from "react";
+import { AnalyzePrompt } from "@/components/analyze-prompt";
+import { LoadingCards } from "@/components/loading";
 import { DependencyView } from "@/components/overview/dependency-view";
-import { FileTree } from "@/components/overview/file-tree";
-import { LanguageBar } from "@/components/overview/language-bar";
+import { OverviewSections } from "@/components/overview/overview-sections";
 import { useRepo } from "@/components/repo-context";
 import { DashboardAnalysis, getDashboard } from "@/lib/api";
 
@@ -15,6 +14,8 @@ export function RepoOverview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<DashboardAnalysis | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const reload = useCallback(() => setReloadKey((key) => key + 1), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,10 +40,10 @@ export function RepoOverview() {
     return () => {
       cancelled = true;
     };
-  }, [repo.repo_id]);
+  }, [repo.repo_id, reloadKey]);
 
   if (loading) {
-    return <p className="notice">Loading the analysis...</p>;
+    return <LoadingCards label="Loading the analysis" cards={[3, 2, 4]} />;
   }
   if (error) {
     return (
@@ -52,42 +53,23 @@ export function RepoOverview() {
     );
   }
   if (!analysis) {
-    return <p className="notice">The analysis of this repository has not finished yet.</p>;
+    return (
+      <article className="card empty-state">
+        <h2>No finished analysis yet</h2>
+        <p className="muted">
+          An analysis of {repo.full_name} is still running, or the last one stopped before it finished. Analyze it to
+          follow the progress here; this page fills in when it is done.
+        </p>
+        <AnalyzePrompt fullName={repo.full_name} onDone={reload} />
+      </article>
+    );
   }
 
-  const filePaths = Object.keys(analysis.file_tree?.files ?? {});
   return (
-    <section className="overview">
-      <article className="card">
-        <h2>Architecture summary</h2>
-        <p className="summary-text">{analysis.architecture_summary || "Not available"}</p>
-      </article>
-
-      <div className="overview-pair">
-        <article className="card">
-          <h2>Languages</h2>
-          <LanguageBar languages={analysis.languages ?? []} />
-        </article>
-        <article className="card">
-          <h2>Contributors</h2>
-          <Contributors stats={analysis.contributor_stats} />
-        </article>
-      </div>
-
-      <article className="card">
-        <h2>Code health</h2>
-        <CodeHealth debt={analysis.tech_debt_flags} githubUrl={repo.github_url} commitSha={analysis.commit_sha} />
-      </article>
-
-      <article className="card">
-        <h2>Imports</h2>
-        <DependencyView repoId={repo.repo_id} />
-      </article>
-
-      <article className="card">
-        <h2>Files</h2>
-        <FileTree paths={filePaths} githubUrl={repo.github_url} commitSha={analysis.commit_sha} />
-      </article>
-    </section>
+    <OverviewSections
+      analysis={analysis}
+      githubUrl={repo.github_url}
+      imports={<DependencyView repoId={repo.repo_id} />}
+    />
   );
 }

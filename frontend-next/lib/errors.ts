@@ -41,3 +41,36 @@ export function friendlyChatError(err: unknown): string {
   }
   return "The question could not be answered. Try again in a moment.";
 }
+
+// Creating or stopping a share link failed: what to do about it.
+export function friendlyShareError(err: unknown, action: "create" | "stop"): string {
+  if (err instanceof ApiError && err.status === 401) {
+    return "Your sign-in has expired. Sign in again to manage share links.";
+  }
+  if (action === "create" && err instanceof ApiError && err.status === 404) {
+    return "There is nothing to share yet: this repository has no finished analysis.";
+  }
+  return action === "create"
+    ? "The share link could not be created. Try again in a moment."
+    : "Sharing could not be stopped. Try again in a moment.";
+}
+
+// Why a shared link did not open, for someone who may never have used DevLens.
+export function sharedLinkError(err: unknown): string {
+  if (err instanceof ApiError && err.status === 401) {
+    if (/expired/i.test(err.message)) {
+      return "This link has expired. Ask the person who shared it for a new one.";
+    }
+    if (/revoked/i.test(err.message)) {
+      return "The person who shared this link has stopped sharing it.";
+    }
+    return "This link is not valid. Check that it was copied in full.";
+  }
+  if (err instanceof ApiError && err.status === 404) {
+    return "The repository behind this link is no longer in DevLens.";
+  }
+  if (err instanceof TypeError) {
+    return "DevLens could not be reached. Check your connection and reload the page.";
+  }
+  return "The shared overview could not be loaded. Try again in a moment.";
+}

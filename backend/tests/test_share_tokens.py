@@ -133,3 +133,19 @@ def test_share_invalid_token_has_deterministic_auth_error(client) -> None:
     payload = resolve_response.json()
     assert payload["error"]["code"] == "UNAUTHORIZED"
     assert payload["error"]["message"] == "Invalid share token"
+
+
+def test_shared_view_matches_the_dashboard_overview(client, db_session: Session) -> None:
+    user, repo = _seed_user_repo_result(db_session)
+    access = create_access_token(user.id)
+    token = client.post(
+        f"/api/v1/export/{repo.id}/share", json={}, headers={"Authorization": f"Bearer {access}"}
+    ).json()["share_token"]
+
+    shared = client.get(f"/api/v1/share/{token}").json()
+    dashboard = client.get(f"/api/v1/repos/{repo.id}/dashboard").json()
+
+    # The shared page renders the same panels as the Overview tab, from the same fields.
+    assert shared["repository"] == dashboard["repository"]
+    assert shared["analysis"] == dashboard["analysis"]
+    assert shared["analysis"]["languages"] == [{"name": "Python", "share": 100.0, "is_code": True}]

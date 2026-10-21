@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, useEffect, useState } from "react";
-import { AnalyzeStatus } from "@/components/analyze-status";
+import { ReactNode, useCallback, useEffect, useState } from "react";
+import { AnalyzePrompt } from "@/components/analyze-prompt";
+import { RepoLoading } from "@/components/loading";
 import { RepoContext } from "@/components/repo-context";
+import { ShareButton } from "@/components/share-button";
 import { getRepoByName, RepoSummary } from "@/lib/api";
 import { repoPath, RepoTab, tabFromPath } from "@/lib/repo-path";
-import { useAnalyzeJob } from "@/lib/use-analyze-job";
 
 type Props = {
   children: ReactNode;
@@ -24,7 +25,6 @@ export default function RepoLayout({ children, params }: Props) {
   const requestedName = `${decodeURIComponent(params.owner)}/${decodeURIComponent(params.repo)}`;
   const pathname = usePathname() || "";
   const router = useRouter();
-  const analysis = useAnalyzeJob();
   const [repo, setRepo] = useState<RepoSummary | null>(null);
   const [state, setState] = useState<"loading" | "found" | "missing" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
@@ -59,14 +59,10 @@ export default function RepoLayout({ children, params }: Props) {
   }, [repo, requestedName, pathname, router]);
 
   // An analysis started from the "not analyzed yet" view loads the page when it finishes.
-  useEffect(() => {
-    if (analysis.stage === "done" && analysis.job) {
-      setReloadKey((key) => key + 1);
-    }
-  }, [analysis.stage, analysis.job]);
+  const reload = useCallback(() => setReloadKey((key) => key + 1), []);
 
   if (state === "loading") {
-    return <p className="notice">Loading {requestedName}...</p>;
+    return <RepoLoading name={requestedName} />;
   }
   if (state === "error") {
     return (
@@ -80,21 +76,7 @@ export default function RepoLayout({ children, params }: Props) {
       <section className="repo-missing">
         <h1 className="repo-title">{requestedName}</h1>
         <p className="muted">DevLens has not analyzed this repository yet.</p>
-        <button
-          type="button"
-          className="button"
-          disabled={analysis.pending || Boolean(analysis.job)}
-          onClick={() => void analysis.start(`https://github.com/${requestedName}`)}
-        >
-          Analyze {requestedName}
-        </button>
-        <AnalyzeStatus
-          job={analysis.job}
-          stage={analysis.stage}
-          failedStage={analysis.failedStage}
-          counts={analysis.counts}
-          error={analysis.error}
-        />
+        <AnalyzePrompt fullName={requestedName} onDone={reload} />
       </section>
     );
   }
@@ -105,12 +87,13 @@ export default function RepoLayout({ children, params }: Props) {
       <header className="repo-header">
         <h1 className="repo-title">{repo.full_name}</h1>
         {repo.description && <p className="repo-description">{repo.description}</p>}
-        <p className="repo-meta">
+        <div className="repo-meta">
           <a href={repo.github_url} target="_blank" rel="noreferrer">
             View on GitHub
           </a>
           {repo.language && <span>{repo.language}</span>}
-        </p>
+          <ShareButton repoId={repo.repo_id} />
+        </div>
         <nav className="tabs" aria-label="Repository">
           {TABS.map(({ tab, label }) => (
             <Link

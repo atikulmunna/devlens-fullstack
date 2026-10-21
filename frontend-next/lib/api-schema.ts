@@ -974,14 +974,8 @@ export interface components {
         SharedAnalysisResponse: {
             /** Repo Id */
             repo_id: string;
-            /** Repository */
-            repository: {
-                [key: string]: unknown;
-            };
-            /** Analysis */
-            analysis: {
-                [key: string]: unknown;
-            };
+            repository: components["schemas"]["DashboardRepositoryResponse"];
+            analysis: components["schemas"]["DashboardAnalysisResponse"];
             /**
              * Shared At
              * Format: date-time
@@ -2750,6 +2744,7 @@ export interface operations {
                     /** @example {
                      *       "repo_id": "cd3ce6f7-76fc-4cc2-8e34-c176f7af6f82",
                      *       "repository": {
+                     *         "id": "cd3ce6f7-76fc-4cc2-8e34-c176f7af6f82",
                      *         "github_url": "https://github.com/owner/repo",
                      *         "full_name": "owner/repo",
                      *         "owner": "owner",
@@ -2762,12 +2757,25 @@ export interface operations {
                      *         "latest_commit_sha": "abcdef123"
                      *       },
                      *       "analysis": {
+                     *         "commit_sha": "abcdef123",
                      *         "quality_score": 74,
                      *         "architecture_summary": "Service-oriented modules...",
                      *         "language_breakdown": {
                      *           "Python": 80,
                      *           "TypeScript": 20
                      *         },
+                     *         "languages": [
+                     *           {
+                     *             "name": "Python",
+                     *             "share": 80,
+                     *             "is_code": true
+                     *           },
+                     *           {
+                     *             "name": "TypeScript",
+                     *             "share": 20,
+                     *             "is_code": true
+                     *           }
+                     *         ],
                      *         "contributor_stats": {
                      *           "total": 7
                      *         },
@@ -2788,10 +2796,15 @@ export interface operations {
                      *           "test_file_count": 12
                      *         },
                      *         "file_tree": {
-                     *           "type": "dir",
-                     *           "name": "/",
-                     *           "children": []
-                     *         }
+                     *           "files": {
+                     *             "src/app.py": {
+                     *               "chunks": 4,
+                     *               "lines": 210,
+                     *               "language": "python"
+                     *             }
+                     *           }
+                     *         },
+                     *         "created_at": "2026-02-23T11:00:00Z"
                      *       },
                      *       "shared_at": "2026-02-23T12:00:00Z",
                      *       "expires_at": "2026-03-01T12:00:00Z"

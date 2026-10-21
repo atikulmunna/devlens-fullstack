@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from "react";
+import { LoadingPill } from "@/components/loading";
 import { CurrentUser, loadCurrentUser, signInHref, signOut } from "@/lib/auth";
 
 type AuthState = {
@@ -73,7 +74,7 @@ export function AuthStatus() {
   const { status, user, signOut: handleSignOut } = useAuth();
 
   if (status === "loading") {
-    return <span className="muted">Checking sign-in...</span>;
+    return <LoadingPill label="Checking sign-in" />;
   }
   if (!user) {
     return <SignInLink>Sign in with GitHub</SignInLink>;

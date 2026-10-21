@@ -12,19 +12,41 @@
 <style>
   /* Same survey-map palette as frontend-next/app/globals.css. */
   :root {
+    color-scheme: light;
     --paper: #edf0ea;
     --surface: #f8f9f5;
+    --field: #ffffff;
     --ink: #1e2b24;
     --lichen: #55635b;
     --rule: #c7d0c6;
     --pine: #2d5a47;
     --pine-deep: #234637;
+    --on-pine: #ffffff;
     --ochre: #a86f24;
     --brick: #9c3b2e;
     --brick-wash: #f6e9e5;
+    --brick-rule: #e3c2ba;
     --font-body: "Atkinson Hyperlegible", system-ui, sans-serif;
     --font-code: "IBM Plex Mono", ui-monospace, monospace;
     --radius: 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --paper: #121a16;
+      --surface: #1b2520;
+      --field: #222d27;
+      --ink: #e2e8e2;
+      --lichen: #9eaba3;
+      --rule: #34423a;
+      --pine: #7cc3a0;
+      --pine-deep: #a3d8bd;
+      --on-pine: #0f1a15;
+      --ochre: #d49a45;
+      --brick: #ef8f7f;
+      --brick-wash: #3a221e;
+      --brick-rule: #6e3d35;
+    }
   }
   * { box-sizing: border-box; }
   body {
@@ -71,7 +93,7 @@
     font-size: 0.95rem;
     border: 1px solid var(--rule);
     border-radius: var(--radius);
-    background: #fff;
+    background: var(--field);
     color: var(--ink);
     padding: 10px 12px;
   }
@@ -81,7 +103,7 @@
     border: 1px solid var(--pine);
     border-radius: var(--radius);
     background: var(--pine);
-    color: #fff;
+    color: var(--on-pine);
     padding: 10px 16px;
     cursor: pointer;
     white-space: nowrap;
@@ -91,7 +113,7 @@
     display: none;
     margin-top: 14px;
     max-width: 36rem;
-    border: 1px solid #e3c2ba;
+    border: 1px solid var(--brick-rule);
     background: var(--brick-wash);
     color: var(--brick);
     border-radius: var(--radius);

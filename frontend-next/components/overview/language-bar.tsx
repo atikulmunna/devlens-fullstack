@@ -3,10 +3,10 @@
 import { useState } from "react";
 import type { LanguageShare } from "@/lib/api";
 
-// Fixed categorical order, validated for color-vision deficiency and separation on the card
-// surface (dataviz validator). Assigned by rank, so the largest language is always green.
-const SERIES = ["#2e8059", "#c48a1e", "#3d72b8", "#c8643b", "#7058c4"];
-const OTHER = "#a3aca5";
+// Fixed categorical order (CSS tokens, stepped separately for light and dark in globals.css).
+// Assigned by rank, so the largest language is always green.
+const SERIES = ["var(--series-1)", "var(--series-2)", "var(--series-3)", "var(--series-4)", "var(--series-5)"];
+const OTHER = "var(--series-other)";
 
 type Segment = { name: string; percent: number; color: string };
 

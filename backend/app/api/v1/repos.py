@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.api.error_schema import ERROR_RESPONSE_SCHEMA
 from app.api.sse import SSE_HEADERS, sse_event
-from app.db.models import AnalysisJob, CodeChunk, Repository
+from app.db.models import AnalysisJob, AnalysisResult, CodeChunk, Repository
 from app.db.session import SessionLocal
 from app.deps import get_db_session, get_repo_or_404
 from app.observability import observe_sse_startup, trace_span
@@ -137,6 +137,38 @@ class DashboardResponse(BaseModel):
     repository: DashboardRepositoryResponse
     analysis: DashboardAnalysisResponse | None = None
     has_analysis: bool
+
+
+# Shared with the public share-link view (export.py), so both render the same overview.
+def dashboard_repository(repo: Repository) -> DashboardRepositoryResponse:
+    return DashboardRepositoryResponse(
+        id=str(repo.id),
+        github_url=repo.github_url,
+        full_name=repo.full_name,
+        owner=repo.owner,
+        name=repo.name,
+        default_branch=repo.default_branch,
+        latest_commit_sha=repo.latest_commit_sha,
+        description=repo.description,
+        stars=repo.stars,
+        forks=repo.forks,
+        language=repo.language,
+        size_kb=repo.size_kb,
+    )
+
+
+def dashboard_analysis(db: Session, result: AnalysisResult) -> DashboardAnalysisResponse:
+    return DashboardAnalysisResponse(
+        commit_sha=analysis_commit_sha(db, result),
+        quality_score=result.quality_score,
+        architecture_summary=result.architecture_summary,
+        language_breakdown=result.language_breakdown,
+        languages=language_shares(result.language_breakdown),
+        contributor_stats=result.contributor_stats,
+        tech_debt_flags=result.tech_debt_flags,
+        file_tree=result.file_tree,
+        created_at=result.created_at,
+    )
 
 
 class RepoSummaryResponse(BaseModel):
@@ -470,40 +502,11 @@ def search_repo_hybrid(
 )
 def get_repo_dashboard(repo_id: UUID, db: Session = Depends(get_db_session)) -> DashboardResponse:
     repo = get_repo_or_404(db, repo_id)
-
     result = latest_analysis(db, repo.id)
-
-    analysis_payload = None
-    if result is not None:
-        analysis_payload = DashboardAnalysisResponse(
-            commit_sha=analysis_commit_sha(db, result),
-            quality_score=result.quality_score,
-            architecture_summary=result.architecture_summary,
-            language_breakdown=result.language_breakdown,
-            languages=language_shares(result.language_breakdown),
-            contributor_stats=result.contributor_stats,
-            tech_debt_flags=result.tech_debt_flags,
-            file_tree=result.file_tree,
-            created_at=result.created_at,
-        )
-
     return DashboardResponse(
         repo_id=str(repo.id),
-        repository=DashboardRepositoryResponse(
-            id=str(repo.id),
-            github_url=repo.github_url,
-            full_name=repo.full_name,
-            owner=repo.owner,
-            name=repo.name,
-            default_branch=repo.default_branch,
-            latest_commit_sha=repo.latest_commit_sha,
-            description=repo.description,
-            stars=repo.stars,
-            forks=repo.forks,
-            language=repo.language,
-            size_kb=repo.size_kb,
-        ),
-        analysis=analysis_payload,
+        repository=dashboard_repository(repo),
+        analysis=dashboard_analysis(db, result) if result is not None else None,
         has_analysis=result is not None,
     )
 

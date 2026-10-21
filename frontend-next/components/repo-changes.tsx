@@ -6,6 +6,7 @@ import { BlastMap } from "@/components/changes/blast-map";
 import { FileDiff } from "@/components/changes/file-diff";
 import { SEVERITY_ORDER, SeverityBadge } from "@/components/changes/severity";
 import { Answer } from "@/components/chat/answer";
+import { LoadingCards } from "@/components/loading";
 import { useRepo } from "@/components/repo-context";
 import {
   askAboutDiffStream,
@@ -14,7 +15,7 @@ import {
   getCommitDiff,
   listCommitDiffs
 } from "@/lib/api";
-import { friendlyChatError } from "@/lib/errors";
+import { ApiError, friendlyChatError } from "@/lib/errors";
 import { plural } from "@/lib/format";
 
 function shortDate(iso: string | null | undefined): string {
@@ -30,6 +31,8 @@ export function RepoChanges() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [diff, setDiff] = useState<CommitDiffSummary | null>(null);
+  // No commit changes stored for this repository: an empty state, not an error.
+  const [none, setNone] = useState(false);
   const [question, setQuestion] = useState("Does this commit touch sign-in or secrets, and what does it affect?");
   const [answer, setAnswer] = useState("");
   const [asking, setAsking] = useState(false);
@@ -50,6 +53,7 @@ export function RepoChanges() {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setNone(false);
     setAnswer("");
     getCommitDiff(repo.repo_id, head ?? undefined)
       .then((summary) => {
@@ -60,7 +64,11 @@ export function RepoChanges() {
       .catch((err) => {
         if (!cancelled) {
           setDiff(null);
-          setError(friendlyChatError(err));
+          if (err instanceof ApiError && err.status === 404) {
+            setNone(true);
+          } else {
+            setError(friendlyChatError(err));
+          }
         }
       })
       .finally(() => {
@@ -97,7 +105,7 @@ export function RepoChanges() {
   }
 
   if (status === "loading") {
-    return <p className="notice">Checking sign-in...</p>;
+    return <LoadingCards label="Checking sign-in" cards={[1, 4]} />;
   }
   if (status === "signed-out") {
     return (
@@ -154,7 +162,18 @@ export function RepoChanges() {
           {error}
         </p>
       )}
-      {loading && <p className="notice">Loading the commit...</p>}
+      {loading && <LoadingCards label="Loading the commit" cards={[1, 6, 4]} />}
+
+      {none && !loading && (
+        <article className="card empty-state">
+          <h2>No commit changes yet</h2>
+          <p className="muted">
+            DevLens records a commit&apos;s changes when it analyzes the commit, by comparing it with the one before.
+            Nothing is stored for {repo.full_name} yet: it may have a single commit, or it was analyzed before changes
+            were recorded. Changes show up here after DevLens analyzes a newer commit.
+          </p>
+        </article>
+      )}
 
       {diff && !loading && (
         <>
