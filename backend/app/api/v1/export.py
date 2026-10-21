@@ -7,6 +7,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.error_schema import ERROR_RESPONSE_SCHEMA
+from app.api.v1.repos import (
+    DashboardAnalysisResponse,
+    DashboardRepositoryResponse,
+    dashboard_analysis,
+    dashboard_repository,
+)
 from app.config import settings
 from app.db.models import AnalysisResult, Repository, ShareToken, User
 from app.deps import get_current_user, get_db_session, get_repo_or_404
@@ -25,6 +31,7 @@ SHARE_CREATE_RESPONSE_EXAMPLE = {
 SHARE_RESOLVE_RESPONSE_EXAMPLE = {
     "repo_id": "cd3ce6f7-76fc-4cc2-8e34-c176f7af6f82",
     "repository": {
+        "id": "cd3ce6f7-76fc-4cc2-8e34-c176f7af6f82",
         "github_url": "https://github.com/owner/repo",
         "full_name": "owner/repo",
         "owner": "owner",
@@ -37,9 +44,14 @@ SHARE_RESOLVE_RESPONSE_EXAMPLE = {
         "latest_commit_sha": "abcdef123",
     },
     "analysis": {
+        "commit_sha": "abcdef123",
         "quality_score": 74,
         "architecture_summary": "Service-oriented modules...",
         "language_breakdown": {"Python": 80, "TypeScript": 20},
+        "languages": [
+            {"name": "Python", "share": 80.0, "is_code": True},
+            {"name": "TypeScript", "share": 20.0, "is_code": True},
+        ],
         "contributor_stats": {"total": 7},
         "tech_debt_flags": {
             "measured": True,
@@ -50,7 +62,8 @@ SHARE_RESOLVE_RESPONSE_EXAMPLE = {
             "todo_file_count": 2,
             "test_file_count": 12,
         },
-        "file_tree": {"type": "dir", "name": "/", "children": []},
+        "file_tree": {"files": {"src/app.py": {"chunks": 4, "lines": 210, "language": "python"}}},
+        "created_at": "2026-02-23T11:00:00Z",
     },
     "shared_at": "2026-02-23T12:00:00Z",
     "expires_at": "2026-03-01T12:00:00Z",
@@ -68,10 +81,11 @@ class ShareCreateResponse(BaseModel):
     expires_at: datetime
 
 
+# The same repository and analysis shapes as the dashboard, so the shared page reuses its panels.
 class SharedAnalysisResponse(BaseModel):
     repo_id: str
-    repository: dict
-    analysis: dict
+    repository: DashboardRepositoryResponse
+    analysis: DashboardAnalysisResponse
     shared_at: datetime
     expires_at: datetime
 
@@ -193,26 +207,8 @@ def get_shared_analysis(token: str, db: Session = Depends(get_db_session)) -> Sh
     result = _get_latest_result_or_404(db, repo_id)
     return SharedAnalysisResponse(
         repo_id=str(repo.id),
-        repository={
-            "github_url": repo.github_url,
-            "full_name": repo.full_name,
-            "owner": repo.owner,
-            "name": repo.name,
-            "description": repo.description,
-            "stars": repo.stars,
-            "forks": repo.forks,
-            "language": repo.language,
-            "default_branch": repo.default_branch,
-            "latest_commit_sha": repo.latest_commit_sha,
-        },
-        analysis={
-            "quality_score": result.quality_score,
-            "architecture_summary": result.architecture_summary,
-            "language_breakdown": result.language_breakdown or {},
-            "contributor_stats": result.contributor_stats or {},
-            "tech_debt_flags": result.tech_debt_flags or {},
-            "file_tree": result.file_tree or {},
-        },
+        repository=dashboard_repository(repo),
+        analysis=dashboard_analysis(db, result),
         shared_at=row.created_at,
         expires_at=row.expires_at,
     )

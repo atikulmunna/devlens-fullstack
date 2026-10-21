@@ -1,17 +1,32 @@
-/* DevLens palette: survey-map colors. Paper, spruce ink, pine for actions, ochre for the one accent. */
+/* DevLens palette: survey-map colors. Paper, spruce ink, pine for actions, ochre for the one accent.
+   Every text pair clears 4.5:1 in both themes. */
 :root {
+  color-scheme: light;
   --paper: #edf0ea;
   --surface: #f8f9f5;
+  /* Inputs, answers, and diffs: one step brighter than the card they sit on. */
+  --field: #ffffff;
   --ink: #1e2b24;
   --lichen: #55635b;
   --rule: #c7d0c6;
   --pine: #2d5a47;
   --pine-deep: #234637;
+  --on-pine: #ffffff;
   --ochre: #a86f24;
   --ochre-deep: #8a5a17;
   --brick: #9c3b2e;
   --brick-wash: #f6e9e5;
+  --brick-rule: #e3c2ba;
   --pine-wash: #e2ebe3;
+  --added-wash: #e7f1e9;
+
+  /* Language bar, fixed order, validated for color-vision deficiency on --surface (dataviz validator). */
+  --series-1: #2e8059;
+  --series-2: #c48a1e;
+  --series-3: #3d72b8;
+  --series-4: #c8643b;
+  --series-5: #7058c4;
+  --series-other: #a3aca5;
 
   --font-body: var(--font-atkinson), "Atkinson Hyperlegible", system-ui, sans-serif;
   --font-code: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
@@ -22,6 +37,37 @@
   --step-1: 1.3rem;
   --step-2: 1.65rem;
   --radius: 6px;
+}
+
+/* The same map at night: spruce-dark paper, lighter pine and ochre so links and accents keep their contrast. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --paper: #121a16;
+    --surface: #1b2520;
+    --field: #222d27;
+    --ink: #e2e8e2;
+    --lichen: #9eaba3;
+    --rule: #34423a;
+    --pine: #7cc3a0;
+    --pine-deep: #a3d8bd;
+    --on-pine: #0f1a15;
+    --ochre: #d49a45;
+    --ochre-deep: #e2b06a;
+    --brick: #ef8f7f;
+    --brick-wash: #3a221e;
+    --brick-rule: #6e3d35;
+    --pine-wash: #1e3329;
+    --added-wash: #1b3327;
+
+    /* Same hues stepped for the dark card (validated with --mode dark against #1b2520). */
+    --series-1: #349a78;
+    --series-2: #b98724;
+    --series-3: #5689cf;
+    --series-4: #d2754d;
+    --series-5: #8e7ae0;
+    --series-other: #6f7a73;
+  }
 }
 
 * {
@@ -163,7 +209,7 @@ a:hover {
 .input {
   width: 100%;
   border: 1px solid var(--rule);
-  background: #fff;
+  background: var(--field);
   color: var(--ink);
   padding: 10px 12px;
 }
@@ -175,7 +221,7 @@ a:hover {
 .button {
   border: 1px solid var(--pine);
   background: var(--pine);
-  color: #fff;
+  color: var(--on-pine);
   padding: 10px 16px;
   cursor: pointer;
 }
@@ -206,7 +252,7 @@ a:hover {
 }
 
 .error {
-  border: 1px solid #e3c2ba;
+  border: 1px solid var(--brick-rule);
   background: var(--brick-wash);
   color: var(--brick);
   border-radius: var(--radius);
@@ -242,7 +288,7 @@ a:hover {
 
 .bubble.assistant {
   align-self: flex-start;
-  background: #fff;
+  background: var(--field);
 }
 
 .bubble .role {
@@ -288,11 +334,15 @@ a.citation-pill:hover {
 
 .suggestion {
   border: 1px solid var(--rule);
-  background: #fff;
+  background: var(--field);
+  color: var(--ink);
   border-radius: 999px;
   padding: 6px 12px;
   cursor: pointer;
   font: inherit;
+  max-width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
 }
 
 .suggestion:hover {
@@ -538,7 +588,7 @@ a.citation-pill:hover {
 
 @keyframes waypoint {
   50% {
-    box-shadow: 0 0 0 5px rgba(168, 111, 36, 0.18);
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--ochre) 18%, transparent);
   }
 }
 
@@ -601,7 +651,9 @@ a.citation-pill:hover {
 
 .repo-meta {
   display: flex;
-  gap: 18px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 18px;
   margin: 0 0 14px;
   color: var(--lichen);
   font-size: var(--step--1);
@@ -632,6 +684,123 @@ a.citation-pill:hover {
 
 .repo-missing {
   max-width: 36rem;
+}
+
+/* Share: the button sits at the end of the meta line, its panel on a row of its own below. */
+.share-toggle {
+  margin-left: auto;
+  padding: 4px 12px;
+  font-size: var(--step--1);
+}
+
+.share-panel {
+  flex-basis: 100%;
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 12px 14px;
+  color: var(--ink);
+  font-size: var(--step-0);
+}
+
+.share-panel p {
+  margin: 0;
+  max-width: 60ch;
+}
+
+.share-row {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.share-row .input {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--step--1);
+}
+
+.share-panel .link-button {
+  font-family: var(--font-body);
+  font-size: var(--step--1);
+}
+
+/* An empty panel says what is missing and what will fill it. */
+.empty-state {
+  max-width: 44rem;
+}
+
+.empty-state > p {
+  margin: 0 0 12px;
+  max-width: 62ch;
+}
+
+/* --- Loading stand-ins ---------------------------------------------------- */
+
+.loading-cards {
+  display: grid;
+  gap: 12px;
+}
+
+.loading-cards .card {
+  margin-bottom: 0;
+}
+
+.skeleton {
+  display: block;
+  height: 0.8em;
+  margin: 12px 0;
+  border-radius: 4px;
+  background: var(--rule);
+  opacity: 0.6;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.skeleton-heading {
+  width: 32%;
+  height: 1.15em;
+  margin-top: 0;
+}
+
+.skeleton-line {
+  width: 94%;
+}
+
+.skeleton-line:nth-child(odd) {
+  width: 82%;
+}
+
+.skeleton-line:last-child {
+  width: 58%;
+  margin-bottom: 0;
+}
+
+.skeleton-block {
+  height: 220px;
+  margin: 0;
+}
+
+.skeleton-tabs {
+  width: 220px;
+  height: 1.2em;
+  margin: 14px 0 12px;
+}
+
+.skeleton-pill {
+  display: inline-block;
+  width: 9em;
+  height: 1.6em;
+  margin: 0;
+  border-radius: 999px;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
 }
 
 .repo-missing .button {
@@ -813,6 +982,7 @@ a.citation-pill:hover {
 
 .chat-form .input {
   flex: 1;
+  min-width: 0;
 }
 
 /* --- Overview ------------------------------------------------------------- */
@@ -1107,7 +1277,7 @@ a.citation-pill:hover {
 .commit-bar {
   display: flex;
   flex-wrap: wrap;
-  align-items: end;
+  align-items: flex-end;
   gap: 8px 20px;
 }
 
@@ -1192,7 +1362,7 @@ a.citation-pill:hover {
 .file-diff {
   border: 1px solid var(--rule);
   border-radius: var(--radius);
-  background: #fff;
+  background: var(--field);
 }
 
 .file-diff summary {
@@ -1269,7 +1439,7 @@ a.citation-pill:hover {
 }
 
 .line-added {
-  background: #e7f1e9;
+  background: var(--added-wash);
 }
 
 .line-removed {
@@ -1352,10 +1522,11 @@ a.citation-pill:hover {
     flex-direction: column;
   }
 
+  /* minmax(0, ...) so one long file path cannot hold the column wider than the screen. */
   .overview-pair,
   .dep-columns,
   .chat-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .chat-sessions ul {
@@ -1376,7 +1547,8 @@ a.citation-pill:hover {
 
 @media (prefers-reduced-motion: reduce) {
   .blink::after,
-  .step-current::before {
+  .step-current::before,
+  .skeleton {
     animation: none;
   }
 

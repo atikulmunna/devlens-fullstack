@@ -5,6 +5,7 @@ import { SignInLink, useAuth } from "@/components/auth";
 import { Answer } from "@/components/chat/answer";
 import { Citations } from "@/components/chat/citations";
 import { SessionList } from "@/components/chat/session-list";
+import { LoadingCards } from "@/components/loading";
 import { useRepo } from "@/components/repo-context";
 import {
   ChatCitation,
@@ -209,7 +210,7 @@ export function RepoChat() {
   }
 
   if (status === "loading") {
-    return <p className="notice">Checking sign-in...</p>;
+    return <LoadingCards label="Checking sign-in" cards={[2]} />;
   }
   if (status === "signed-out") {
     return (

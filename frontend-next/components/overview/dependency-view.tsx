@@ -1,6 +1,7 @@
 "use client";
 
 import { KeyboardEvent, useEffect, useMemo, useState } from "react";
+import { LoadingBlock } from "@/components/loading";
 import { DependencyGraph, getDependencyGraph } from "@/lib/api";
 import { connectedFiles, mostImported, neighborhood, shortPath } from "@/lib/dependency-neighborhood";
 import { plural } from "@/lib/format";
@@ -117,7 +118,7 @@ export function DependencyView({ repoId }: { repoId: string }) {
     return <p className="error">Could not load the import graph: {error}</p>;
   }
   if (!graph) {
-    return <p className="muted">Loading imports...</p>;
+    return <LoadingBlock label="Loading imports" />;
   }
   if (!center) {
     return <p className="muted">No imports between indexed files were found.</p>;

@@ -329,3 +329,34 @@ export async function getRepoStatusOnce(repoId: string): Promise<RepoStatusSnaps
   }
   return payload;
 }
+
+// --- Share links ---------------------------------------------------------------
+
+export type ShareLink = Schemas["ShareCreateResponse"];
+
+export type SharedAnalysis = Omit<Schemas["SharedAnalysisResponse"], "analysis"> & {
+  analysis: DashboardAnalysis;
+};
+
+// Uses the server's default lifetime (SHARE_TOKEN_TTL_DAYS).
+export async function createShareLink(repoId: string): Promise<ShareLink> {
+  const response = await authFetch(`/api/v1/export/${encodeURIComponent(repoId)}/share`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({})
+  });
+  return assertJson<ShareLink>(response, "Could not create a share link");
+}
+
+export async function revokeShareLink(shareId: string): Promise<void> {
+  const response = await authFetch(`/api/v1/export/share/${encodeURIComponent(shareId)}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw await errorFrom(response, "Could not stop sharing");
+  }
+}
+
+// Public: anyone holding the link can open it, signed in or not.
+export async function getSharedAnalysis(token: string): Promise<SharedAnalysis> {
+  const response = await fetch(`/api/v1/share/${encodeURIComponent(token)}`, { cache: "no-store" });
+  return assertJson<SharedAnalysis>(response, "Could not open the shared analysis");
+}

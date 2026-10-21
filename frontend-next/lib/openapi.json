@@ -3178,6 +3178,7 @@
                 "example": {
                   "repo_id": "cd3ce6f7-76fc-4cc2-8e34-c176f7af6f82",
                   "repository": {
+                    "id": "cd3ce6f7-76fc-4cc2-8e34-c176f7af6f82",
                     "github_url": "https://github.com/owner/repo",
                     "full_name": "owner/repo",
                     "owner": "owner",
@@ -3190,12 +3191,25 @@
                     "latest_commit_sha": "abcdef123"
                   },
                   "analysis": {
+                    "commit_sha": "abcdef123",
                     "quality_score": 74,
                     "architecture_summary": "Service-oriented modules...",
                     "language_breakdown": {
                       "Python": 80,
                       "TypeScript": 20
                     },
+                    "languages": [
+                      {
+                        "name": "Python",
+                        "share": 80.0,
+                        "is_code": true
+                      },
+                      {
+                        "name": "TypeScript",
+                        "share": 20.0,
+                        "is_code": true
+                      }
+                    ],
                     "contributor_stats": {
                       "total": 7
                     },
@@ -3216,10 +3230,15 @@
                       "test_file_count": 12
                     },
                     "file_tree": {
-                      "type": "dir",
-                      "name": "/",
-                      "children": []
-                    }
+                      "files": {
+                        "src/app.py": {
+                          "chunks": 4,
+                          "lines": 210,
+                          "language": "python"
+                        }
+                      }
+                    },
+                    "created_at": "2026-02-23T11:00:00Z"
                   },
                   "shared_at": "2026-02-23T12:00:00Z",
                   "expires_at": "2026-03-01T12:00:00Z"
@@ -4772,14 +4791,10 @@
             "title": "Repo Id"
           },
           "repository": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Repository"
+            "$ref": "#/components/schemas/DashboardRepositoryResponse"
           },
           "analysis": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Analysis"
+            "$ref": "#/components/schemas/DashboardAnalysisResponse"
           },
           "shared_at": {
             "type": "string",
