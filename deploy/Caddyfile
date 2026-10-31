@@ -5,7 +5,8 @@
 # public domain (a free sslip.io hostname derived from the Elastic IP).
 #
 # Gating: visitors without a valid access cookie see a branded login page (gate.html).
-# Submitting the correct access key sets an httpOnly cookie, after which all traffic is
+# The page posts the key to the app (frontend-next/app/gate/enter), which checks it and sets
+# an httpOnly cookie holding it; with that cookie all traffic is
 # proxied to the Next.js frontend (which proxies /api/v1 to the backend internally). The
 # cookie gate does not touch the Authorization header, so the app's own JWT bearer auth
 # (GitHub login for chat/diff) works unchanged. Share links are the one exception: they open
@@ -19,20 +20,15 @@
 	encode zstd gzip
 	root * /srv
 
-	# Login submission: correct key sets the access cookie, wrong key returns to the page.
-	@gate path /__gate
+	# Login submission. Caddy matchers cannot read a request body, so the app checks the key: it
+	# arrives in a POST body and never lands in access logs or browser history the way a query
+	# string would. The app sets the access cookie and sends the browser home (or back, if wrong).
+	@gate {
+		method POST
+		path /gate/enter
+	}
 	handle @gate {
-		header Cache-Control "no-store"
-		@ok query key={$DEVLENS_GATE_SECRET}
-		handle @ok {
-			header Set-Cookie "devlens_access={$DEVLENS_GATE_SECRET}; Path=/; Max-Age=2592000; Secure; HttpOnly; SameSite=Lax"
-			header Location "/"
-			respond "" 302
-		}
-		handle {
-			header Location "/?denied=1"
-			respond "" 302
-		}
+		reverse_proxy frontend:3000
 	}
 
 	# Share links skip the gate: the shared page, its scripts, styles, and fonts, and the share API,

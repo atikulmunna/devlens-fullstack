@@ -84,6 +84,8 @@ services:
     environment:
       # Server-side proxy target (container-to-container); browsers use same-origin /api/v1.
       NEXT_PUBLIC_API_URL: http://backend:8000
+      # Checked by the access page's form handler (app/gate/enter), which sets Caddy's access cookie.
+      DEVLENS_GATE_SECRET: ${DEVLENS_GATE_SECRET}
     depends_on:
       backend:
         condition: service_healthy

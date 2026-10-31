@@ -39,8 +39,17 @@ nano .env.prod   # fill DEVLENS_DOMAIN, TLS email, DEVLENS_GATE_SECRET, OpenRout
 Keep `DATABASE_URL`'s password in sync with `POSTGRES_PASSWORD`.
 
 ## 5. Set the access key
-`DEVLENS_GATE_SECRET` in `.env.prod` is the shared access key for the branded login page.
-Hand it to people you invite; rotate it (and recreate Caddy) to revoke access for everyone.
+`DEVLENS_GATE_SECRET` in `.env.prod` is the shared access key for the branded login page. Use hex
+(`openssl rand -hex 24`): it is stored in a cookie. The page posts the key to the app
+(`/gate/enter`), so it never appears in a URL, Caddy's logs, or browser history; the app sets the
+cookie Caddy checks. Both Caddy and the frontend read the key, so recreate both after changing it.
+
+Hand the key to people you invite, privately. Rotating it revokes access for everyone at once:
+```bash
+NEW=$(openssl rand -hex 24)
+sed -i "s/^DEVLENS_GATE_SECRET=.*/DEVLENS_GATE_SECRET=$NEW/" .env.prod
+sudo docker compose -f docker-compose.prod.yml --env-file .env.prod up -d caddy frontend
+```
 
 ## 6. Bring it up
 ```bash
