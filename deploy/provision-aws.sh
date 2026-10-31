@@ -14,7 +14,8 @@ NAME_TAG="${NAME_TAG:-devlens-alpha}"
 
 echo "Region=$REGION Type=$INSTANCE_TYPE Key=$KEY_NAME SG=$SG_NAME Disk=${DISK_GB}GB"
 
-# 1) Key pair (private key saved locally as <KEY_NAME>.pem)
+# 1) Key pair (private key saved locally as <KEY_NAME>.pem). Day-to-day access goes through
+#    Systems Manager (step 6); the key is only for an emergency SSH rule you add by hand.
 if ! aws ec2 describe-key-pairs --key-names "$KEY_NAME" --region "$REGION" >/dev/null 2>&1; then
   aws ec2 create-key-pair --key-name "$KEY_NAME" --region "$REGION" \
     --query 'KeyMaterial' --output text > "${KEY_NAME}.pem"
@@ -24,7 +25,7 @@ else
   echo "Key pair $KEY_NAME already exists (using it; ensure you still have ${KEY_NAME}.pem)"
 fi
 
-# 2) Security group in the default VPC: SSH from your IP, 80/443 public
+# 2) Security group in the default VPC: 80/443 public, no inbound SSH (see step 6)
 VPC_ID=$(aws ec2 describe-vpcs --filters Name=isDefault,Values=true --region "$REGION" \
   --query 'Vpcs[0].VpcId' --output text)
 SG_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=$SG_NAME" \
@@ -33,11 +34,9 @@ if [ "$SG_ID" = "None" ] || [ -z "$SG_ID" ]; then
   SG_ID=$(aws ec2 create-security-group --group-name "$SG_NAME" \
     --description "DevLens alpha" --vpc-id "$VPC_ID" --region "$REGION" \
     --query 'GroupId' --output text)
-  MYIP=$(curl -fsS https://checkip.amazonaws.com | tr -d '\n')
-  aws ec2 authorize-security-group-ingress --group-id "$SG_ID" --protocol tcp --port 22  --cidr "${MYIP}/32"  --region "$REGION" >/dev/null
   aws ec2 authorize-security-group-ingress --group-id "$SG_ID" --protocol tcp --port 80  --cidr 0.0.0.0/0     --region "$REGION" >/dev/null
   aws ec2 authorize-security-group-ingress --group-id "$SG_ID" --protocol tcp --port 443 --cidr 0.0.0.0/0     --region "$REGION" >/dev/null
-  echo "Created SG $SG_ID (SSH from ${MYIP}/32; 80/443 open)"
+  echo "Created SG $SG_ID (80/443 open, no SSH)"
 else
   echo "Security group $SG_NAME already exists ($SG_ID)"
 fi
@@ -65,12 +64,16 @@ aws ec2 associate-address --instance-id "$INSTANCE_ID" --allocation-id "$ALLOC_I
 EIP=$(aws ec2 describe-addresses --allocation-ids "$ALLOC_ID" --region "$REGION" \
   --query 'Addresses[0].PublicIp' --output text)
 
+# 6) Systems Manager access instead of SSH, so a changing home IP never locks you out
+AWS_REGION="$REGION" bash "$(dirname "$0")/ssm-setup.sh" "$INSTANCE_ID"
+
 cat <<EOF
 
 ============================================================
   Instance:   $INSTANCE_ID
   Elastic IP: $EIP
-  SSH:        ssh -i ${KEY_NAME}.pem ubuntu@${EIP}
+  Shell:      aws ssm start-session --region ${REGION} --target ${INSTANCE_ID}
+  Commands:   bash deploy/remote.sh ${INSTANCE_ID} '<command>'
 ============================================================
 Hostname (sslip.io, no DNS setup): ${EIP//./-}.sslip.io
 Next:
