@@ -219,4 +219,4 @@ with answer tokens and a final `done` event; for chat, `done` carries the number
 
 ## License
 
-No license has been chosen yet, so the code is not licensed for reuse.
+MIT, see [`LICENSE`](LICENSE).
