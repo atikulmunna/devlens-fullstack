@@ -1,0 +1,31 @@
+name: DevLens change risk
+description: >-
+  Comments on a pull request with what its changes reach: the files that import them, security-sensitive
+  changes by severity, and deleted files that are still imported.
+author: atikulmunna
+branding:
+  icon: git-pull-request
+  color: green
+
+inputs:
+  github-token:
+    description: "Token that posts the comment. The default works when the workflow grants `pull-requests: write`."
+    default: ${{ github.token }}
+  devlens-url:
+    description: Optional DevLens site. When set, the comment links to the repository's Changes page there.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    # Needs the full history checked out (actions/checkout with fetch-depth: 0) to find the fork point.
+    - name: Report change risk
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        DEVLENS_URL: ${{ inputs.devlens-url }}
+      run: python "$GITHUB_ACTION_PATH/pr_risk.py"

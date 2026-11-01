@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 import app.api.v1.diff as diff_module
 from app.db.models import CodeChunk, CommitDiff, Repository, User
 from app.services.chat_synthesizer import ChatSynthesisError
+from app.services.flag_severity import flag_severity
 from app.services.tokens import create_access_token
 
 
@@ -223,7 +224,7 @@ def test_files_named_in_the_question_come_first() -> None:
 
 
 def test_flag_severity_rates_secrets_and_removed_checks_highest() -> None:
-    severity = diff_module._flag_severity
+    severity = flag_severity
     assert severity(["secret"]) == "high"
     assert severity(["removed: api_key"]) == "high"
     assert severity(["auth", "removed: token"]) == "high"

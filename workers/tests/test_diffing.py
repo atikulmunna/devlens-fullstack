@@ -199,3 +199,25 @@ def test_docs_and_stylesheets_are_not_flagged_as_security_changes() -> None:
     ]
 
     assert [flag["path"] for flag in detect_security_touches(files)] == [".env.example"]
+
+
+def test_a_reference_to_a_secret_variable_is_env_not_a_secret() -> None:
+    labels = diffing._security_labels
+
+    # Handing a variable through, in compose, Caddy, Node, and Python: no secret is in the line.
+    assert labels("      DEVLENS_GATE_SECRET: ${DEVLENS_GATE_SECRET}") == {"env"}
+    assert labels('header Set-Cookie "devlens_access={$DEVLENS_GATE_SECRET}; Path=/"') == {"env"}
+    assert labels("return enterGate(request, process.env.DEVLENS_GATE_SECRET);") == {"env"}
+    assert labels("key = os.environ['OPENROUTER_API_KEY']") == {"env"}
+    assert labels('key = os.getenv("OPENROUTER_API_KEY")') == {"env"}
+
+
+def test_secret_values_and_other_words_on_a_referencing_line_are_still_flagged() -> None:
+    labels = diffing._security_labels
+
+    assert labels("JWT_SECRET=change-me") == {"jwt", "secret"}
+    assert labels("API_KEY: sk-live-1234") == {"api_key"}
+    # The reference is stripped, the rest of the line still counts.
+    assert labels("password = os.environ['DB_PASSWORD'] or 'hunter2'") == {"env", "password"}
+    # Several lines, one of them a pass-through: only the real one is flagged.
+    assert labels("TOKEN: ${TOKEN}\nverify_token(request)") == {"env", "token"}

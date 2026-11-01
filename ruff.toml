@@ -3,7 +3,7 @@
 line-length = 120
 target-version = "py312"
 # First-party detection for import sorting: backend's `app` package and the workers' flat modules.
-src = ["backend", "workers"]
+src = ["backend", "workers", "pr-risk"]
 
 [lint]
 # Defaults (pyflakes, pycodestyle errors) plus import order and bugbear.
@@ -15,6 +15,8 @@ ignore = ["B008"]
 # These set paths and environment before importing the app, on purpose.
 "backend/alembic/env.py" = ["E402"]
 "backend/tests/conftest.py" = ["E402"]
+# The Action puts backend/ and workers/ on the path before importing the shared analysis.
+"pr-risk/pr_risk.py" = ["E402"]
 
 [format]
 # Keep each package's existing quotes (workers use single, backend double) instead of a repo-wide rewrite.

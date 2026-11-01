@@ -39,6 +39,7 @@ jobs:
         run: |
           python -m compileall backend/app
           python -m compileall workers
+          python -m compileall pr-risk
 
       - name: Python lint and format (ruff.toml)
         run: |
@@ -101,6 +102,25 @@ jobs:
         if: always()
         run: docker compose down -v
 
+  pr_risk_tests:
+    name: PR Risk Tests
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The Action is standard library only; its tests need pytest and git (present on the runner).
+      - name: Run the PR risk Action's tests
+        run: |
+          pip install pytest==8.3.4
+          python -m pytest -q pr-risk/tests
+
   e2e_smoke:
     name: E2E Smoke (Analyze Dashboard Chat)
     runs-on: ubuntu-latest
@@ -136,7 +156,7 @@ jobs:
   build_images:
     name: Build Service Images
     runs-on: ubuntu-latest
-    needs: [backend_tests, worker_tests, e2e_smoke]
+    needs: [backend_tests, worker_tests, pr_risk_tests, e2e_smoke]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

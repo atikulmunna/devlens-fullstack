@@ -15,6 +15,7 @@ from app.db.models import CommitDiff, User
 from app.deps import get_current_user, get_db_session, get_repo_or_404
 from app.services.blast_radius import compute_blast_radius
 from app.services.chat_synthesizer import detect_intent, synthesize_grounded_answer_stream
+from app.services.flag_severity import with_severity
 
 router = APIRouter(prefix="/repos", tags=["diff"])
 
@@ -78,25 +79,6 @@ class CommitDiffEntry(BaseModel):
 class CommitDiffListResponse(BaseModel):
     repo_id: str
     diffs: list[CommitDiffEntry]
-
-
-# Secrets and keys are exposed the moment they land; removing an auth or token check is as serious.
-HIGH_RISK = {"secret", "credential", "password", "api_key"}
-MEDIUM_RISK = {"auth", "token", "jwt", "oauth", "crypto"}
-
-
-def _flag_severity(categories: list[str]) -> str:
-    plain = {category.removeprefix("removed: ") for category in categories}
-    removed = {category.removeprefix("removed: ") for category in categories if category.startswith("removed: ")}
-    if plain & HIGH_RISK or removed & MEDIUM_RISK:
-        return "high"
-    if plain & MEDIUM_RISK:
-        return "medium"
-    return "low"
-
-
-def _with_severity(flags: list[dict]) -> list[dict]:
-    return [{**flag, "severity": _flag_severity(flag.get("categories") or [])} for flag in flags]
 
 
 class CommitDiffResponse(BaseModel):
@@ -245,7 +227,7 @@ def get_commit_diff(
         "base_sha": diff.base_sha,
         "head_sha": diff.head_sha,
         "changed_files": _summarize_changed(changed_files),
-        "security_flags": _with_severity(diff.security_flags or []),
+        "security_flags": with_severity(diff.security_flags or []),
         "blast_radius": blast,
         "created_at": diff.created_at,
     }

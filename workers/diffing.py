@@ -116,8 +116,28 @@ def parse_unified_diff(diff_text: str) -> list[dict]:
     return files
 
 
+# A reference to a variable (`${JWT_SECRET}`, Caddy's `{$GATE_SECRET}`, `process.env.API_KEY`,
+# `os.environ["TOKEN"]`, `os.getenv("TOKEN")`) passes a secret along without containing one.
+_ENV_REFERENCE_RE = re.compile(
+    r"\$\{[A-Za-z_]\w*\}|\{\$[A-Za-z_]\w*\}|process\.env\.[A-Za-z_]\w*"
+    r"|os\.(?:environ(?:\.get)?|getenv)\s*[\[(]\s*['\"][A-Za-z_]\w*['\"]\s*[\])]?"
+)
+# `NAME: ${NAME}` or `NAME=${NAME}` hands a variable through under its own name.
+_PASS_THROUGH_RE = re.compile(r"^\s*[\w.-]+\s*[:=]\s*['\"]?(?:\$\{\w+\}|\{\$\w+\})['\"]?\s*$")
+
+
 def _security_labels(text: str) -> set[str]:
-    return {label for label, pattern in _SECURITY_PATTERNS if pattern.search(text)}
+    labels: set[str] = set()
+    kept = []
+    for line in text.splitlines():
+        stripped, references = _ENV_REFERENCE_RE.subn("", line)
+        if references:
+            labels.add("env")
+            if _PASS_THROUGH_RE.match(line):
+                continue
+        kept.append(stripped)
+    rest = "\n".join(kept)
+    return labels | {label for label, pattern in _SECURITY_PATTERNS if pattern.search(rest)}
 
 
 # Documentation describes secrets and sign-in, and stylesheets name classes like `.auth`, without

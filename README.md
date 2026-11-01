@@ -39,7 +39,33 @@ or environment config are marked with what they touch. Files are ranked high, me
 secrets and credentials are high, and so is removing an auth or token check. Docs and stylesheets
 are never flagged. The files that import the changes are drawn as rings, one ring per import step.
 The import graph follows Python packages, relative imports, `src/` layouts, and TypeScript path
-aliases. You can ask questions about the diff itself.
+aliases. You can ask questions about the diff itself. A reference to a variable, such as
+`${JWT_SECRET}` or `process.env.API_KEY`, counts as environment config, not as a secret.
+
+**Pull request comments.** The same analysis runs as a GitHub Action, with no server and nothing to
+install. On each pull request it posts one comment, updated on every push. The comment lists the
+security-sensitive changes by severity, deleted files that something still imports, and the files
+that import the changes, one import step at a time. It compares the pull request with the commit
+it branched from, as GitHub's "Files changed" does.
+
+```yaml
+# .github/workflows/pr-risk.yml
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the full history, to find where the branch started
+      - uses: atikulmunna/devlens-fullstack/pr-risk@main
+```
+
+A pull request from a fork gets a read-only token, so the report goes to the job summary instead.
+Run it locally with `python pr-risk/pr_risk.py --base main --head HEAD`.
 
 ![The Overview tab for DevLens itself: architecture summary, language mix, contributors, and code health with links to the long functions](assets/repo-overview.png)
 
@@ -151,6 +177,7 @@ The backend and worker code is baked into their images, so rebuild after a chang
 ./scripts/test-backend.ps1
 ./scripts/test-worker.ps1
 npm --prefix frontend-next test
+python -m pytest pr-risk/tests   # the pull request Action; needs only pytest and git
 ```
 
 CI also fails on lint, formatting, or type errors. Python rules are in `ruff.toml`:

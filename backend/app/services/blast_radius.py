@@ -7,14 +7,16 @@ target, so the files impacted by a change to X are the transitive importers of X
 from app.services.dependency_graph import build_dependency_graph
 
 
-def compute_blast_radius(file_chunks: list[dict], changed_paths: list[str]) -> dict:
-    graph = build_dependency_graph(file_chunks)
-
-    # target -> set of files that import it (reverse edges).
+def importers_by_file(graph: dict) -> dict[str, set[str]]:
+    """target -> the files that import it (the graph's edges, reversed)."""
     importers: dict[str, set[str]] = {}
     for edge in graph["edges"]:
         importers.setdefault(edge["target"], set()).add(edge["source"])
+    return importers
 
+
+def blast_radius_from_graph(graph: dict, changed_paths: list[str]) -> dict:
+    importers = importers_by_file(graph)
     changed = {str(path).replace("\\", "/") for path in changed_paths if path}
     seen: set[str] = set(changed)
     # Breadth first, so each impacted file sits at its shortest import distance from a change.
@@ -36,3 +38,7 @@ def compute_blast_radius(file_chunks: list[dict], changed_paths: list[str]) -> d
         "impacted_by_depth": by_depth,
         "graph_stats": graph.get("stats", {}),
     }
+
+
+def compute_blast_radius(file_chunks: list[dict], changed_paths: list[str]) -> dict:
+    return blast_radius_from_graph(build_dependency_graph(file_chunks), changed_paths)
