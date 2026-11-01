@@ -50,7 +50,10 @@ reappears elsewhere in the same pull request counts as moved, not removed. Then 
 the security-sensitive changes by severity, deleted files that something still imports, the
 tests to run, and the files that import the changes, one import step at a time. The tests to run
 are the test files that import a changed file, directly or through other files; changed files
-that no test imports are listed too. That shows a test loads the code, not how well it tests it. It compares the pull request with the commit
+that no test imports are listed too. That shows a test loads the code, not how well it tests it.
+Suggested reviewers are the people who changed the most of these files in the past year, not
+counting the pull request's own authors or bots. They are linked, not @-mentioned, so no one is
+notified. Someone who committed under several emails can be merged into one with a `.mailmap`. It compares the pull request with the commit
 it branched from, as GitHub's "Files changed" does.
 
 ```yaml

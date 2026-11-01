@@ -4,7 +4,7 @@ import urllib.error
 
 import pytest
 
-from github_comment import CommentError, upsert_comment
+from github_api import GitHubError, commit_login, upsert_comment
 
 MARKER = "<!-- devlens-pr-risk -->"
 
@@ -57,6 +57,20 @@ def test_creates_a_comment_when_only_a_person_quoted_the_marker() -> None:
 
 
 def test_a_refused_write_carries_the_status() -> None:
-    with pytest.raises(CommentError) as refused:
+    with pytest.raises(GitHubError) as refused:
         _upsert(FakeGitHub([], fail_with=403))
     assert refused.value.status == 403
+
+
+def test_commit_login_reads_the_matched_account_or_none() -> None:
+    def opener(answer):
+        return lambda request, timeout: io.BytesIO(json.dumps(answer).encode())
+
+    def login(answer):
+        return commit_login(
+            api_url="https://api.github.test", token="t0ken", repo="acme/shop", sha="abc", opener=opener(answer)
+        )
+
+    assert login({"sha": "abc", "author": {"login": "octo"}}) == "octo"
+    # GitHub could not tie the commit's email to an account.
+    assert login({"sha": "abc", "author": None}) is None

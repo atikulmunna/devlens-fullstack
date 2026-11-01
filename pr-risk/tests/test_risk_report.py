@@ -16,6 +16,7 @@ def _render(**overrides) -> str:
         "still_imported": {},
         "removed_checks": [],
         "tests": {"tests_to_run": [], "untested": []},
+        "reviewers": [],
     }
     return render_report(**{**args, **overrides})
 
@@ -121,3 +122,16 @@ def test_counts_of_one_take_a_singular_verb() -> None:
     assert "1 other file imports them." in body
     assert "1 changed file touches security-sensitive code." in body
     assert "1 test file exercises them." in body
+
+
+def test_reviewers_are_profile_links_never_mentions() -> None:
+    body = _render(
+        reviewers=[
+            {"name": "Ben", "login": "benb", "files": ["a.py", "b.py"], "commits": 4},
+            {"name": "Ana Lima", "login": None, "files": ["a.py"], "commits": 1},
+        ]
+    )
+    assert "#### Suggested reviewers" in body
+    assert "- [benb](https://github.com/benb): 2 of the changed files, 4 commits" in body
+    assert "- Ana Lima: 1 of the changed files, 1 commit" in body
+    assert "@" not in body.split("#### Suggested reviewers")[1]

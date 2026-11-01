@@ -1,4 +1,4 @@
-"""Create or update the one DevLens comment on a pull request (GitHub REST, standard library only)."""
+"""The GitHub REST calls the Action makes, standard library only: its PR comment, and commit authors."""
 
 import json
 import urllib.error
@@ -7,7 +7,7 @@ import urllib.request
 MAX_PAGES = 10
 
 
-class CommentError(Exception):
+class GitHubError(Exception):
     def __init__(self, status: int, message: str):
         super().__init__(f"GitHub API {status}: {message}")
         self.status = status
@@ -30,7 +30,7 @@ def _request(api_url: str, token: str, method: str, path: str, body: dict | None
             return json.loads(response.read() or b"null")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")[:300]
-        raise CommentError(exc.code, detail) from exc
+        raise GitHubError(exc.code, detail) from exc
 
 
 def _find_existing(api_url: str, token: str, repo: str, pr_number: int, marker: str, opener) -> int | None:
@@ -48,10 +48,16 @@ def _find_existing(api_url: str, token: str, repo: str, pr_number: int, marker: 
 
 
 def upsert_comment(*, api_url: str, token: str, repo: str, pr_number: int, body: str, marker: str, opener=None) -> str:
-    """Returns "updated" or "created". Raises CommentError when GitHub refuses (e.g. a read-only fork token)."""
+    """Returns "updated" or "created". Raises GitHubError when GitHub refuses (e.g. a read-only fork token)."""
     existing = _find_existing(api_url, token, repo, pr_number, marker, opener)
     if existing is not None:
         _request(api_url, token, "PATCH", f"/repos/{repo}/issues/comments/{existing}", {"body": body}, opener)
         return "updated"
     _request(api_url, token, "POST", f"/repos/{repo}/issues/{pr_number}/comments", {"body": body}, opener)
     return "created"
+
+
+def commit_login(*, api_url: str, token: str, repo: str, sha: str, opener=None) -> str | None:
+    """The GitHub account behind a commit, when GitHub could match its author email to one."""
+    commit = _request(api_url, token, "GET", f"/repos/{repo}/commits/{sha}", opener=opener)
+    return ((commit or {}).get("author") or {}).get("login")

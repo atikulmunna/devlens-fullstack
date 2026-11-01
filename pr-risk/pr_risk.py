@@ -25,11 +25,17 @@ from app.services.flag_severity import with_severity
 from covering_tests import covering_tests
 from diffing import detect_security_touches, parse_unified_diff, removed_checks
 from file_kinds import is_test_path
-from github_comment import CommentError, upsert_comment
+from github_api import GitHubError, commit_login, upsert_comment
+from reviewers import LOG_FORMAT, noreply_login, parse_log, suggest_reviewers
 from risk_report import MARKER, render_report
 
 # Generated or vendored files this large are not worth parsing for imports.
 MAX_FILE_BYTES = 512 * 1024
+# Reviewers come from recent history: someone who last touched a file years ago may be gone.
+HISTORY_SINCE = "1 year ago"
+# Keeps the git command line bounded on very large pull requests.
+MAX_HISTORY_PATHS = 300
+API_URL = os.environ.get("GITHUB_API_URL", "https://api.github.com")
 
 
 def git(repo_path: str, *args: str, stdin: bytes | None = None) -> bytes:
@@ -72,6 +78,42 @@ def tree_rows(repo_path: str, sha: str, keep) -> list[dict]:
     return [{"file_path": path, "content": content} for (path, _), content in zip(entries, contents, strict=True)]
 
 
+def reviewer_candidates(repo_path: str, fork_point: str, head: str, changed_files: list[dict]) -> list[dict]:
+    """Who changed these files in the past year before the branch started, minus the branch's own authors."""
+    paths = sorted({path for entry in changed_files for path in (entry["path"], entry.get("old_path")) if path})
+    paths = paths[:MAX_HISTORY_PATHS]
+    history = git(
+        repo_path,
+        "log",
+        "--no-merges",
+        f"--since={HISTORY_SINCE}",
+        f"--format={LOG_FORMAT}",
+        "--name-only",
+        fork_point,
+        "--",
+        *paths,
+    ).decode("utf-8", errors="ignore")
+    authors = git(repo_path, "log", "--format=%aE", f"{fork_point}..{head}").decode().lower().split()
+    return suggest_reviewers(parse_log(history), set(paths), set(authors))
+
+
+def with_logins(candidates: list[dict], repo: str, pr_author: str | None) -> list[dict]:
+    """Adds each person's GitHub account where it can be found, and drops the pull request's author."""
+    token = os.environ.get("GITHUB_TOKEN")
+    found = []
+    for person in candidates:
+        login = noreply_login(person["email"])
+        if not login and token and repo:
+            try:
+                login = commit_login(api_url=API_URL, token=token, repo=repo, sha=person["latest_sha"])
+            except GitHubError as exc:
+                print(f"::notice::Could not look up the author of {person['latest_sha'][:7]}: {exc}")
+        if login and pr_author and login.lower() == pr_author.lower():
+            continue
+        found.append({**person, "login": login})
+    return found
+
+
 def analyze(repo_path: str, base: str, head: str) -> dict:
     """Compare the pull request's head with where it branched from, as GitHub's "Files changed" does."""
     fork_point = git(repo_path, "merge-base", base, head).decode().strip()
@@ -92,15 +134,18 @@ def analyze(repo_path: str, base: str, head: str) -> dict:
     }
     blast = blast_radius_from_graph(graph, [entry["path"] for entry in changed_files])
     present = [entry["path"] for entry in changed_files if entry["path"] not in deleted]
+    head_sha = git(repo_path, "rev-parse", head).decode().strip()
     return {
         "base_sha": fork_point,
-        "head_sha": git(repo_path, "rev-parse", head).decode().strip(),
+        "head_sha": head_sha,
         "changed_files": changed_files,
         "flags": with_severity(detect_security_touches(changed_files)),
         "blast": blast,
         "still_imported": still_imported,
         "removed_checks": removed_checks(changed_files),
         "tests": covering_tests(graph, present, blast["impacted_files"], is_test_path),
+        # GitHub accounts are added in main(), which may call the API; analyze() stays offline.
+        "reviewers": reviewer_candidates(repo_path, fork_point, head_sha, changed_files),
     }
 
 
@@ -112,20 +157,25 @@ def _pull_request_event() -> dict | None:
         pull = json.load(handle).get("pull_request")
     if not pull:
         return None
-    return {"number": pull["number"], "base": pull["base"]["sha"], "head": pull["head"]["sha"]}
+    return {
+        "number": pull["number"],
+        "base": pull["base"]["sha"],
+        "head": pull["head"]["sha"],
+        "author": (pull.get("user") or {}).get("login"),
+    }
 
 
 def _post(repo: str, pr_number: int, body: str) -> int:
     try:
         outcome = upsert_comment(
-            api_url=os.environ.get("GITHUB_API_URL", "https://api.github.com"),
+            api_url=API_URL,
             token=os.environ["GITHUB_TOKEN"],
             repo=repo,
             pr_number=pr_number,
             body=body,
             marker=MARKER,
         )
-    except CommentError as exc:
+    except GitHubError as exc:
         if exc.status in (403, 404):
             # A pull request from a fork gets a read-only token; the job summary still has the report.
             print(f"::warning::DevLens could not comment on #{pr_number} ({exc}). The report is in the job summary.")
@@ -152,6 +202,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("no pull request in GITHUB_EVENT_PATH; pass --base and --head")
 
     result = analyze(args.repo_path, base, head)
+    result["reviewers"] = with_logins(result["reviewers"], args.repo, (event or {}).get("author"))
     body = render_report(repo=args.repo, devlens_url=os.environ.get("DEVLENS_URL", ""), **result)
 
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")

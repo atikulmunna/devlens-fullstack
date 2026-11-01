@@ -117,6 +117,22 @@ def _still_imported_section(repo: str, base_sha: str, still_imported: dict[str, 
     return [*lines, ""]
 
 
+def _reviewers_section(reviewers: list[dict]) -> list[str]:
+    if not reviewers:
+        return []
+    lines = [
+        "#### Suggested reviewers",
+        "",
+        "People who changed these files in the past year. Names are links, not mentions, so no one is notified.",
+        "",
+    ]
+    for person in reviewers:
+        login = person.get("login")
+        who = f"[{login}](https://github.com/{login})" if login else person["name"]
+        lines.append(f"- {who}: {len(person['files'])} of the changed files, {_plural(person['commits'], 'commit')}")
+    return [*lines, ""]
+
+
 def _reach_section(blast: dict) -> list[str]:
     levels = blast.get("impacted_by_depth") or []
     if not levels:
@@ -139,17 +155,19 @@ def render_report(
     still_imported: dict[str, list[str]],
     removed_checks: list[dict],
     tests: dict,
+    reviewers: list[dict],
     devlens_url: str = "",
 ) -> str:
     """The comment body. `flags` carry a severity; `blast` comes from blast_radius_from_graph;
     `removed_checks` from diffing.removed_checks (line numbers are in the base); `tests` from
-    covering_tests."""
+    covering_tests; `reviewers` from reviewers.suggest_reviewers, with a GitHub `login` where known."""
     summary = _summary(changed_files, flags, blast, removed_checks, tests)
     lines = [MARKER, "### DevLens change risk", "", summary, ""]
     lines += _removed_checks_section(repo, base_sha, removed_checks)
     lines += _security_section(repo, head_sha, flags)
     lines += _still_imported_section(repo, base_sha, still_imported)
     lines += _tests_section(tests)
+    lines += _reviewers_section(reviewers)
     lines += _reach_section(blast)
     footer = f"From the Python and JavaScript/TypeScript import graph at {head_sha[:7]}."
     if devlens_url:

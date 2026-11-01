@@ -5,12 +5,12 @@ from pathlib import Path
 import pytest
 
 import pr_risk
-from github_comment import CommentError
+from github_api import GitHubError
 
 
-def _git(repo: Path, *args: str) -> str:
+def _git(repo: Path, *args: str, who: str = "Test") -> str:
     result = subprocess.run(
-        ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", *args],
+        ["git", "-c", f"user.name={who}", "-c", f"user.email={who.lower()}@example.com", *args],
         cwd=repo,
         capture_output=True,
         text=True,
@@ -27,7 +27,8 @@ def _write(repo: Path, files: dict[str, str]) -> None:
 
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
-    """main: a small package; feature: drops a token check, deletes a module something still imports."""
+    """main: a small package that Alice also worked on; feature (by Test): drops a token check and
+    deletes a module something still imports."""
     _git(tmp_path, "init", "-q", "-b", "main")
     _write(
         tmp_path,
@@ -44,6 +45,9 @@ def repo(tmp_path: Path) -> Path:
     )
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-q", "-m", "base")
+    with (tmp_path / "app/auth.py").open("a", encoding="utf-8") as handle:
+        handle.write("# owner: accounts team\n")
+    _git(tmp_path, "commit", "-q", "-am", "note the owner", who="Alice")
     _git(tmp_path, "checkout", "-q", "-b", "feature")
     _write(tmp_path, {"app/auth.py": "def login(user):\n    return user\n", "README.md": "Set API_KEY and SECRET.\n"})
     (tmp_path / "app/old.py").unlink()
@@ -70,6 +74,16 @@ def test_analyze_reports_reach_removed_checks_and_deleted_imports(repo: Path) ->
     assert result["removed_checks"] == [
         {"path": "app/auth.py", "line": 2, "kind": "auth check", "text": "if not verify_token(user):"}
     ]
+    # Test wrote the pull request, so only Alice is suggested.
+    assert result["reviewers"] == [
+        {
+            "name": "Alice",
+            "email": "alice@example.com",
+            "files": ["app/auth.py"],
+            "commits": 1,
+            "latest_sha": _git(repo, "rev-parse", "main"),
+        }
+    ]
 
 
 def test_compares_against_the_fork_point_not_the_moved_base(repo: Path) -> None:
@@ -94,15 +108,32 @@ def test_main_prints_the_report_outside_a_pull_request(repo: Path, capsys, monke
     assert "#### Deleted but still imported" in out
 
 
-def _pull_request_env(repo: Path, tmp_path: Path, monkeypatch) -> Path:
+def _pull_request_env(repo: Path, tmp_path: Path, monkeypatch, author: str = "test-gh") -> Path:
     event = tmp_path / "event.json"
     base, head = _git(repo, "rev-parse", "main"), _git(repo, "rev-parse", "feature")
-    event.write_text(json.dumps({"pull_request": {"number": 12, "base": {"sha": base}, "head": {"sha": head}}}))
+    pull = {"number": 12, "base": {"sha": base}, "head": {"sha": head}, "user": {"login": author}}
+    event.write_text(json.dumps({"pull_request": pull}))
     summary = tmp_path / "summary.md"
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(event))
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
     monkeypatch.setenv("GITHUB_TOKEN", "t0ken")
+    # GitHub matches Alice's commit email to her account; no network in tests.
+    monkeypatch.setattr(pr_risk, "commit_login", lambda **_kwargs: "alice-gh")
     return summary
+
+
+def test_reviewers_link_to_their_account_and_never_include_the_author(repo: Path, tmp_path, monkeypatch) -> None:
+    posted = {}
+    monkeypatch.setattr(pr_risk, "upsert_comment", lambda **kwargs: posted.update(kwargs) or "created")
+
+    _pull_request_env(repo, tmp_path, monkeypatch)
+    pr_risk.main(["--repo-path", str(repo), "--repo", "acme/shop"])
+    assert "- [alice-gh](https://github.com/alice-gh): 1 of the changed files, 1 commit" in posted["body"]
+
+    # Alice opening the pull request herself: she is not suggested to herself.
+    _pull_request_env(repo, tmp_path, monkeypatch, author="Alice-GH")
+    pr_risk.main(["--repo-path", str(repo), "--repo", "acme/shop"])
+    assert "#### Suggested reviewers" not in posted["body"]
 
 
 def test_in_a_pull_request_it_comments_and_fills_the_job_summary(repo: Path, tmp_path: Path, monkeypatch) -> None:
@@ -119,7 +150,7 @@ def test_a_read_only_fork_token_leaves_the_report_in_the_summary(repo: Path, tmp
     summary = _pull_request_env(repo, tmp_path, monkeypatch)
 
     def refuse(**_kwargs):
-        raise CommentError(403, "Resource not accessible by integration")
+        raise GitHubError(403, "Resource not accessible by integration")
 
     monkeypatch.setattr(pr_risk, "upsert_comment", refuse)
     assert pr_risk.main(["--repo-path", str(repo), "--repo", "acme/shop"]) == 0
