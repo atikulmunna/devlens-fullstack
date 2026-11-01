@@ -2,7 +2,8 @@
 
 DevLens reads a public GitHub repository and answers questions about its code. Each answer cites
 the files and lines it was built from. For each analyzed commit it shows what changed, which files
-import the changed code, and any security-sensitive lines that were added or removed.
+import the changed code, and any security-sensitive lines that were added or removed. The same
+change analysis also runs as a GitHub Action that comments on every pull request.
 
 ![Chat about pallets/itsdangerous: earlier chats on the left; an answer with inline code and superscript links to the cited lines, then its sources, with the ones the model did not use drawn dashed](assets/chat.png)
 
@@ -39,7 +40,8 @@ default; the moon button in the header switches to dark, and the browser remembe
 changed file opens to its diff with line numbers, and lines touching auth, tokens, secrets, crypto,
 or environment config are marked with what they touch. Files are ranked high, medium, or low:
 secrets and credentials are high, and so is removing an auth or token check. Docs and stylesheets
-are never flagged. The files that import the changes are drawn as rings, one ring per import step.
+are never flagged, and test files stay low because their fixtures name tokens and passwords all
+the time. The files that import the changes are drawn as rings, one ring per import step.
 The import graph follows Python packages, relative imports, `src/` layouts, and TypeScript path
 aliases. You can ask questions about the diff itself. A reference to a variable, such as
 `${JWT_SECRET}` or `process.env.API_KEY`, counts as environment config, not as a secret.
@@ -50,13 +52,16 @@ checks: auth decorators and dependencies, permission checks and 401/403 response
 protection, input validation, and rate limits, each linked to the line it was on. A check that
 reappears elsewhere in the same pull request counts as moved, not removed. Then the comment lists
 the security-sensitive changes by severity, deleted files that something still imports, the
-tests to run, and the files that import the changes, one import step at a time. The tests to run
-are the test files that import a changed file, directly or through other files; changed files
-that no test imports are listed too. That shows a test loads the code, not how well it tests it.
-Suggested reviewers are the people who changed the most of these files in the past year, not
-counting the pull request's own authors or bots. They are linked, not @-mentioned, so no one is
-notified. Someone who committed under several emails can be merged into one with a `.mailmap`. It compares the pull request with the commit
-it branched from, as GitHub's "Files changed" does.
+tests to run, suggested reviewers, and the files that import the changes, one import step at a
+time. It compares the pull request with the commit it branched from, as GitHub's "Files changed"
+does.
+
+The tests to run are the test files that import a changed file, directly or through other files;
+changed files that no test imports are listed too. That shows a test loads the code, not how well
+it tests it. Suggested reviewers are the people who changed the most of these files in the past
+year, not counting the pull request's own authors or bots. They are linked, not @-mentioned, so no
+one is notified. Someone who committed under several emails can be merged into one with a
+`.mailmap`.
 
 ```yaml
 # .github/workflows/pr-risk.yml
@@ -101,6 +106,8 @@ flowchart LR
   each job through three stages:
   1. *Parse*: a shallow clone, tree-sitter chunks that keep functions and classes whole (up to
      120 lines each), the commit diff against its parent, and code health measured on whole files.
+     It also fetches the past year of history to count how often each file changed, for hotspots;
+     that step is best-effort, like the commit diff, and never fails the analysis.
   2. *Embed*: chunk embeddings through OpenRouter (`openai/text-embedding-3-small`) into Qdrant.
   3. *Analyze*: the architecture summary (`openai/gpt-4.1-mini`), the language breakdown, and
      contributors from the GitHub API.
@@ -114,6 +121,10 @@ flowchart LR
   use, plus a CSRF cookie; the frontend keeps the access token in memory only and renews it on a
   401. The frontend proxies `/api/v1`, so these cookies stay first-party.
 - **OpenRouter** is the only external AI service. Without a key, search and chat do not work.
+- **Pull request comments** run in the repository's own CI, not on the DevLens server. The Action
+  in `pr-risk/` loads the import graph, the diff scan, and the severity rules from `backend/` and
+  `workers/`. Those modules use only the Python standard library, so the runner installs nothing,
+  and no AI service is involved.
 
 Stack: Python 3.12, FastAPI, SQLAlchemy and Alembic, PostgreSQL 16, Redis, Qdrant, Next.js 14 with
 TypeScript, Docker Compose. The frontend's API types are generated from the backend's OpenAPI
@@ -216,6 +227,7 @@ npm --prefix frontend-next run gen:api
 | `backend/` | FastAPI app: routers in `app/api/v1`, logic in `app/services`, Alembic migrations |
 | `workers/` | The parse, embed, and analyze stages |
 | `frontend-next/` | The Next.js app |
+| `pr-risk/` | The pull request Action: `action.yml`, the report, and its tests |
 | `deploy/` | Production pieces: Caddyfile, access-key page, provisioning script, runbook |
 | `docs/` | API contract, architecture decision record, evaluation reports and datasets |
 | `scripts/` | Dev, test, migration, and evaluation helpers |
@@ -226,7 +238,9 @@ The demo runs the whole stack on one EC2 instance with `docker-compose.prod.yml`
 over HTTPS with a Let's Encrypt certificate for an sslip.io hostname, and an access-key page gates
 the whole site except share links; chat still needs a GitHub sign-in behind it. The runbook,
 [`deploy/aws.md`](deploy/aws.md), covers provisioning, first boot, updates, backups, and teardown.
-When updating, run the migrations before the new worker starts; the runbook gives the order.
+When updating, run the migrations before the new worker starts; the runbook gives the order. The
+instance accepts no SSH: it is reached through AWS Systems Manager, and `deploy/remote.sh` runs a
+command on it.
 
 ## API
 
@@ -235,7 +249,7 @@ Everything is under `/api/v1`. The full contract is in
 
 | Area | Endpoints |
 |---|---|
-| Repositories | `POST /repos/analyze`, `GET /repos/{id}/status` (SSE), `GET /repos/{id}/dashboard`, `GET /repos/by-name/{owner}/{name}`, `GET /repos/recent`, `GET /repos/{id}/dependency-graph` |
+| Repositories | `POST /repos/analyze`, `GET /repos/{id}/status` (SSE), `GET /repos/{id}/dashboard`, `GET /repos/by-name/{owner}/{name}`, `GET /repos/recent`, `GET /repos/{id}/dependency-graph`, `GET /repos/{id}/hotspots` |
 | Chat | `POST /chat/sessions`, `GET /chat/sessions`, `GET /chat/sessions/{id}`, `POST /chat/sessions/{id}/message` (SSE), `GET /chat/repos/{id}/suggestions` |
 | Commit diff | `GET /repos/{id}/diffs`, `GET /repos/{id}/diff`, `POST /repos/{id}/diff/ask` (SSE) |
 | Auth | `GET /auth/github`, `GET /auth/callback`, `POST /auth/refresh`, `GET /auth/me`, `DELETE /auth/logout` |
