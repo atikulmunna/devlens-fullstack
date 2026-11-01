@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 import app.api.v1.diff as diff_module
 from app.db.models import CodeChunk, CommitDiff, Repository, User
 from app.services.chat_synthesizer import ChatSynthesisError
-from app.services.flag_severity import flag_severity
+from app.services.flag_severity import flag_severity, with_severity
 from app.services.tokens import create_access_token
 
 
@@ -231,6 +231,13 @@ def test_flag_severity_rates_secrets_and_removed_checks_highest() -> None:
     assert severity(["auth", "token"]) == "medium"
     assert severity(["removed: env"]) == "low"
     assert severity(["env"]) == "low"
+    # Test files stay low whatever their fixtures mention.
+    assert severity(["secret", "removed: token"], is_test=True) == "low"
+    flags = [
+        {"path": "tests/test_a.py", "categories": ["secret"], "test": True},
+        {"path": "a.py", "categories": ["secret"]},
+    ]
+    assert [flag["severity"] for flag in with_severity(flags)] == ["low", "high"]
 
 
 def _diff(repo_id, head: str, created: datetime, files: int = 1) -> CommitDiff:

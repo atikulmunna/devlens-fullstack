@@ -9,6 +9,8 @@ import logging
 import re
 import subprocess
 
+from file_kinds import is_test_path
+
 logger = logging.getLogger(__name__)
 
 _DIFF_GIT_RE = re.compile(r"^diff --git a/(.+?) b/(.+)$")
@@ -180,7 +182,8 @@ def detect_security_touches(changed_files: list[dict]) -> list[dict]:
     """Flag changed files whose path or changed lines match security-sensitive patterns.
 
     Removed lines are flagged separately ("removed: auth"): deleting a check is as worth a look
-    as adding one.
+    as adding one. Test files are marked, so their severity can stay low: their fixtures name
+    tokens and passwords all the time.
     """
     flags: list[dict] = []
     for entry in changed_files:
@@ -191,7 +194,10 @@ def detect_security_touches(changed_files: list[dict]) -> list[dict]:
         removed = _security_labels("\n".join(entry.get("removed_lines") or []))
         matched = sorted(added) + [f"removed: {label}" for label in sorted(removed)]
         if matched:
-            flags.append({"path": path, "categories": matched})
+            flag = {"path": path, "categories": matched}
+            if is_test_path(path):
+                flag["test"] = True
+            flags.append(flag)
     return flags
 
 

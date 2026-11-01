@@ -290,3 +290,13 @@ diff --git a/web/routes.ts b/web/routes.ts
         ("web/routes.ts", 3, "permission check"),
         ("web/routes.ts", 4, "auth check"),
     ]
+
+
+def test_test_files_are_marked_so_their_severity_stays_low() -> None:
+    files = [
+        {"path": "tests/test_auth.py", "added_lines": ["token = 'abc'"], "removed_lines": [], "hunks": []},
+        {"path": "web/login.spec.ts", "added_lines": ["password: 'x'"], "removed_lines": [], "hunks": []},
+        {"path": "app/auth.py", "added_lines": ["token = issue()"], "removed_lines": [], "hunks": []},
+    ]
+    marked = {flag["path"]: flag.get("test", False) for flag in detect_security_touches(files)}
+    assert marked == {"tests/test_auth.py": True, "web/login.spec.ts": True, "app/auth.py": False}

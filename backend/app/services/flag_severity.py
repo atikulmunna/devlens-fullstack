@@ -8,7 +8,10 @@ HIGH_RISK = {"secret", "credential", "password", "api_key"}
 MEDIUM_RISK = {"auth", "token", "jwt", "oauth", "crypto"}
 
 
-def flag_severity(categories: list[str]) -> str:
+def flag_severity(categories: list[str], is_test: bool = False) -> str:
+    # Test fixtures name tokens and passwords constantly; rating them high would bury real changes.
+    if is_test:
+        return "low"
     plain = {category.removeprefix("removed: ") for category in categories}
     removed = {category.removeprefix("removed: ") for category in categories if category.startswith("removed: ")}
     if plain & HIGH_RISK or removed & MEDIUM_RISK:
@@ -19,4 +22,5 @@ def flag_severity(categories: list[str]) -> str:
 
 
 def with_severity(flags: list[dict]) -> list[dict]:
-    return [{**flag, "severity": flag_severity(flag.get("categories") or [])} for flag in flags]
+    """Each flag with its severity. The diff scan marks test files with "test"; older diffs lack the mark."""
+    return [{**flag, "severity": flag_severity(flag.get("categories") or [], bool(flag.get("test")))} for flag in flags]
