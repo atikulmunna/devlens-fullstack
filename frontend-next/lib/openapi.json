@@ -1302,6 +1302,99 @@
         }
       }
     },
+    "/api/v1/repos/{repo_id}/hotspots": {
+      "get": {
+        "tags": [
+          "repos"
+        ],
+        "summary": "Files that change often and that many others import",
+        "description": "Ranks code files by changes in the analysis window times (1 + the files importing them). measured is false when the analysis has no history (made before it was measured, or unreadable).",
+        "operationId": "get_hotspots_api_v1_repos__repo_id__hotspots_get",
+        "parameters": [
+          {
+            "name": "repo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Repo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HotspotsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Repository not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "example": "BAD_REQUEST"
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "Invalid GitHub URL"
+                        },
+                        "details": {
+                          "type": "object",
+                          "example": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "details"
+                      ],
+                      "example": {
+                        "code": "BAD_REQUEST",
+                        "message": "Invalid GitHub URL",
+                        "details": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "example": {
+                    "error": {
+                      "code": "BAD_REQUEST",
+                      "message": "Invalid GitHub URL",
+                      "details": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/repos/{repo_id}/dependency-graph": {
       "get": {
         "tags": [
@@ -4289,6 +4382,66 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HotspotResponse": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "changes": {
+            "type": "integer",
+            "title": "Changes"
+          },
+          "importers": {
+            "type": "integer",
+            "title": "Importers"
+          },
+          "score": {
+            "type": "integer",
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "changes",
+          "importers",
+          "score"
+        ],
+        "title": "HotspotResponse"
+      },
+      "HotspotsResponse": {
+        "properties": {
+          "measured": {
+            "type": "boolean",
+            "title": "Measured"
+          },
+          "window_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Days"
+          },
+          "hotspots": {
+            "items": {
+              "$ref": "#/components/schemas/HotspotResponse"
+            },
+            "type": "array",
+            "title": "Hotspots",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "measured"
+        ],
+        "title": "HotspotsResponse"
       },
       "HunkLineResponse": {
         "properties": {

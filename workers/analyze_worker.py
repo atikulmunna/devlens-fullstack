@@ -9,6 +9,7 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from churn import CHURN_DAYS
 from code_signals import LONG_FUNCTION_LINES
 from config import settings
 from file_kinds import is_test_path
@@ -142,6 +143,9 @@ def detect_tech_debt(chunks: list[ChunkRecord], code_signals: dict | None) -> di
         'todo_count': sum(todo_files.values()),
         'todo_file_count': len(todo_files),
         'test_file_count': len(test_files),
+        # Commits per file over the past year, for hotspots; None when the history could not be read.
+        'churn_days': CHURN_DAYS,
+        'churn': signals.get('churn'),
     }
 
 

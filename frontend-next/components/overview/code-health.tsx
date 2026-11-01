@@ -38,7 +38,7 @@ export function CodeHealth({ debt, githubUrl, commitSha }: Props) {
         <li>{testFiles === 0 ? "No test files found." : `${plural(testFiles, "test file")}.`}</li>
       </ul>
       {rows.length > 0 && (
-        <table className="long-functions">
+        <table className="data-table">
           <thead>
             <tr>
               <th scope="col">Function</th>

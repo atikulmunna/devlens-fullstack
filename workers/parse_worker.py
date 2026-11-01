@@ -14,6 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from chunking import ChunkingUnavailable, chunk_code, ts_language_for
+from churn import CHURN_DAYS, deepen_history, file_churn
 from code_signals import count_todos, find_long_functions
 from config import settings
 from diffing import compute_commit_diff
@@ -253,6 +254,20 @@ def store_commit_diff(db: Session, repo_id: str, diff: dict) -> None:
     )
 
 
+# Fetching a year of history is extra work on top of the clone; give up rather than stall the job.
+CHURN_TIMEOUT_SECONDS = 90
+
+
+def measure_churn(repo_path: str, commit_sha: str) -> dict[str, int] | None:
+    """Best-effort commits per file over the past year; None when the history could not be read."""
+    try:
+        deepen_history(repo_path, commit_sha, CHURN_DAYS, timeout=CHURN_TIMEOUT_SECONDS)
+        return file_churn(repo_path, CHURN_DAYS)
+    except Exception as exc:
+        logger.warning('Measuring churn for %s failed: %s', commit_sha, exc)
+        return None
+
+
 def maybe_store_commit_diff(db: Session, repo_path: str, repo_id: str, head_sha: str) -> None:
     """Best-effort: compute and persist the commit diff. Never fails the parse stage."""
     try:
@@ -321,7 +336,12 @@ def parse_job(db: Session, snapshot: RepoSnapshot) -> None:
 
             update_job_status(db, snapshot.job_id, 'parsing', 80)
             store_chunks(db, snapshot.repo_id, chunks)
-            store_code_signals(db, snapshot.job_id, {'long_functions': long_functions, 'todo_files': todo_files})
+            signals = {
+                'long_functions': long_functions,
+                'todo_files': todo_files,
+                'churn': measure_churn(repo_path, snapshot.commit_sha),
+            }
+            store_code_signals(db, snapshot.job_id, signals)
             update_job_status(db, snapshot.job_id, 'embedding', 100)
             db.commit()
             record_stage_duration("parsing", "success", time.perf_counter() - started)

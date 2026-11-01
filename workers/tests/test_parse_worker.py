@@ -141,7 +141,8 @@ def test_parse_job_success_transitions_to_embedding(monkeypatch) -> None:
     assert stored['called'] is True
     assert stored['count'] > 0
     assert observed['count'] == 1
-    assert signals == {'long_functions': [], 'todo_files': {}}
+    # The temp folder is no git repository, so churn is not measured; the job still succeeds.
+    assert signals == {'long_functions': [], 'todo_files': {}, 'churn': None}
     updates = [e for e in fake_db.events if e[0] == 'execute' and 'UPDATE analysis_jobs' in str(e[1][0])]
     statuses = [u[1][1]['status'] for u in updates]
     assert statuses == ['cloning', 'parsing', 'parsing', 'embedding']

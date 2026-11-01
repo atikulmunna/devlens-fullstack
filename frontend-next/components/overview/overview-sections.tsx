@@ -8,12 +8,13 @@ import type { DashboardAnalysis } from "@/lib/api";
 type Props = {
   analysis: DashboardAnalysis;
   githubUrl: string;
-  // The import explorer loads the dependency graph on its own; the shared page leaves it out.
+  // These load their own data (the import graph, hotspots); the shared page leaves them out.
   imports?: ReactNode;
+  hotspots?: ReactNode;
 };
 
 // The analysis panels, shared by the Overview tab and the public share page.
-export function OverviewSections({ analysis, githubUrl, imports }: Props) {
+export function OverviewSections({ analysis, githubUrl, imports, hotspots }: Props) {
   const filePaths = Object.keys(analysis.file_tree?.files ?? {});
   return (
     <section className="overview">
@@ -37,6 +38,13 @@ export function OverviewSections({ analysis, githubUrl, imports }: Props) {
         <h2>Code health</h2>
         <CodeHealth debt={analysis.tech_debt_flags} githubUrl={githubUrl} commitSha={analysis.commit_sha} />
       </article>
+
+      {hotspots && (
+        <article className="card">
+          <h2>Hotspots</h2>
+          {hotspots}
+        </article>
+      )}
 
       {imports && (
         <article className="card">

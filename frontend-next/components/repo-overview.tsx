@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AnalyzePrompt } from "@/components/analyze-prompt";
 import { LoadingCards } from "@/components/loading";
 import { DependencyView } from "@/components/overview/dependency-view";
+import { HotspotsView } from "@/components/overview/hotspots";
 import { OverviewSections } from "@/components/overview/overview-sections";
 import { useRepo } from "@/components/repo-context";
 import { DashboardAnalysis, getDashboard } from "@/lib/api";
@@ -70,6 +71,7 @@ export function RepoOverview() {
       analysis={analysis}
       githubUrl={repo.github_url}
       imports={<DependencyView repoId={repo.repo_id} />}
+      hotspots={<HotspotsView repoId={repo.repo_id} githubUrl={repo.github_url} commitSha={analysis.commit_sha} />}
     />
   );
 }

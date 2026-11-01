@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ApiError, friendlyShareError, sharedLinkError } from "./errors";
-import { longDate } from "./format";
+import { longDate, windowLabel } from "./format";
 
 describe("sharedLinkError", () => {
   it("tells expired, stopped, and broken links apart", () => {
@@ -32,5 +32,13 @@ describe("friendlyShareError", () => {
 describe("longDate", () => {
   it("spells out the day a link stops working", () => {
     expect(longDate("2026-10-28T12:00:00Z")).toBe("October 28, 2026");
+  });
+});
+
+describe("windowLabel", () => {
+  it("names a year as such and other windows in days", () => {
+    expect(windowLabel(365)).toBe("the past year");
+    expect(windowLabel(90)).toBe("the past 90 days");
+    expect(windowLabel(null)).toBe("the past year");
   });
 });

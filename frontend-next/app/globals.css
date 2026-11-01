@@ -1137,13 +1137,13 @@ a.citation-pill:hover {
   gap: 4px;
 }
 
-.long-functions {
+.data-table {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--step--1);
 }
 
-.long-functions th {
+.data-table th {
   text-align: left;
   font-weight: 700;
   color: var(--lichen);
@@ -1151,14 +1151,14 @@ a.citation-pill:hover {
   padding: 4px 8px 6px 0;
 }
 
-.long-functions td {
+.data-table td {
   border-bottom: 1px solid var(--rule);
   padding: 6px 8px 6px 0;
   overflow-wrap: anywhere;
   vertical-align: top;
 }
 
-.long-functions .numeric {
+.data-table .numeric {
   text-align: right;
   padding-right: 0;
   white-space: nowrap;

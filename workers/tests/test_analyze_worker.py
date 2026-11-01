@@ -398,6 +398,7 @@ def test_tech_debt_reports_parse_time_signals_longest_first() -> None:
             {'file': 'src/app.py', 'name': 'long_one', 'line': 90, 'length': 120},
         ],
         'todo_files': {'src/app.py': 3, 'src/db.py': 1},
+        'churn': {'src/app.py': 12, 'src/db.py': 2},
     }
 
     debt = analyze_worker.detect_tech_debt(chunks, signals)
@@ -406,6 +407,7 @@ def test_tech_debt_reports_parse_time_signals_longest_first() -> None:
     assert debt['long_function_count'] == 2
     assert (debt['todo_count'], debt['todo_file_count'], debt['test_file_count']) == (4, 2, 1)
     assert debt['measured'] is True
+    assert (debt['churn_days'], debt['churn']) == (365, {'src/app.py': 12, 'src/db.py': 2})
 
 
 def test_tech_debt_for_a_job_parsed_before_signals_existed() -> None:
@@ -415,3 +417,4 @@ def test_tech_debt_for_a_job_parsed_before_signals_existed() -> None:
 
     assert debt['measured'] is False
     assert debt['long_function_count'] == 0
+    assert debt['churn'] is None

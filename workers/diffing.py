@@ -262,7 +262,7 @@ def removed_checks(changed_files: list[dict]) -> list[dict]:
     return found
 
 
-def _run_git(args: list[str], cwd: str, timeout: int = 60) -> str:
+def run_git(args: list[str], cwd: str, timeout: int = 60) -> str:
     result = subprocess.run(
         ["git", *args],
         cwd=cwd,
@@ -282,16 +282,16 @@ def compute_commit_diff(repo_path: str, head_sha: str, timeout: int = 60) -> dic
     try:
         # Deepen so the parent commit is available in the shallow clone.
         try:
-            _run_git(["fetch", "--depth", "2", "origin", head_sha], cwd=repo_path, timeout=timeout)
+            run_git(["fetch", "--depth", "2", "origin", head_sha], cwd=repo_path, timeout=timeout)
         except Exception:
             pass  # already deep enough, or offline; try the diff anyway
 
         try:
-            base_sha = _run_git(["rev-parse", f"{head_sha}~1"], cwd=repo_path, timeout=timeout).strip()
+            base_sha = run_git(["rev-parse", f"{head_sha}~1"], cwd=repo_path, timeout=timeout).strip()
         except Exception:
             return None  # no parent (initial commit) -> nothing to diff
 
-        diff_text = _run_git(
+        diff_text = run_git(
             ["diff", "--unified=3", "--no-color", base_sha, head_sha],
             cwd=repo_path,
             timeout=timeout,

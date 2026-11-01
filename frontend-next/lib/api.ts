@@ -119,6 +119,13 @@ export async function getRecentRepos(limit = 6): Promise<RepoSummary[]> {
   return payload.repos;
 }
 
+export type Hotspots = Schemas["HotspotsResponse"];
+
+export async function getHotspots(repoId: string): Promise<Hotspots> {
+  const response = await fetch(`/api/v1/repos/${encodeURIComponent(repoId)}/hotspots`, { cache: "no-store" });
+  return assertJson<Hotspots>(response, "Could not load hotspots");
+}
+
 export async function getDependencyGraph(repoId: string): Promise<DependencyGraph> {
   const response = await fetch(`/api/v1/repos/${encodeURIComponent(repoId)}/dependency-graph`, {
     cache: "no-store"

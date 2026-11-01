@@ -18,6 +18,7 @@ from app.observability import observe_sse_startup, trace_span
 from app.services.analysis import analysis_commit_sha, latest_analysis
 from app.services.dependency_graph import build_dependency_graph
 from app.services.github_repos import resolve_public_repo_snapshot
+from app.services.hotspots import rank_hotspots
 from app.services.languages import language_shares
 from app.services.retrieval_hybrid import hybrid_search_chunks
 from app.services.retrieval_lexical import lexical_search_chunks
@@ -211,6 +212,23 @@ class DependencyEdge(BaseModel):
 class DependencyGraphStats(BaseModel):
     files_considered: int
     edges_detected: int
+
+
+class HotspotResponse(BaseModel):
+    path: str
+    # Commits that changed the file in the window.
+    changes: int
+    # Files that import it directly.
+    importers: int
+    # changes x (1 + importers): how often a change lands here, times how far it reaches.
+    score: int
+
+
+class HotspotsResponse(BaseModel):
+    # False for analyses made before history was measured, or when the history could not be read.
+    measured: bool
+    window_days: int | None = None
+    hotspots: list[HotspotResponse] = []
 
 
 class DependencyGraphResponse(BaseModel):
@@ -557,6 +575,44 @@ def get_repo_by_name(owner: str, name: str, db: Session = Depends(get_db_session
     return _repo_summary(repo)
 
 
+def _import_graph(db: Session, repo_id: UUID) -> dict:
+    rows = db.execute(
+        select(CodeChunk.file_path, CodeChunk.content)
+        .where(CodeChunk.repo_id == repo_id)
+        .order_by(CodeChunk.created_at.asc())
+    ).all()
+    return build_dependency_graph([{"file_path": row[0], "content": row[1]} for row in rows])
+
+
+@router.get(
+    "/{repo_id}/hotspots",
+    response_model=HotspotsResponse,
+    summary="Files that change often and that many others import",
+    description=(
+        "Ranks code files by changes in the analysis window times (1 + the files importing them). "
+        "measured is false when the analysis has no history (made before it was measured, or unreadable)."
+    ),
+    responses={
+        404: {
+            "description": "Repository not found",
+            "content": {"application/json": {"schema": ERROR_RESPONSE_SCHEMA}},
+        },
+    },
+)
+def get_hotspots(repo_id: UUID, db: Session = Depends(get_db_session)) -> HotspotsResponse:
+    get_repo_or_404(db, repo_id)
+    result = latest_analysis(db, repo_id)
+    debt = (result.tech_debt_flags or {}) if result is not None else {}
+    churn = debt.get("churn")
+    if churn is None:
+        return HotspotsResponse(measured=False)
+    return HotspotsResponse(
+        measured=True,
+        window_days=debt.get("churn_days"),
+        hotspots=[HotspotResponse(**hotspot) for hotspot in rank_hotspots(churn, _import_graph(db, repo_id))],
+    )
+
+
 @router.get(
     "/{repo_id}/dependency-graph",
     response_model=DependencyGraphResponse,
@@ -574,13 +630,7 @@ def get_repo_by_name(owner: str, name: str, db: Session = Depends(get_db_session
 )
 def get_dependency_graph(repo_id: UUID, db: Session = Depends(get_db_session)) -> DependencyGraphResponse:
     get_repo_or_404(db, repo_id)
-
-    rows = db.execute(
-        select(CodeChunk.file_path, CodeChunk.content)
-        .where(CodeChunk.repo_id == repo_id)
-        .order_by(CodeChunk.created_at.asc())
-    ).all()
-    graph = build_dependency_graph([{"file_path": row[0], "content": row[1]} for row in rows])
+    graph = _import_graph(db, repo_id)
 
     return DependencyGraphResponse(
         repo_id=str(repo_id),

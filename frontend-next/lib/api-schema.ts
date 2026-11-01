@@ -221,6 +221,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/repos/{repo_id}/hotspots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Files that change often and that many others import
+         * @description Ranks code files by changes in the analysis window times (1 + the files importing them). measured is false when the analysis has no history (made before it was measured, or unreadable).
+         */
+        get: operations["get_hotspots_api_v1_repos__repo_id__hotspots_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/repos/{repo_id}/dependency-graph": {
         parameters: {
             query?: never;
@@ -798,6 +818,29 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HotspotResponse */
+        HotspotResponse: {
+            /** Path */
+            path: string;
+            /** Changes */
+            changes: number;
+            /** Importers */
+            importers: number;
+            /** Score */
+            score: number;
+        };
+        /** HotspotsResponse */
+        HotspotsResponse: {
+            /** Measured */
+            measured: boolean;
+            /** Window Days */
+            window_days?: number | null;
+            /**
+             * Hotspots
+             * @default []
+             */
+            hotspots: components["schemas"]["HotspotResponse"][];
         };
         /** HunkLineResponse */
         HunkLineResponse: {
@@ -1703,6 +1746,60 @@ export interface operations {
                 };
             };
             /** @description Repository not analyzed yet */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @example {
+                         *       "code": "BAD_REQUEST",
+                         *       "message": "Invalid GitHub URL",
+                         *       "details": {}
+                         *     } */
+                        error: {
+                            /** @example BAD_REQUEST */
+                            code: string;
+                            /** @example Invalid GitHub URL */
+                            message: string;
+                            /** @example {} */
+                            details: Record<string, never>;
+                        };
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_hotspots_api_v1_repos__repo_id__hotspots_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HotspotsResponse"];
+                };
+            };
+            /** @description Repository not found */
             404: {
                 headers: {
                     [name: string]: unknown;

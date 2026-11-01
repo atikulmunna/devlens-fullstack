@@ -27,6 +27,8 @@ stop an answer mid-stream or copy it.
 **Overview.** An architecture summary written from the README, the package manifest, and the
 entry-point code. Code health is reported as facts, not a score: functions over 50 lines, each
 linked to its lines on GitHub at the analyzed commit, plus TODO and FIXME notes and test files.
+Hotspots are the code files that changed most in the past year times the files importing them:
+where a change is both likely and far-reaching. The analysis fetches that year of history itself.
 The tab also shows the language mix, contributors, the file tree, and an import explorer: one file
 in the middle, what imports it on one side, what it imports on the other; choose any neighbor to
 move to it. Signed in, **Share** makes a read-only link to the Overview that opens without a
