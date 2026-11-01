@@ -10,8 +10,7 @@ change analysis also runs as a GitHub Action that comments on every pull request
 **Live demo.** DevLens runs as a private alpha on a single AWS instance that is started on request.
 [aimunna.me/devlens-fullstack](https://aimunna.me/devlens-fullstack/) explains how to get a demo
 window and an access key. Chat also asks you to sign in with GitHub. The
-[user guide](USERGUIDE.md) walks a tester through what to try, and covers starting and stopping
-the demo for a test session.
+[user guide](USERGUIDE.md) walks a tester through getting in and what to try.
 
 ## What it does
 
