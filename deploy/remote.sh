@@ -11,11 +11,14 @@ REGION="${AWS_REGION:-us-east-1}"
 INSTANCE_ID="${1:?usage: bash deploy/remote.sh <INSTANCE_ID> '<command>'}"
 COMMAND="${2:?usage: bash deploy/remote.sh <INSTANCE_ID> '<command>'}"
 
-# Base64 keeps quotes and $ in the command intact through the JSON parameter.
+# Base64 keeps quotes and $ in the command intact through the JSON parameter. The command runs from
+# a file with stdin closed: fed through stdin, anything reading it (docker compose exec -T) would
+# swallow the rest of the command.
 ENCODED=$(printf '%s' "$COMMAND" | base64 | tr -d '\n')
+RUN="f=\$(mktemp) && echo $ENCODED | base64 -d > \$f && chmod 644 \$f && sudo -iu ubuntu bash \$f < /dev/null; s=\$?; rm -f \$f; exit \$s"
 COMMAND_ID=$(aws ssm send-command --region "$REGION" --instance-ids "$INSTANCE_ID" \
   --document-name AWS-RunShellScript --comment "devlens remote.sh" \
-  --parameters "commands=[\"echo $ENCODED | base64 -d | sudo -iu ubuntu bash -s\"],executionTimeout=[\"3600\"]" \
+  --parameters "commands=[\"$RUN\"],executionTimeout=[\"3600\"]" \
   --query 'Command.CommandId' --output text)
 
 while true; do
