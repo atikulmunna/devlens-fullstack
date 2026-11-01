@@ -30,21 +30,51 @@ def _inline_code(text: str, limit: int = 90) -> str:
     return f"`` {short} ``" if "`" in short else f"`{short}`"
 
 
-def _summary(changed_files: list[dict], flags: list[dict], blast: dict, removed_checks: list[dict]) -> str:
+def _verb(count: int, singular: str, plural: str) -> str:
+    return singular if count == 1 else plural
+
+
+def _reach_sentence(blast: dict) -> str:
+    levels, count = blast.get("impacted_by_depth") or [], blast["impacted_count"]
+    reach = f", up to {_plural(len(levels), 'import')} away" if len(levels) > 1 else ""
+    return f"{_plural(count, 'other file')} {_verb(count, 'imports', 'import')} them{reach}."
+
+
+def _flags_sentence(flags: list[dict]) -> str:
+    high = sum(1 for flag in flags if flag["severity"] == "high")
+    rated = f", {high} of them high" if high else ""
+    touch = _verb(len(flags), "touches", "touch")
+    return f"{_plural(len(flags), 'changed file')} {touch} security-sensitive code{rated}."
+
+
+def _summary(changed_files: list[dict], flags: list[dict], blast: dict, removed_checks: list[dict], tests: dict) -> str:
     sentences = [f"{_plural(len(changed_files), 'file')} changed."]
     if removed_checks:
         sentences.append(f"{_plural(len(removed_checks), 'check')} removed, listed first.")
-    levels = blast.get("impacted_by_depth") or []
-    if levels:
-        reach = f", up to {_plural(len(levels), 'import')} away" if len(levels) > 1 else ""
-        sentences.append(f"{_plural(blast['impacted_count'], 'other file')} import them{reach}.")
+    if blast.get("impacted_by_depth"):
+        sentences.append(_reach_sentence(blast))
     if flags:
-        high = sum(1 for flag in flags if flag["severity"] == "high")
-        rated = f", {high} of them high" if high else ""
-        sentences.append(f"{_plural(len(flags), 'changed file')} touch security-sensitive code{rated}.")
-    if not levels and not flags and not removed_checks:
+        sentences.append(_flags_sentence(flags))
+    if tests["tests_to_run"]:
+        count = len(tests["tests_to_run"])
+        sentences.append(f"{_plural(count, 'test file')} {_verb(count, 'exercises', 'exercise')} them.")
+    if tests["untested"]:
+        sentences.append(f"No test imports {len(tests['untested'])} of the changed files.")
+    if not blast.get("impacted_by_depth") and not flags and not removed_checks:
         sentences.append("Nothing else imports them, and none touch security-sensitive code.")
     return " ".join(sentences)
+
+
+def _tests_section(tests: dict) -> list[str]:
+    to_run, untested = tests["tests_to_run"], tests["untested"]
+    if not to_run and not untested:
+        return []
+    lines = ["#### Tests", ""]
+    if to_run:
+        lines.append(f"- **To run ({len(to_run)}):** {_code_list(to_run)}")
+    if untested:
+        lines.append(f"- **Changed, and no test imports them ({len(untested)}):** {_code_list(untested)}")
+    return [*lines, ""]
 
 
 def _removed_checks_section(repo: str, base_sha: str, checks: list[dict]) -> list[str]:
@@ -108,14 +138,18 @@ def render_report(
     blast: dict,
     still_imported: dict[str, list[str]],
     removed_checks: list[dict],
+    tests: dict,
     devlens_url: str = "",
 ) -> str:
     """The comment body. `flags` carry a severity; `blast` comes from blast_radius_from_graph;
-    `removed_checks` from diffing.removed_checks (line numbers are in the base)."""
-    lines = [MARKER, "### DevLens change risk", "", _summary(changed_files, flags, blast, removed_checks), ""]
+    `removed_checks` from diffing.removed_checks (line numbers are in the base); `tests` from
+    covering_tests."""
+    summary = _summary(changed_files, flags, blast, removed_checks, tests)
+    lines = [MARKER, "### DevLens change risk", "", summary, ""]
     lines += _removed_checks_section(repo, base_sha, removed_checks)
     lines += _security_section(repo, head_sha, flags)
     lines += _still_imported_section(repo, base_sha, still_imported)
+    lines += _tests_section(tests)
     lines += _reach_section(blast)
     footer = f"From the Python and JavaScript/TypeScript import graph at {head_sha[:7]}."
     if devlens_url:

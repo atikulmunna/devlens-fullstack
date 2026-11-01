@@ -47,8 +47,10 @@ install. On each pull request it posts one comment, updated on every push. First
 checks: auth decorators and dependencies, permission checks and 401/403 responses, CSRF
 protection, input validation, and rate limits, each linked to the line it was on. A check that
 reappears elsewhere in the same pull request counts as moved, not removed. Then the comment lists
-the security-sensitive changes by severity, deleted files that something still imports, and the
-files that import the changes, one import step at a time. It compares the pull request with the commit
+the security-sensitive changes by severity, deleted files that something still imports, the
+tests to run, and the files that import the changes, one import step at a time. The tests to run
+are the test files that import a changed file, directly or through other files; changed files
+that no test imports are listed too. That shows a test loads the code, not how well it tests it. It compares the pull request with the commit
 it branched from, as GitHub's "Files changed" does.
 
 ```yaml

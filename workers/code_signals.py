@@ -29,9 +29,6 @@ ASSIGNED_FUNCTION_TYPES = {"arrow_function", "function_expression", "function"}
 DOC_EXTENSIONS = {"md", "rst", "txt", "adoc"}
 TODO_PATTERN = re.compile(r"\b(TODO|FIXME)\b", re.IGNORECASE)
 
-TEST_DIRS = {"test", "tests", "__tests__", "spec"}
-TEST_FILE_PATTERN = re.compile(r"(^test_.*\.py$|_test\.(py|go)$|\.(test|spec)\.[jt]sx?$)")
-
 
 def _node_text(node) -> str:
     return node.text.decode("utf-8", errors="ignore") if node is not None and node.text else ""
@@ -86,8 +83,3 @@ def count_todos(content: str, language_key: str) -> int:
     if (language_key or "").lower() in DOC_EXTENSIONS:
         return 0
     return len(TODO_PATTERN.findall(content))
-
-
-def is_test_path(path: str) -> bool:
-    parts = path.lower().split("/")
-    return any(part in TEST_DIRS for part in parts[:-1]) or bool(TEST_FILE_PATTERN.search(parts[-1]))

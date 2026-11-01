@@ -22,7 +22,9 @@ sys.path[:0] = [str(ROOT / "backend"), str(ROOT / "workers")]
 from app.services.blast_radius import blast_radius_from_graph, importers_by_file
 from app.services.dependency_graph import JS_EXTENSIONS, TS_CONFIG_NAMES, build_dependency_graph
 from app.services.flag_severity import with_severity
+from covering_tests import covering_tests
 from diffing import detect_security_touches, parse_unified_diff, removed_checks
+from file_kinds import is_test_path
 from github_comment import CommentError, upsert_comment
 from risk_report import MARKER, render_report
 
@@ -88,14 +90,17 @@ def analyze(repo_path: str, base: str, head: str) -> dict:
     still_imported = {
         path: sorted(importers[path] - deleted) for path in deleted if importers.get(path, set()) - deleted
     }
+    blast = blast_radius_from_graph(graph, [entry["path"] for entry in changed_files])
+    present = [entry["path"] for entry in changed_files if entry["path"] not in deleted]
     return {
         "base_sha": fork_point,
         "head_sha": git(repo_path, "rev-parse", head).decode().strip(),
         "changed_files": changed_files,
         "flags": with_severity(detect_security_touches(changed_files)),
-        "blast": blast_radius_from_graph(graph, [entry["path"] for entry in changed_files]),
+        "blast": blast,
         "still_imported": still_imported,
         "removed_checks": removed_checks(changed_files),
+        "tests": covering_tests(graph, present, blast["impacted_files"], is_test_path),
     }
 
 

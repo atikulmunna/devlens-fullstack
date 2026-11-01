@@ -1,4 +1,5 @@
-from code_signals import count_todos, find_long_functions, is_test_path
+from code_signals import count_todos, find_long_functions
+from file_kinds import is_test_path
 
 
 def _body(lines: int, indent: str = "    ") -> str:

@@ -38,6 +38,7 @@ def repo(tmp_path: Path) -> Path:
             "app/api.py": "from app.views import login\n",
             "app/old.py": "X = 1\n",
             "app/uses_old.py": "from app.old import X\n",
+            "tests/test_views.py": "from app.views import login\n",
             "README.md": "Set API_KEY before running.\n",
         },
     )
@@ -59,8 +60,13 @@ def test_analyze_reports_reach_removed_checks_and_deleted_imports(repo: Path) ->
     assert {entry["path"] for entry in result["changed_files"]} == {"app/auth.py", "app/old.py", "README.md"}
     # Removing the token check rates high (the path counts too); the README only talks about keys.
     assert result["flags"] == [{"path": "app/auth.py", "categories": ["auth", "removed: token"], "severity": "high"}]
-    assert result["blast"]["impacted_by_depth"] == [["app/uses_old.py", "app/views.py"], ["app/api.py"]]
+    assert result["blast"]["impacted_by_depth"] == [
+        ["app/uses_old.py", "app/views.py"],
+        ["app/api.py", "tests/test_views.py"],
+    ]
     assert result["still_imported"] == {"app/old.py": ["app/uses_old.py"]}
+    # The test reaches app/auth.py through app/views.py, so nothing changed is untested.
+    assert result["tests"] == {"tests_to_run": ["tests/test_views.py"], "untested": []}
     assert result["removed_checks"] == [
         {"path": "app/auth.py", "line": 2, "kind": "auth check", "text": "if not verify_token(user):"}
     ]

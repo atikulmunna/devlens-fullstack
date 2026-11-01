@@ -15,6 +15,7 @@ def _render(**overrides) -> str:
         "blast": {"impacted_by_depth": [], "impacted_count": 0},
         "still_imported": {},
         "removed_checks": [],
+        "tests": {"tests_to_run": [], "untested": []},
     }
     return render_report(**{**args, **overrides})
 
@@ -102,3 +103,21 @@ def test_removed_lines_are_shortened_and_cannot_break_the_table() -> None:
     assert row.endswith('...` |') and len(row) < 220
     ticks = _render(removed_checks=[{"path": "a.py", "line": 1, "kind": "auth check", "text": "q = `auth`"}])
     assert "| `` q = `auth` `` |" in ticks
+
+
+def test_tests_to_run_and_untested_files_get_a_section_and_a_sentence() -> None:
+    body = _render(tests={"tests_to_run": ["tests/test_a.py", "tests/test_b.py"], "untested": ["app/pay.py"]})
+    assert "2 test files exercise them. No test imports 1 of the changed files." in body
+    assert "- **To run (2):** `tests/test_a.py`, `tests/test_b.py`" in body
+    assert "- **Changed, and no test imports them (1):** `app/pay.py`" in body
+
+
+def test_counts_of_one_take_a_singular_verb() -> None:
+    body = _render(
+        flags=[{"path": "a.py", "categories": ["auth"], "severity": "medium"}],
+        blast={"impacted_by_depth": [["b.py"]], "impacted_count": 1},
+        tests={"tests_to_run": ["tests/test_a.py"], "untested": []},
+    )
+    assert "1 other file imports them." in body
+    assert "1 changed file touches security-sensitive code." in body
+    assert "1 test file exercises them." in body

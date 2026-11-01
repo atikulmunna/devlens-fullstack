@@ -9,8 +9,9 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from code_signals import LONG_FUNCTION_LINES, is_test_path
+from code_signals import LONG_FUNCTION_LINES
 from config import settings
+from file_kinds import is_test_path
 from openrouter import describe_error
 from parse_worker import update_job_status
 from reliability import schedule_retry_or_dead_letter
