@@ -22,7 +22,7 @@ sys.path[:0] = [str(ROOT / "backend"), str(ROOT / "workers")]
 from app.services.blast_radius import blast_radius_from_graph, importers_by_file
 from app.services.dependency_graph import JS_EXTENSIONS, TS_CONFIG_NAMES, build_dependency_graph
 from app.services.flag_severity import with_severity
-from diffing import detect_security_touches, parse_unified_diff
+from diffing import detect_security_touches, parse_unified_diff, removed_checks
 from github_comment import CommentError, upsert_comment
 from risk_report import MARKER, render_report
 
@@ -95,6 +95,7 @@ def analyze(repo_path: str, base: str, head: str) -> dict:
         "flags": with_severity(detect_security_touches(changed_files)),
         "blast": blast_radius_from_graph(graph, [entry["path"] for entry in changed_files]),
         "still_imported": still_imported,
+        "removed_checks": removed_checks(changed_files),
     }
 
 

@@ -43,9 +43,12 @@ aliases. You can ask questions about the diff itself. A reference to a variable,
 `${JWT_SECRET}` or `process.env.API_KEY`, counts as environment config, not as a secret.
 
 **Pull request comments.** The same analysis runs as a GitHub Action, with no server and nothing to
-install. On each pull request it posts one comment, updated on every push. The comment lists the
-security-sensitive changes by severity, deleted files that something still imports, and the files
-that import the changes, one import step at a time. It compares the pull request with the commit
+install. On each pull request it posts one comment, updated on every push. First come removed
+checks: auth decorators and dependencies, permission checks and 401/403 responses, CSRF
+protection, input validation, and rate limits, each linked to the line it was on. A check that
+reappears elsewhere in the same pull request counts as moved, not removed. Then the comment lists
+the security-sensitive changes by severity, deleted files that something still imports, and the
+files that import the changes, one import step at a time. It compares the pull request with the commit
 it branched from, as GitHub's "Files changed" does.
 
 ```yaml

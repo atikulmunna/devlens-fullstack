@@ -14,6 +14,7 @@ def _render(**overrides) -> str:
         "flags": [],
         "blast": {"impacted_by_depth": [], "impacted_count": 0},
         "still_imported": {},
+        "removed_checks": [],
     }
     return render_report(**{**args, **overrides})
 
@@ -76,3 +77,28 @@ def test_footer_names_the_head_and_links_to_devlens_only_when_configured() -> No
     assert "<sub>From the Python and JavaScript/TypeScript import graph at aaaaaaa.</sub>" in _render()
     linked = _render(devlens_url="https://devlens.example/")
     assert "[Open in DevLens](https://devlens.example/r/acme/shop/changes)" in linked
+
+
+def test_removed_checks_come_first_with_links_to_the_base_line() -> None:
+    body = _render(
+        removed_checks=[
+            {"path": "app/views.py", "line": 12, "kind": "auth check", "text": "@login_required"},
+            {"path": "app/csrf.py", "line": 3, "kind": "CSRF protection", "text": "app.use(csrf({ cookie: true }))"},
+        ],
+        flags=[{"path": "app/views.py", "categories": ["removed: auth"], "severity": "high"}],
+    )
+    assert "1 file changed. 2 checks removed, listed first." in body
+    assert body.index("#### Removed checks") < body.index("#### Security-sensitive changes")
+    assert f"| Auth check | [`app/views.py:12`](https://github.com/{REPO}/blob/{BASE}/app/views.py#L12) |" in body
+    assert "| CSRF protection |" in body
+    assert "| `@login_required` |" in body
+
+
+def test_removed_lines_are_shortened_and_cannot_break_the_table() -> None:
+    long_line = "if not (user and user.has_perm('x') or 'a|b' in roles): " + "x" * 80
+    body = _render(removed_checks=[{"path": "a.py", "line": 1, "kind": "permission check", "text": long_line}])
+    row = next(line for line in body.splitlines() if line.startswith("| Permission check"))
+    assert "'a\|b'" in row
+    assert row.endswith('...` |') and len(row) < 220
+    ticks = _render(removed_checks=[{"path": "a.py", "line": 1, "kind": "auth check", "text": "q = `auth`"}])
+    assert "| `` q = `auth` `` |" in ticks

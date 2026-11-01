@@ -221,3 +221,72 @@ def test_secret_values_and_other_words_on_a_referencing_line_are_still_flagged()
     assert labels("password = os.environ['DB_PASSWORD'] or 'hunter2'") == {"env", "password"}
     # Several lines, one of them a pass-through: only the real one is flagged.
     assert labels("TOKEN: ${TOKEN}\nverify_token(request)") == {"env", "token"}
+
+
+CHECKS_DIFF = '''diff --git a/app/views.py b/app/views.py
+--- a/app/views.py
++++ b/app/views.py
+@@ -10,9 +10,4 @@ def handler():
+-@login_required
+-@permission_required("orders.delete")
+ def delete_order(request, order_id):
+-    if not request.user.is_authenticated:
+-        raise HTTPException(status_code=403)
+-    form.is_valid()
+-    # validate() used to run here
+     order = load(order_id)
+-@csrf_exempt
+-@limiter.limit("5/minute")
+'''
+
+
+def test_removed_checks_carry_their_kind_file_and_old_line() -> None:
+    found = diffing.removed_checks(parse_unified_diff(CHECKS_DIFF))
+
+    assert [(c["line"], c["kind"], c["text"]) for c in found] == [
+        (10, "auth check", "@login_required"),
+        (11, "permission check", '@permission_required("orders.delete")'),
+        (13, "auth check", "if not request.user.is_authenticated:"),
+        (14, "permission check", "raise HTTPException(status_code=403)"),
+        (15, "input validation", "form.is_valid()"),
+        (19, "rate limit", '@limiter.limit("5/minute")'),
+    ]
+    # Comments are skipped, and removing csrf_exempt adds protection back.
+    assert all(c["path"] == "app/views.py" for c in found)
+
+
+def test_a_check_moved_elsewhere_in_the_change_is_not_reported() -> None:
+    moved = (
+        CHECKS_DIFF
+        + '''diff --git a/app/orders.py b/app/orders.py
+--- a/app/orders.py
++++ b/app/orders.py
+@@ -1,1 +1,2 @@
++@login_required
+ def delete_order(request, order_id):
+'''
+    )
+    kinds = [c["text"] for c in diffing.removed_checks(parse_unified_diff(moved))]
+    assert "@login_required" not in kinds
+    assert '@permission_required("orders.delete")' in kinds
+
+
+def test_removed_checks_in_docs_are_ignored_and_javascript_checks_are_found() -> None:
+    diff = '''diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -1,1 +1,0 @@
+-Wrap routes in requireAuth and validate(input).
+diff --git a/web/routes.ts b/web/routes.ts
+--- a/web/routes.ts
++++ b/web/routes.ts
+@@ -3,2 +3,1 @@
+-router.get("/admin", requireAuth, checkPermission("admin"), handler);
+-  if (!jwt.verify(token, key)) return res.status(401).end();
++router.get("/admin", handler);
+'''
+    found = diffing.removed_checks(parse_unified_diff(diff))
+    assert [(c["path"], c["line"], c["kind"]) for c in found] == [
+        ("web/routes.ts", 3, "permission check"),
+        ("web/routes.ts", 4, "auth check"),
+    ]

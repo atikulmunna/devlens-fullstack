@@ -195,6 +195,73 @@ def detect_security_touches(changed_files: list[dict]) -> list[dict]:
     return flags
 
 
+# Code that guards something. Removing one is the change most worth a reviewer's look, so each is
+# reported with its file and line. Checked in order; the first kind that matches names the line.
+_CHECK_PATTERNS = [
+    (
+        "permission check",
+        re.compile(
+            r"@\w*(?:permission|role|admin|staff)s?_required\b|\bhas_perms?\(|\bcheck_?permissions?\(|\bhasPermission\("
+            r"|\bis_(?:admin|staff|superuser)\b|\braise\s+(?:PermissionDenied|Forbidden)"
+            r"|\bstatus(?:_code)?\s*=\s*(?:status\.HTTP_)?403|\babort\(\s*403|\.status\(\s*403\s*\)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "auth check",
+        re.compile(
+            r"@\w*(?:login|auth\w*)_required\b|@requires?_(?:auth|login)\w*"
+            r"|Depends\(\s*(?:get_current_\w+|require_\w+|verify_\w+)|\bis_authenticated\b|\bisAuthenticated\("
+            r"|\brequireAuth\b|\bensureAuth\w*|passport\.authenticate|\bverify_?token\w*\(|jwt\.verify\("
+            r"|\braise\s+(?:Unauthorized|NotAuthenticated)"
+            # 401 means "not signed in"; 403 (above) means "signed in, not allowed".
+            r"|\bstatus(?:_code)?\s*=\s*(?:status\.HTTP_)?401|\babort\(\s*401|\.status\(\s*401\s*\)",
+            re.IGNORECASE,
+        ),
+    ),
+    ("CSRF protection", re.compile(r"csrf", re.IGNORECASE)),
+    ("input validation", re.compile(r"\bvalidate\w*\(|\.is_valid\(\)|\bsanitize\w*\(|\bescape(?:_html)?\(", re.I)),
+    ("rate limit", re.compile(r"\brate_?limit\w*|@limiter\.limit|\bthrottle\w*", re.IGNORECASE)),
+]
+_COMMENT_PREFIXES = ("#", "//", "/*", "*")
+
+
+def _check_kind(text: str) -> str | None:
+    for kind, pattern in _CHECK_PATTERNS:
+        # Removing an exemption (csrf_exempt) adds protection back.
+        if pattern.search(text) and not (kind == "CSRF protection" and "exempt" in text.lower()):
+            return kind
+    return None
+
+
+def _hunk_lines(entry: dict, kind: str):
+    for hunk in entry.get("hunks") or []:
+        for line in hunk.get("lines") or []:
+            if line["kind"] == kind:
+                yield line
+
+
+def removed_checks(changed_files: list[dict]) -> list[dict]:
+    """Removed lines that guarded something, with the line number they had before the change.
+
+    A line added back anywhere in the same change counts as moved, not removed; comments are skipped.
+    """
+    added_anywhere = {line["text"].strip() for entry in changed_files for line in _hunk_lines(entry, "+")}
+    found = []
+    for entry in changed_files:
+        path = entry.get("old_path") or entry.get("path") or ""
+        if _never_flagged(path):
+            continue
+        for line in _hunk_lines(entry, "-"):
+            text = line["text"].strip()
+            if not text or text.startswith(_COMMENT_PREFIXES) or text in added_anywhere:
+                continue
+            kind = _check_kind(text)
+            if kind:
+                found.append({"path": path, "line": line["old"], "kind": kind, "text": text})
+    return found
+
+
 def _run_git(args: list[str], cwd: str, timeout: int = 60) -> str:
     result = subprocess.run(
         ["git", *args],

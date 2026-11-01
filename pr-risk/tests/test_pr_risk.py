@@ -61,6 +61,9 @@ def test_analyze_reports_reach_removed_checks_and_deleted_imports(repo: Path) ->
     assert result["flags"] == [{"path": "app/auth.py", "categories": ["auth", "removed: token"], "severity": "high"}]
     assert result["blast"]["impacted_by_depth"] == [["app/uses_old.py", "app/views.py"], ["app/api.py"]]
     assert result["still_imported"] == {"app/old.py": ["app/uses_old.py"]}
+    assert result["removed_checks"] == [
+        {"path": "app/auth.py", "line": 2, "kind": "auth check", "text": "if not verify_token(user):"}
+    ]
 
 
 def test_compares_against_the_fork_point_not_the_moved_base(repo: Path) -> None:

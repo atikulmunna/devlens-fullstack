@@ -23,8 +23,17 @@ def _code_list(paths: list[str]) -> str:
     return shown + (f", and {hidden} more" if hidden > 0 else "")
 
 
-def _summary(changed_files: list[dict], flags: list[dict], blast: dict) -> str:
+def _inline_code(text: str, limit: int = 90) -> str:
+    """Code for a table cell: shortened, pipes escaped, fenced so its own backticks survive."""
+    short = text if len(text) <= limit else text[: limit - 3] + "..."
+    short = short.replace("|", "\\|")
+    return f"`` {short} ``" if "`" in short else f"`{short}`"
+
+
+def _summary(changed_files: list[dict], flags: list[dict], blast: dict, removed_checks: list[dict]) -> str:
     sentences = [f"{_plural(len(changed_files), 'file')} changed."]
+    if removed_checks:
+        sentences.append(f"{_plural(len(removed_checks), 'check')} removed, listed first.")
     levels = blast.get("impacted_by_depth") or []
     if levels:
         reach = f", up to {_plural(len(levels), 'import')} away" if len(levels) > 1 else ""
@@ -33,9 +42,23 @@ def _summary(changed_files: list[dict], flags: list[dict], blast: dict) -> str:
         high = sum(1 for flag in flags if flag["severity"] == "high")
         rated = f", {high} of them high" if high else ""
         sentences.append(f"{_plural(len(flags), 'changed file')} touch security-sensitive code{rated}.")
-    if not levels and not flags:
+    if not levels and not flags and not removed_checks:
         sentences.append("Nothing else imports them, and none touch security-sensitive code.")
     return " ".join(sentences)
+
+
+def _removed_checks_section(repo: str, base_sha: str, checks: list[dict]) -> list[str]:
+    if not checks:
+        return []
+    lines = ["#### Removed checks", "", "| Check | Where it was | Removed line |", "| --- | --- | --- |"]
+    for check in checks[: MAX_LISTED * 2]:
+        where = f"[`{check['path']}:{check['line']}`]({_blob_url(repo, base_sha, check['path'])}#L{check['line']})"
+        kind = check["kind"][0].upper() + check["kind"][1:]
+        lines.append(f"| {kind} | {where} | {_inline_code(check['text'])} |")
+    hidden = len(checks) - MAX_LISTED * 2
+    if hidden > 0:
+        lines.append(f"\nAnd {hidden} more.")
+    return [*lines, ""]
 
 
 def _security_section(repo: str, head_sha: str, flags: list[dict]) -> list[str]:
@@ -84,10 +107,13 @@ def render_report(
     flags: list[dict],
     blast: dict,
     still_imported: dict[str, list[str]],
+    removed_checks: list[dict],
     devlens_url: str = "",
 ) -> str:
-    """The comment body. `flags` carry a severity; `blast` comes from blast_radius_from_graph."""
-    lines = [MARKER, "### DevLens change risk", "", _summary(changed_files, flags, blast), ""]
+    """The comment body. `flags` carry a severity; `blast` comes from blast_radius_from_graph;
+    `removed_checks` from diffing.removed_checks (line numbers are in the base)."""
+    lines = [MARKER, "### DevLens change risk", "", _summary(changed_files, flags, blast, removed_checks), ""]
+    lines += _removed_checks_section(repo, base_sha, removed_checks)
     lines += _security_section(repo, head_sha, flags)
     lines += _still_imported_section(repo, base_sha, still_imported)
     lines += _reach_section(blast)
